@@ -417,6 +417,13 @@
       <key_template>{tileset}-{grid}-{dim}-{z}-{y}-{x}.{ext}</key_template>
       -->
    </cache>
+   
+   <!-- Tokyo Cabinet cache
+   -->
+   <cache name="tc" type="tokyocabinet">
+      <base>/tmp/</base> <!-- will create /tmp/tokyocabinet.tcb , not configurable yet -->
+      <key_template>{tileset}-{grid}-{dim}-{z}-{y}-{x}.{ext}</key_template>
+   </cache>
 
    <!-- format
 
