@@ -234,14 +234,14 @@ int main(int argc, const char **argv) {
       int i;
       for(i=1;i<argc;i++) {
          if( strncmp(argv[i], "-c", 2) == 0 ) {
-            conffile = argv[i+1];
+            conffile = strdup(argv[i+1]);
             putenv( "REQUEST_METHOD=GET" );
          }
          else if( strncmp(argv[i], "QUERY_STRING=", 13) == 0 ) {
-            putenv( argv[i] );
+            putenv( strdup(argv[i]) );
          }
          else if( strncmp(argv[i], "PATH_INFO=", 10) == 0 ) {
-            putenv( argv[i] );
+            putenv( strdup(argv[i]) );
          }
       }
    }
