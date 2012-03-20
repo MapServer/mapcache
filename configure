@@ -617,7 +617,7 @@ CURLCONFIG
 BDB_INC
 BDB_LIB
 BDB_ENABLED
-MAPSERVER_LIB
+MAPSERVER_DIR
 MAPSERVER_ENABLED
 GEOS_LIB
 GEOS_INC
@@ -1443,7 +1443,7 @@ Optional Packages:
   --with-pcre[=prefix]    use pcre instead of posix regular expressions
   --with-gdal             path to gdal-config program
   --with-geos             path to geos-config program
-  --with-mapserver[=/path/to/mapserver-prefix]
+  --with-mapserver[=/path/to/mapserver-src-dir]
                           Enable mapserver sources (experimental)
   --with-bdb-dir=DIR      Berkeley DB installation directory
   --with-curl-config      path to curl-config program
@@ -13862,100 +13862,16 @@ else
 fi
 
     if test "$with_mapserver" == "yes"; then
-       { $as_echo "$as_me:${as_lineno-$LINENO}: checking for msDrawMap in -lmapserver" >&5
-$as_echo_n "checking for msDrawMap in -lmapserver... " >&6; }
-if ${ac_cv_lib_mapserver_msDrawMap+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lmapserver  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char msDrawMap ();
-int
-main ()
-{
-return msDrawMap ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_mapserver_msDrawMap=yes
-else
-  ac_cv_lib_mapserver_msDrawMap=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_mapserver_msDrawMap" >&5
-$as_echo "$ac_cv_lib_mapserver_msDrawMap" >&6; }
-if test "x$ac_cv_lib_mapserver_msDrawMap" = xyes; then :
-  MAPSERVER_LIB="-lmapserver"
-else
-  as_fn_error $? "mapserver library not found in default path, specify installation prefix" "$LINENO" 5
-fi
-
+       as_fn_error $? "--with-mapserver needs the path to the mapserver source directory" "$LINENO" 5
     else
        if test "$enable_mapserver" != "no"; then
-          OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS -L$with_mapserver/lib"
-          { $as_echo "$as_me:${as_lineno-$LINENO}: checking for msDrawMap in -lmapserver" >&5
-$as_echo_n "checking for msDrawMap in -lmapserver... " >&6; }
-if ${ac_cv_lib_mapserver_msDrawMap+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lmapserver  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char msDrawMap ();
-int
-main ()
-{
-return msDrawMap ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_mapserver_msDrawMap=yes
-else
-  ac_cv_lib_mapserver_msDrawMap=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_mapserver_msDrawMap" >&5
-$as_echo "$ac_cv_lib_mapserver_msDrawMap" >&6; }
-if test "x$ac_cv_lib_mapserver_msDrawMap" = xyes; then :
-  MAPSERVER_LIB="-L$with_mapserver/lib -lmapserver"
-else
-  as_fn_error $? "mapserver library not found in $with_mapserver/lib" "$LINENO" 5
-fi
-
-          LDFLAGS="$OLDLDFLAGS"
+          MAPSERVER_DIR=$with_mapserver
        fi
     fi
-    if test -n "$MAPSERVER_LIB"; then
+    if test -n "$MAPSERVER_DIR"; then
        MAPSERVER_ENABLED="-DUSE_MAPSERVER"
 
-       MAPSERVER_LIB=$MAPSERVER_LIB
+       MAPSERVER_DIR=$MAPSERVER_DIR
 
     fi
 

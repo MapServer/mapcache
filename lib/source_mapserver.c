@@ -33,7 +33,7 @@
 #include "ezxml.h"
 #include <apr_tables.h>
 #include <apr_strings.h>
-#include "../../mapserver.h"
+#include <mapserver.h>
 
 /**
  * \private \memberof mapcache_source_mapserver

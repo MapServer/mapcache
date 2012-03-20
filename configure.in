@@ -467,24 +467,20 @@ AC_DEFUN([PCRE_CHECK],[
 
 AC_DEFUN([MAPSERVER_CHECK],[
     AC_ARG_WITH(mapserver,
-        AC_HELP_STRING([--with-mapserver@<:@=/path/to/mapserver-prefix@:>@ ],[Enable mapserver sources (experimental)]),
+        AC_HELP_STRING([--with-mapserver@<:@=/path/to/mapserver-src-dir@:>@ ],[Enable mapserver sources (experimental)]),
         ,
         [enable_mapserver=no]
     )
     if test "$with_mapserver" == "yes"; then
-       AC_CHECK_LIB(mapserver, msDrawMap,MAPSERVER_LIB="-lmapserver",
-                    [AC_MSG_ERROR([mapserver library not found in default path, specify installation prefix])])
+       AC_MSG_ERROR([--with-mapserver needs the path to the mapserver source directory])
     else
        if test "$enable_mapserver" != "no"; then
-          OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS -L$with_mapserver/lib"
-          AC_CHECK_LIB(mapserver, msDrawMap,MAPSERVER_LIB="-L$with_mapserver/lib -lmapserver",
-                       [AC_MSG_ERROR([mapserver library not found in $with_mapserver/lib])])
-          LDFLAGS="$OLDLDFLAGS"
+          MAPSERVER_DIR=$with_mapserver
        fi
     fi
-    if test -n "$MAPSERVER_LIB"; then
+    if test -n "$MAPSERVER_DIR"; then
        AC_SUBST(MAPSERVER_ENABLED,"-DUSE_MAPSERVER")
-       AC_SUBST(MAPSERVER_LIB,$MAPSERVER_LIB)
+       AC_SUBST(MAPSERVER_DIR,$MAPSERVER_DIR)
     fi
 ])
 
