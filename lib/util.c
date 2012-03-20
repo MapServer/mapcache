@@ -112,16 +112,17 @@ char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char
    return newstr;
 }
 
-const char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to) {
-   size_t pos = strcspn(str,from);
-   if(str[pos]) {
-      str = apr_pstrdup(pool,str);
-      while(str[pos]) {
-         ((char*)str)[pos]=to;
-         pos += strcspn(&str[pos],from);
+char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to) {
+   char *pstr = apr_pstrdup(pool,str);
+   size_t pos = strcspn(pstr,from);
+   if(pstr[pos]) {
+      pstr = apr_pstrdup(pool,pstr);
+      while(pstr[pos]) {
+         ((char*)pstr)[pos]=to;
+         pos += strcspn(&pstr[pos],from);
       }
    }
-   return str;
+   return pstr;
 }
 
 #if APR_MAJOR_VERSION < 1 || (APR_MAJOR_VERSION < 2 && APR_MINOR_VERSION < 3)
@@ -212,6 +213,73 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst) {
    dst->set_exception = src->set_exception;
    dst->service = src->service;
    dst->exceptions = src->exceptions;
+}
+
+char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to) {
+   char *key = apr_pstrdup(ctx->pool,"");
+   if(tile->dimensions) {
+      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
+      int i = elts->nelts;
+      if(i>1) {
+         while(i--) {
+            apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
+            if(i) {
+               key = apr_pstrcat(ctx->pool,key,entry->val,(sanitized_chars?sanitize_to:"#"),NULL);
+            } else {
+               key = apr_pstrcat(ctx->pool,key,entry->val,NULL);
+            }
+         }
+         return key;
+      } else if(i){
+         apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,0,apr_table_entry_t));
+         key = apr_pstrdup(ctx->pool,entry->val);
+      }
+      if(sanitized_chars)
+         key = mapcache_util_str_sanitize(ctx->pool,key,sanitized_chars,*sanitize_to);
+   }
+   return key;
+}
+
+char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *template,
+        char* sanitized_chars, char *sanitize_to) {
+   char *path;
+   if(template) {
+      path = mapcache_util_str_replace(ctx->pool, template, "{x}",
+              apr_psprintf(ctx->pool, "%d", tile->x));
+      path = mapcache_util_str_replace(ctx->pool, path, "{y}",
+              apr_psprintf(ctx->pool, "%d", tile->y));
+      path = mapcache_util_str_replace(ctx->pool, path, "{z}",
+              apr_psprintf(ctx->pool, "%d", tile->z));
+      if(strstr(path,"{dim}")) {
+         path = mapcache_util_str_replace(ctx->pool, path, "{dim}", mapcache_util_get_tile_dimkey(ctx,tile,sanitized_chars,sanitize_to));
+      }
+      if(strstr(path,"{tileset}"))
+         path = mapcache_util_str_replace(ctx->pool, path, "{tileset}", tile->tileset->name);
+      if(strstr(path,"{grid}"))
+         path = mapcache_util_str_replace(ctx->pool, path, "{grid}", tile->grid_link->grid->name);
+      if(strstr(path,"{ext}"))
+         path = mapcache_util_str_replace(ctx->pool, path, "{ext}",
+              tile->tileset->format ? tile->tileset->format->extension : "png");
+   } else {
+      char *separator = "/";
+      /* we'll concatenate the entries ourself */
+      path = apr_pstrcat(ctx->pool,
+              tile->tileset->name,separator,
+              tile->grid_link->grid->name,separator,
+              NULL);
+      if(tile->dimensions) {
+         path = apr_pstrcat(ctx->pool,path,
+                 mapcache_util_get_tile_dimkey(ctx,tile,sanitized_chars,sanitize_to),
+                 separator,NULL);
+      }
+      path = apr_pstrcat(ctx->pool,path,
+              apr_psprintf(ctx->pool, "%d", tile->z),separator,
+              apr_psprintf(ctx->pool, "%d", tile->y),separator,
+              apr_psprintf(ctx->pool, "%d", tile->x),separator,
+              tile->tileset->format?tile->tileset->format->extension:"png",
+              NULL);
+   }
+   return path;
 }
 
 

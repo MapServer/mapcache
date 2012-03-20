@@ -43,33 +43,6 @@
 
 #include <db.h>
 
-
-static const char* _bdb_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile) {
-   if(tile->dimensions) {
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
-      if(i>1) {
-         char *key = "";
-         while(i--) {
-            apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-            if(i) {
-               key = apr_pstrcat(ctx->pool,key,entry->val,"#",NULL);
-            } else {
-               key = apr_pstrcat(ctx->pool,key,entry->val,NULL);
-            }
-         }
-         return key;
-      } else if(i){
-         apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,0,apr_table_entry_t));
-         return entry->val;
-      } else {
-         return "";
-      }
-   } else {
-      return "";
-   }
-}
-
 struct bdb_env {
    DB* db;
    DB_ENV *env;
@@ -119,27 +92,6 @@ static apr_status_t _bdb_reslist_free_connection(void *conn_, void *params, apr_
    return APR_SUCCESS; 
 }
 
-static char* _dbd_get_key(mapcache_context *ctx, mapcache_tile *tile) {
-   mapcache_cache_bdb *cache = (mapcache_cache_bdb*) tile->tileset->cache;
-   char *path = cache->key_template;
-   path = mapcache_util_str_replace(ctx->pool, path, "{x}",
-           apr_psprintf(ctx->pool, "%d", tile->x));
-   path = mapcache_util_str_replace(ctx->pool, path, "{y}",
-           apr_psprintf(ctx->pool, "%d", tile->y));
-   path = mapcache_util_str_replace(ctx->pool, path, "{z}",
-           apr_psprintf(ctx->pool, "%d", tile->z));
-   if(strstr(path,"{dim}")) {
-      path = mapcache_util_str_replace(ctx->pool, path, "{dim}", _bdb_get_tile_dimkey(ctx,tile));
-   }
-   if(strstr(path,"{tileset}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{tileset}", tile->tileset->name);
-   if(strstr(path,"{grid}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{grid}", tile->grid_link->grid->name);
-   if(strstr(path,"{ext}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{ext}",
-           tile->tileset->format ? tile->tileset->format->extension : "png");
-   return path;
-}
 
 
 static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
@@ -167,7 +119,8 @@ static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct
 static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_tile *tile) {
    int ret;
    DBT key;
-   char *skey = _dbd_get_key(ctx,tile);
+   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
    struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
    if(GC_HAS_ERROR(ctx)) return MAPCACHE_FALSE;
    memset(&key, 0, sizeof(DBT));
@@ -189,9 +142,10 @@ static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_tile *ti
 }
 
 static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_tile *tile) {
-   char *skey = _dbd_get_key(ctx,tile);
    DBT key;
    int ret;
+   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
    struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
    GC_CHECK_ERROR(ctx);
    memset(&key, 0, sizeof(DBT));
@@ -211,8 +165,9 @@ static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_tile *til
 
 static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile) {
    DBT key,data;
-   char *skey = _dbd_get_key(ctx,tile);
    struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
+   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
    if(GC_HAS_ERROR(ctx)) return MAPCACHE_FAILURE;
    memset(&key, 0, sizeof(DBT));
    memset(&data, 0, sizeof(DBT));
@@ -244,7 +199,8 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile) {
 static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile) {
    DBT key,data;
    int ret;
-   char *skey = _dbd_get_key(ctx,tile);
+   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
    struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
    GC_CHECK_ERROR(ctx);
    apr_time_t now = apr_time_now();
