@@ -786,6 +786,7 @@ with_geos
 with_mapserver
 with_bdb_dir
 with_curl_config
+with_tokyo_cabinet
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1450,6 +1451,8 @@ Optional Packages:
                           Enable mapserver sources (experimental)
   --with-bdb-dir=DIR      Berkeley DB installation directory
   --with-curl-config      path to curl-config program
+  --with-tokyo-cabinet[=/path]
+                          Enable tokyo cabinet backend (experimental)
 
 Some influential environment variables:
   CC          C compiler command
@@ -16581,11 +16584,30 @@ $as_echo "yes" >&6; }
 ac_config_files="$ac_config_files Makefile.inc nginx/config lib/Makefile apache/Makefile util/Makefile cgi/Makefile"
 
 
-TC_ENABLED="-DUSE_TC"
 
-TC_INC=""
+# Check whether --with-tokyo-cabinet was given.
+if test "${with_tokyo_cabinet+set}" = set; then :
+  withval=$with_tokyo_cabinet;
+else
+  with_tokyo_cabinet=no
 
-TC_LIB="-ltokyocabinet"
+fi
+
+if test $with_tokyo_cabinet == "yes"; then
+   TC_ENABLED="-DUSE_TC"
+
+   TC_INC=""
+
+   TC_LIB="-ltokyocabinet"
+
+else
+   TC_ENABLED=""
+
+   TC_INC=""
+
+   TC_LIB=""
+
+fi
 
 
 cat >confcache <<\_ACEOF

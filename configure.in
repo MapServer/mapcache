@@ -1773,8 +1773,20 @@ CURL_CHECK
 # Write config.status and the Makefile
 AC_CONFIG_FILES(Makefile.inc nginx/config lib/Makefile apache/Makefile util/Makefile cgi/Makefile)
 
-AC_SUBST(TC_ENABLED, "-DUSE_TC")
-AC_SUBST(TC_INC,"")
-AC_SUBST(TC_LIB, "-ltokyocabinet")
+AC_ARG_WITH(tokyo-cabinet,
+    AC_HELP_STRING([--with-tokyo-cabinet@<:@=/path@:>@ ],[Enable tokyo cabinet backend (experimental)]),
+    ,
+    [with_tokyo_cabinet=no]
+)
+if test $with_tokyo_cabinet == "yes"; then
+   AC_SUBST(TC_ENABLED, "-DUSE_TC")
+   AC_SUBST(TC_INC,"")
+   AC_SUBST(TC_LIB, "-ltokyocabinet")
+else
+   AC_SUBST(TC_ENABLED, "")
+   AC_SUBST(TC_INC,"")
+   AC_SUBST(TC_LIB, "")
+fi
+
 
 AC_OUTPUT
