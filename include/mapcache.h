@@ -1341,7 +1341,12 @@ char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char
  * \return the original string if no matches were found, or the sanitized
  *         string allocated from the given pool
  */
-const char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to);
+char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to);
+
+char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
+
+char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *template,
+        char* sanitized_chars, char *sanitize_to);
 
 /**\defgroup imageio Image IO */
 /** @{ */

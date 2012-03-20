@@ -31,53 +31,13 @@
 
 #include "mapcache.h"
 
-
-
-/**
- * \brief return key for given tile
- * 
- * \param tile the tile to get the key from
- * \param key pointer to a char* that will contain the key
- * \param ctx
- * \private \memberof mapcache_cache_memcache
- */
-static void _mapcache_cache_memcache_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path) {
-   char *start;
-   start = apr_pstrcat(ctx->pool,
-         tile->tileset->name,"/",
-         tile->grid_link->grid->name,
-         NULL);
-   if(tile->dimensions) {
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
-      while(i--) {
-         apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-         const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val," \r\n\t\f\e\a\b",'#');
-         start = apr_pstrcat(ctx->pool,start,"/",dimval,NULL);
-      }
-   }
-   *path = apr_psprintf(ctx->pool,"%s/%d/%d/%d.%s",
-         start,
-         tile->z,
-         tile->x,
-         tile->y,
-         tile->tileset->format?tile->tileset->format->extension:"png");
-   if(!*path) {
-      ctx->set_error(ctx,500, "failed to allocate tile key");
-   }
-#ifdef DEBUG
-   ctx->log(ctx,MAPCACHE_DEBUG,"memcache key is %s (length:%d)",
-         *path,strlen(*path));
-#endif
-  
-}
-
 static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_tile *tile) {
-   char *key, *tmpdata;
+   char *key;
+   char *tmpdata;
    int rv;
    size_t tmpdatasize;
    mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
-   _mapcache_cache_memcache_tile_key(ctx, tile, &key);
+   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
    if(GC_HAS_ERROR(ctx)) {
       return MAPCACHE_FALSE;
    }
@@ -96,7 +56,7 @@ static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_tile
    int rv;
    char errmsg[120];
    mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
-   _mapcache_cache_memcache_tile_key(ctx, tile, &key);
+   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
    GC_CHECK_ERROR(ctx);
    rv = apr_memcache_delete(cache->memcache,key,0);
    if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
@@ -116,7 +76,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_tile *ti
    char *key;
    int rv;
    mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
-   _mapcache_cache_memcache_tile_key(ctx, tile, &key);
+   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
    if(GC_HAS_ERROR(ctx)) {
       return MAPCACHE_FAILURE;
    }
@@ -157,7 +117,7 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_tile *t
    if(tile->tileset->auto_expire)
       expires = tile->tileset->auto_expire;
    mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
-   _mapcache_cache_memcache_tile_key(ctx, tile, &key);
+   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
    GC_CHECK_ERROR(ctx);
    
    if(!tile->encoded_data) {

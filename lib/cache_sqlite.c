@@ -42,31 +42,6 @@
 #include <sqlite3.h>
 
 
-static const char* _get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile) {
-   if(tile->dimensions) {
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
-      if(i>1) {
-         char *key = "";
-         while(i--) {
-            apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-            if(i) {
-               key = apr_pstrcat(ctx->pool,key,entry->val,"#",NULL);
-            } else {
-               key = apr_pstrcat(ctx->pool,key,entry->val,NULL);
-            }
-         }
-         return key;
-      } else if(i){
-         apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,0,apr_table_entry_t));
-         return entry->val;
-      } else {
-         return "";
-      }
-   } else {
-      return "";
-   }
-}
 
 static char* _get_dbname(mapcache_context *ctx,  mapcache_tileset *tileset, mapcache_grid *grid) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tileset->cache;
@@ -138,7 +113,7 @@ static void _bind_sqlite_params(mapcache_context *ctx, sqlite3_stmt *stmt, mapca
    paramidx = sqlite3_bind_parameter_index(stmt, ":dim");
    if(paramidx) {
       if(tile->dimensions) {
-         const char *dim = _get_tile_dimkey(ctx,tile);
+         char *dim = mapcache_util_get_tile_dimkey(ctx,tile,NULL,NULL);
          sqlite3_bind_text(stmt,paramidx,dim,-1,SQLITE_STATIC);
       } else {
          sqlite3_bind_text(stmt,paramidx,"",-1,SQLITE_STATIC);
