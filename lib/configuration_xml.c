@@ -440,6 +440,13 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config) {
       ctx->set_error(ctx,400, "failed to add cache \"%s\": Berkeley DB support is not available on this build",name);
       return;
 #endif
+   } else if(!strcmp(type,"tokyocabinet")) {
+#ifdef USE_TC
+      cache = mapcache_cache_tc_create(ctx);
+#else
+      ctx->set_error(ctx,400, "failed to add cache \"%s\": Tokyo Cabinet support is not available on this build",name);
+      return;
+#endif
    } else if(!strcmp(type,"sqlite3")) {
 #ifdef USE_SQLITE
       cache = mapcache_cache_sqlite_create(ctx);

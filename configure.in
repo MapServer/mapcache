@@ -1773,4 +1773,8 @@ CURL_CHECK
 # Write config.status and the Makefile
 AC_CONFIG_FILES(Makefile.inc nginx/config lib/Makefile apache/Makefile util/Makefile cgi/Makefile)
 
+AC_SUBST(TC_ENABLED, "-DUSE_TC")
+AC_SUBST(TC_INC,"")
+AC_SUBST(TC_LIB, "-ltokyocabinet")
+
 AC_OUTPUT

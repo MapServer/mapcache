@@ -611,6 +611,9 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+TC_LIB
+TC_INC
+TC_ENABLED
 CURL_LIBS
 CURL_CFLAGS
 CURLCONFIG
@@ -16576,6 +16579,13 @@ $as_echo "yes" >&6; }
 
 # Write config.status and the Makefile
 ac_config_files="$ac_config_files Makefile.inc nginx/config lib/Makefile apache/Makefile util/Makefile cgi/Makefile"
+
+
+TC_ENABLED="-DUSE_TC"
+
+TC_INC=""
+
+TC_LIB="-ltokyocabinet"
 
 
 cat >confcache <<\_ACEOF

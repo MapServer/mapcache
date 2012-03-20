@@ -36,81 +36,154 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <tcutil.h>
+#include <tcbdb.h>
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 
-
-static const char* _tc_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile) {
-   if(tile->dimensions) {
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
-      if(i>1) {
-         char *key = "";
-         while(i--) {
-            apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-            if(i) {
-               key = apr_pstrcat(ctx->pool,key,entry->val,"#",NULL);
-            } else {
-               key = apr_pstrcat(ctx->pool,key,entry->val,NULL);
-            }
-         }
-         return key;
-      } else if(i){
-         apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,0,apr_table_entry_t));
-         return entry->val;
-      } else {
-         return "";
+struct tc_conn {
+   TCBDB *bdb;
+   int readonly;
+};
+static struct tc_conn _tc_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
+   struct tc_conn conn;
+   /* create the object */
+   conn.bdb = tcbdbnew();
+   mapcache_cache_tc *cache = (mapcache_cache_tc*)tile->tileset->cache;
+   
+   /* open the database */
+   if(!readonly) {
+      if(!tcbdbopen(conn.bdb, apr_pstrcat(ctx->pool, cache->basedir,"/tc.tcb",NULL), BDBOWRITER | BDBOCREAT)){
+         int ecode = tcbdbecode(conn.bdb);
+         ctx->set_error(ctx,500, "tokyocabinet open error on %s: %s\n",apr_pstrcat(ctx->pool, cache->basedir,"/tc.tcf",NULL),tcbdberrmsg(ecode));
       }
+      conn.readonly = 0;
    } else {
-      return "";
+      if(!tcbdbopen(conn.bdb, apr_pstrcat(ctx->pool, cache->basedir,"/tc.tcb",NULL), BDBOREADER)){
+         if(!tcbdbopen(conn.bdb, apr_pstrcat(ctx->pool, cache->basedir,"/tc.tcb",NULL), BDBOWRITER | BDBOCREAT)){
+            int ecode = tcbdbecode(conn.bdb);
+            ctx->set_error(ctx,500, "tokyocabinet open error on %s: %s\n",apr_pstrcat(ctx->pool, cache->basedir,"/tc.tcf",NULL),tcbdberrmsg(ecode));
+         }
+         conn.readonly = 0;
+      }
+      conn.readonly = 1;
    }
+   return conn;
 }
 
-static char* _tc_get_key(mapcache_context *ctx, mapcache_tile *tile) {
-   mapcache_cache_bdb *cache = (mapcache_cache_bdb*) tile->tileset->cache;
-   char *path = cache->key_template;
-   path = mapcache_util_str_replace(ctx->pool, path, "{x}",
-           apr_psprintf(ctx->pool, "%d", tile->x));
-   path = mapcache_util_str_replace(ctx->pool, path, "{y}",
-           apr_psprintf(ctx->pool, "%d", tile->y));
-   path = mapcache_util_str_replace(ctx->pool, path, "{z}",
-           apr_psprintf(ctx->pool, "%d", tile->z));
-   if(strstr(path,"{dim}")) {
-      path = mapcache_util_str_replace(ctx->pool, path, "{dim}", _bdb_get_tile_dimkey(ctx,tile));
-   }
-   if(strstr(path,"{tileset}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{tileset}", tile->tileset->name);
-   if(strstr(path,"{grid}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{grid}", tile->grid_link->grid->name);
-   if(strstr(path,"{ext}"))
-      path = mapcache_util_str_replace(ctx->pool, path, "{ext}",
-           tile->tileset->format ? tile->tileset->format->extension : "png");
-   return path;
-}
+static void _tc_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct tc_conn conn) {
+   if(!conn.readonly)
+      tcbdbsync(conn.bdb);
 
+   if(!tcbdbclose(conn.bdb)){
+      int ecode = tcbdbecode(conn.bdb);
+      ctx->set_error(ctx,500, "tokyocabinet close error: %s\n",tcbdberrmsg(ecode));
+   }
+   tcbdbdel(conn.bdb);
+}
 
 static int _mapcache_cache_tc_has_tile(mapcache_context *ctx, mapcache_tile *tile) {
+   int ret;
+   struct tc_conn conn;
+   int nrecords = 0;
+   mapcache_cache_tc *cache = (mapcache_cache_tc*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+   conn = _tc_get_conn(ctx,tile,1);
+   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FALSE;
+   nrecords = tcbdbvnum2(conn.bdb, skey);
+   if(nrecords == 0)
+      ret = MAPCACHE_FALSE;
+   else
+      ret = MAPCACHE_TRUE;
+   _tc_release_conn(ctx,tile,conn);
+   return ret;
 }
 
 static void _mapcache_cache_tc_delete(mapcache_context *ctx, mapcache_tile *tile) {
+   struct tc_conn conn;
+   mapcache_cache_tc *cache = (mapcache_cache_tc*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+   conn = _tc_get_conn(ctx,tile,0);
+   GC_CHECK_ERROR(ctx);
+   tcbdbout2(conn.bdb, skey);
+   _tc_release_conn(ctx,tile,conn);
 }
 
 
 static int _mapcache_cache_tc_get(mapcache_context *ctx, mapcache_tile *tile) {
+   int ret;
+   struct tc_conn conn;
+   mapcache_cache_tc *cache = (mapcache_cache_tc*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+   conn = _tc_get_conn(ctx,tile,1);
+   int size;
+   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FAILURE;
+   tile->encoded_data = mapcache_buffer_create(0,ctx->pool);
+   tile->encoded_data->buf = tcbdbget(conn.bdb, skey, strlen(skey), &size);
+   if(tile->encoded_data->buf) {
+      tile->encoded_data->avail = size;
+      tile->encoded_data->size = size - sizeof(apr_time_t);
+      apr_pool_cleanup_register(ctx->pool, tile->encoded_data->buf,(void*)free, apr_pool_cleanup_null);
+      tile->mtime = *((apr_time_t*)(&tile->encoded_data->buf[tile->encoded_data->size]));
+      ret = MAPCACHE_SUCCESS;
+   } else {
+      ret = MAPCACHE_CACHE_MISS;
+   }
+   _tc_release_conn(ctx,tile,conn);
+   return ret;
 }
 
 static void _mapcache_cache_tc_set(mapcache_context *ctx, mapcache_tile *tile) {
+   struct tc_conn conn;
+   mapcache_cache_tc *cache = (mapcache_cache_tc*)tile->tileset->cache;
+   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+   apr_time_t now = apr_time_now();
+   conn = _tc_get_conn(ctx,tile,0);
+   GC_CHECK_ERROR(ctx);
+   
+   if(!tile->encoded_data) {
+      tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+      GC_CHECK_ERROR(ctx);
+   }
+   mapcache_buffer_append(tile->encoded_data,sizeof(apr_time_t),&now);
+   if(!tcbdbput(conn.bdb, skey, strlen(skey), tile->encoded_data->buf, tile->encoded_data->size)) {
+      int ecode = tcbdbecode(conn.bdb);
+      ctx->set_error(ctx,500, "tokyocabinet put error: %s\n",tcbdberrmsg(ecode));
+   }
+   _tc_release_conn(ctx,tile,conn);
 }
 
 
 static void _mapcache_cache_tc_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) {
+   ezxml_t cur_node;
+   mapcache_cache_tc *dcache = (mapcache_cache_tc*)cache;
+   if ((cur_node = ezxml_child(node,"base")) != NULL) {
+      dcache->basedir = apr_pstrdup(ctx->pool,cur_node->txt);
+   }
+   if ((cur_node = ezxml_child(node,"key_template")) != NULL) {
+      dcache->key_template = apr_pstrdup(ctx->pool,cur_node->txt);
+   } else {
+      dcache->key_template = apr_pstrdup(ctx->pool,"{tileset}-{grid}-{dim}-{z}-{y}-{x}.{ext}");
+   }
+   if(!dcache->basedir) {
+      ctx->set_error(ctx,500,"tokyocabinet cache \"%s\" is missing <base> entry",cache->name);
+      return;
+   }
 }
    
 static void _mapcache_cache_tc_configuration_post_config(mapcache_context *ctx,
       mapcache_cache *cache, mapcache_cfg *cfg) {
+   mapcache_cache_tc *dcache = (mapcache_cache_tc*)cache;
+   apr_status_t rv;
+   apr_dir_t *dir;
+   rv = apr_dir_open(&dir, dcache->basedir, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      char errmsg[120];
+      ctx->set_error(ctx,500,"bdb failed to open directory %s:%s",dcache->basedir,apr_strerror(rv,errmsg,120));
+   }
 }
 
 /**

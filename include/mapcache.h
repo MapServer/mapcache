@@ -334,6 +334,9 @@ typedef enum {
 #ifdef USE_BDB
        ,MAPCACHE_CACHE_BDB
 #endif
+#ifdef USE_TC
+       ,MAPCACHE_CACHE_TC
+#endif
 #ifdef USE_TIFF
        ,MAPCACHE_CACHE_TIFF
 #endif
@@ -444,6 +447,18 @@ struct mapcache_cache_bdb {
    mapcache_context *ctx;
 };
 mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
+#endif
+
+#ifdef USE_TC
+typedef struct mapcache_cache_tc mapcache_cache_tc;
+struct mapcache_cache_tc {
+   mapcache_cache cache;
+   apr_reslist_t *connection_pool;
+   char *basedir;
+   char *key_template;
+   mapcache_context *ctx;
+};
+mapcache_cache *mapcache_cache_tc_create(mapcache_context *ctx);
 #endif
 
 #ifdef USE_MEMCACHE
