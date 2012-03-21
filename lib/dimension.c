@@ -154,22 +154,26 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
    dimension = (mapcache_dimension_regex*)dim;
    dimension->regex_string = apr_pstrdup(ctx->pool,entry);
 #ifdef USE_PCRE
-   const char *pcre_err;
-   int pcre_offset;
-   dimension->pcregex = pcre_compile(entry,0,&pcre_err, &pcre_offset,0);
-   if(!dimension->pcregex) {
-      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-            entry,dim->name,pcre_err);
-      return;
+   {
+      const char *pcre_err;
+      int pcre_offset;
+      dimension->pcregex = pcre_compile(entry,0,&pcre_err, &pcre_offset,0);
+      if(!dimension->pcregex) {
+         ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
+               entry,dim->name,pcre_err);
+         return;
+      }
    }
 #else
-   rc = regcomp(dimension->regex, entry, REG_EXTENDED);
-   if(rc) {
-      char errmsg[200];
-      regerror(rc,dimension->regex,errmsg,200);
-      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-            entry,dim->name,errmsg);
-      return;
+   {
+      int rc = regcomp(dimension->regex, entry, REG_EXTENDED);
+      if(rc) {
+         char errmsg[200];
+         regerror(rc,dimension->regex,errmsg,200);
+         ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
+               entry,dim->name,errmsg);
+         return;
+      }
    }
 #endif
 
