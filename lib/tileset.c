@@ -391,10 +391,14 @@ void _mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile 
    GC_CHECK_ERROR(ctx);
    mapcache_image_metatile_split(ctx, mt);
    GC_CHECK_ERROR(ctx);
-   for(i=0;i<mt->ntiles;i++) {
-      mapcache_tile *tile = &(mt->tiles[i]);
-      mt->map.tileset->cache->tile_set(ctx, tile);
-      GC_CHECK_ERROR(ctx);
+   if(mt->map.tileset->cache->tile_multi_set) {
+      mt->map.tileset->cache->tile_multi_set(ctx, mt->tiles, mt->ntiles);
+   } else {
+      for(i=0;i<mt->ntiles;i++) {
+         mapcache_tile *tile = &(mt->tiles[i]);
+         mt->map.tileset->cache->tile_set(ctx, tile);
+         GC_CHECK_ERROR(ctx);
+      }
    }
 }
 

@@ -373,6 +373,7 @@ struct mapcache_cache {
      * \memberof mapcache_cache
      */
     void (*tile_set)(mapcache_context *ctx, mapcache_tile * tile);
+    void (*tile_multi_set)(mapcache_context *ctx, mapcache_tile **tiles, int ntiles);
 
     void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
     void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
