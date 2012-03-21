@@ -146,7 +146,7 @@ static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_tile *til
    int ret;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
    char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-   struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
+   struct bdb_env *benv = _bdb_get_conn(ctx,tile,0);
    GC_CHECK_ERROR(ctx);
    memset(&key, 0, sizeof(DBT));
    key.data = skey;
@@ -201,7 +201,7 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile) 
    int ret;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
    char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-   struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
+   struct bdb_env *benv = _bdb_get_conn(ctx,tile,0);
    GC_CHECK_ERROR(ctx);
    apr_time_t now = apr_time_now();
    memset(&key, 0, sizeof(DBT));
