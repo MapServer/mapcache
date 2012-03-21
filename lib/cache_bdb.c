@@ -223,9 +223,57 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile) 
    } else {
       ret = benv->db->sync(benv->db,0);
       if(ret)
-         ctx->set_error(ctx,500,"bdb backend sync failure on tile_delete: %s",db_strerror(ret));
+         ctx->set_error(ctx,500,"bdb backend sync failure on tile_set: %s",db_strerror(ret));
    }
    _bdb_release_conn(ctx,tile,benv);
+}
+
+static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile **tiles, int ntiles) {
+   DBT key,data;
+   int ret,i;
+   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tiles[0]->tileset->cache;
+   struct bdb_env *benv = _bdb_get_conn(ctx,tiles[0],0);
+   GC_CHECK_ERROR(ctx);
+   apr_time_t now = apr_time_now();
+   memset(&key, 0, sizeof(DBT));
+   memset(&data, 0, sizeof(DBT));
+
+   for(i=0;i<ntiles;i++) {
+      char *skey;
+      mapcache_tile *tile = tiles[i];
+      skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+      if(!tile->encoded_data) {
+         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+         GC_CHECK_ERROR(ctx);
+      }
+      mapcache_buffer_append(tile->encoded_data,sizeof(apr_time_t),&now);
+      key.ulen += strlen(skey)+1;
+      data.ulen += tile->encoded_data->size;
+   }
+   key.flags = DB_DBT_USERMEM | DB_DBT_BULK;
+   data.flags = DB_DBT_USERMEM | DB_DBT_BULK;
+   key.data = malloc(key.ulen);
+   data.data = malloc(data.ulen);
+   void *ptrk, *ptrd;
+   DB_MULTIPLE_WRITE_INIT(ptrk, &key);
+	DB_MULTIPLE_WRITE_INIT(ptrd, &data);
+   for(i=0;i<ntiles;i++) {
+      mapcache_tile *tile = tiles[i];
+      char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+      DB_MULTIPLE_WRITE_NEXT(ptrk, &key, skey, strlen(skey)+1);
+		DB_MULTIPLE_WRITE_NEXT(ptrd, &data, tile->encoded_data->buf, tile->encoded_data->size);
+   }
+   ret = benv->db->put(benv->db,NULL,&key,&data,DB_MULTIPLE);
+   free(key.data);
+   free(data.data);
+   if(ret != 0) {
+      ctx->set_error(ctx,500,"dbd backend failed on tile_multiset: %s", db_strerror(ret));
+   } else {
+      ret = benv->db->sync(benv->db,0);
+      if(ret)
+         ctx->set_error(ctx,500,"bdb backend sync failure on tile_multiset: %s",db_strerror(ret));
+   }
+   _bdb_release_conn(ctx,tiles[0],benv);
 }
 
 
