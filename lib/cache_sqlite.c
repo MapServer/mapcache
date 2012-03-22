@@ -270,10 +270,10 @@ static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_til
    sqlite3_stmt *stmt;
    int ret,i;
    GC_CHECK_ERROR(ctx);
-   sqlite3_exec(handle, "BEGIN", 0, 0, 0);
+   sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
+   sqlite3_exec(handle, "BEGIN TRANSACTION", 0, 0, 0);
    for(i=0;i<ntiles;i++) {
       mapcache_tile *tile = &tiles[i];
-      sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
       _bind_sqlite_params(ctx,stmt,tile);
       do {
          ret = sqlite3_step(stmt);
@@ -285,14 +285,16 @@ static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_til
             sqlite3_reset(stmt);
          }
       } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-      sqlite3_finalize(stmt);
       if(GC_HAS_ERROR(ctx)) break;
+      sqlite3_clear_bindings(stmt);
+      sqlite3_reset(stmt);
    }
    if(GC_HAS_ERROR(ctx)) {
-      sqlite3_exec(handle, "ROLLBACK", 0, 0, 0);
+      sqlite3_exec(handle, "ROLLBACK TRANSACTION", 0, 0, 0);
    } else {
-      sqlite3_exec(handle, "COMMIT", 0, 0, 0);
+      sqlite3_exec(handle, "END TRANSACTION", 0, 0, 0);
    }
+   sqlite3_finalize(stmt);
    sqlite3_close(handle);
 }
 
