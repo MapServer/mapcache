@@ -4,7 +4,7 @@ AC_INIT(Makefile.inc.in)
 # don't let AC_PROG_CC force "-g -O2"
 : ${CFLAGS="-Wall"}
 
-LT_INIT
+LT_INIT([disable-static])
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
