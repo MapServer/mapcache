@@ -64,6 +64,7 @@ mapcache_grid_link *grid_link;
 int nthreads=1;
 int quiet = 0;
 int verbose = 0;
+int force = 0;
 int sig_int_received = 0;
 int error_detected = 0;
 apr_queue_t *work_queue;
@@ -118,6 +119,7 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
     { "help", 'h', FALSE, "show help" },
     { "quiet", 'q', FALSE, "don't show progress info" },
+    { "force", 'f', FALSE, "force tile recreation even if it already exists" },
     { "verbose", 'v', FALSE, "show debug log messages" },
     { NULL, 0, 0, NULL },
 };
@@ -247,7 +249,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
    int action = MAPCACHE_CMD_SKIP;
    int intersects = -1;
-   int tile_exists = tileset->cache->tile_exists(ctx,tile);
+   int tile_exists = force?0:tileset->cache->tile_exists(ctx,tile);
 
    /* if the tile exists and a time limit was specified, check the tile modification date */
    if(tile_exists) {
@@ -629,6 +631,9 @@ int main(int argc, const char **argv) {
             case 'h':
                 return usage(argv[0],NULL);
                 break;
+            case 'f':
+               force = 1;
+               break;
             case 'q':
                 quiet = 1;
                 break;
