@@ -35,14 +35,15 @@
 
 #include <time.h>
 #ifndef _WIN32
-#define FORK
+#include <unistd.h>
+#define USE_FORK
 #include <sys/time.h>
 #endif
 
 #include <apr_time.h>
 #include <apr_strings.h>
 
-#ifdef FORK
+#ifdef USE_FORK
    int msqid;
 #include <sys/ipc.h>
 #include <sys/msg.h>
@@ -102,7 +103,7 @@ struct seed_cmd {
    int z;
 };
 
-#ifdef FORK
+#ifdef USE_FORK
 struct msg_cmd {
     long mtype;
     struct seed_cmd cmd;
@@ -114,7 +115,7 @@ int depthfirst = 1;
 cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either seed or delete */
 
 int push_queue(struct seed_cmd cmd) {
-#ifdef FORK
+#ifdef USE_FORK
     struct msg_cmd mcmd;
     mcmd.mtype = 1;
     mcmd.cmd = cmd;
@@ -131,7 +132,7 @@ int push_queue(struct seed_cmd cmd) {
 }
 
 int pop_queue(struct seed_cmd *cmd) {
-#ifdef FORK
+#ifdef USE_FORK
     struct msg_cmd mcmd;
     if (msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, 0) == -1) {
         printf("failed to pop tile\n");
@@ -152,7 +153,7 @@ int pop_queue(struct seed_cmd *cmd) {
 }
 
 int trypop_queue(struct seed_cmd *cmd) {
-#ifdef FORK
+#ifdef USE_FORK
     int ret;
     struct msg_cmd mcmd;
     ret = msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, IPC_NOWAIT);
@@ -573,7 +574,7 @@ void cmd_thread() {
    }
 }
 
-#ifdef FORK
+#ifdef USE_FORK
 int seed_thread(void *data)
 #else
 static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data)
@@ -615,7 +616,7 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data)
          ctx.log(&ctx,MAPCACHE_INFO,seed_ctx.get_error_message(&seed_ctx));
       }
    }
-#ifdef FORK
+#ifdef USE_FORK
    return 0;
 #else
    apr_thread_exit(thread,MAPCACHE_SUCCESS);
@@ -672,7 +673,7 @@ int main(int argc, const char **argv) {
     /* initialize apr_getopt_t */
     apr_getopt_t *opt;
     const char *configfile=NULL;
-#ifndef FORK
+#ifndef USE_FORK
     apr_thread_t **threads;
     apr_threadattr_t *thread_attrs;
 #endif
@@ -1018,7 +1019,7 @@ int main(int argc, const char **argv) {
         return usage(argv[0],"failed to parse nthreads, must be int");
     } else {
 
-#ifdef FORK
+#ifdef USE_FORK
         key_t key;
         int i;
         pid_t *pids = malloc(nthreads*sizeof(pid_t));
