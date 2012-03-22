@@ -279,6 +279,8 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config) {
 #endif
    } else if(!strcmp(type,"gdal")) {
       source = mapcache_source_gdal_create(ctx);
+   } else if(!strcmp(type,"dummy")) {
+      source = mapcache_source_dummy_create(ctx);
    } else {
       ctx->set_error(ctx, 400, "unknown source type %s for source \"%s\"", type, name);
       return;
