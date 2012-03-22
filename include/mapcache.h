@@ -242,6 +242,7 @@ int mapcache_buffer_append(mapcache_buffer *buffer, size_t len, void *data);
 typedef enum {
     MAPCACHE_SOURCE_WMS,
     MAPCACHE_SOURCE_MAPSERVER,
+    MAPCACHE_SOURCE_DUMMY,
     MAPCACHE_SOURCE_GDAL
 } mapcache_source_type;
 
@@ -303,6 +304,12 @@ struct mapcache_source_mapserver {
 };
 #endif
 
+typedef struct mapcache_source_dummy mapcache_source_dummy;
+struct mapcache_source_dummy {
+    mapcache_source source;
+    char *mapfile;
+    void *mapobj;
+};
 #if 0
 #ifdef USE_GDAL
 /**\class mapcache_source_gdal
@@ -1024,6 +1031,8 @@ mapcache_source* mapcache_source_wms_create(mapcache_context *ctx);
  */
 mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx);
 #endif
+
+mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx);
 
 /**
  * \memberof mapcache_cache_disk
