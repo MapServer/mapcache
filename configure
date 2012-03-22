@@ -11449,8 +11449,6 @@ $as_echo "#define STDC_HEADERS 1" >>confdefs.h
 fi
 
 
-CFLAGS="$CFLAGS -fPIC"
-
 ac_fn_c_check_func "$LINENO" "symlink" "ac_cv_func_symlink"
 if test "x$ac_cv_func_symlink" = xyes; then :
   CFLAGS="$CFLAGS -DHAVE_SYMLINK"
