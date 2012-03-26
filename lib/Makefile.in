@@ -1,7 +1,5 @@
 include ../Makefile.inc
 top_builddir = @top_builddir@
-.SUFFIXES:
-.SUFFIXES: .c .cpp .h .o .lo .la
 
 all: libmapcache.la
 

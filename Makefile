@@ -4,7 +4,7 @@ all: .header
 	cd lib; $(MAKE) $(MFLAGS)
 	cd util; $(MAKE) $(MFLAGS)
 	cd cgi; $(MAKE) $(MFLAGS)
-	
+
 install: .header install-module install-lib install-util install-cgi
 
 install-util: .header install-lib

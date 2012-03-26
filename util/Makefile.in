@@ -3,9 +3,6 @@ top_builddir = @top_builddir@
 
 all: mapcache_seed
 
-.c.o:
-	$(LIBTOOL) --tag CC --mode=compile $(CC) $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) -c $<
-
 mapcache_seed: mapcache_seed.c ../lib/libmapcache.la
 	$(LIBTOOL) --mode=link --tag CC $(CC) -rpath $(bindir) -o mapcache_seed $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) $(SEEDER_EXTRAINC) mapcache_seed.c ../lib/libmapcache.la $(LIBS) $(SEEDER_EXTRALIBS)
 
