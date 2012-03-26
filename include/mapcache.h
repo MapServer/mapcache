@@ -1293,6 +1293,8 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, char *resource);
 void mapcache_unlock_resource(mapcache_context *ctx, char *resource);
 
 mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
+void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
+char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_metatile *mt);
 
 
 /** @} */

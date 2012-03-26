@@ -515,16 +515,23 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
       tile->y = cmd->y;
       tile->z = cmd->z;
       if(cmd->command == MAPCACHE_CMD_SEED) {
-         mapcache_tileset_tile_get(&seed_ctx,tile);
+         /* aquire a lock on the metatile ?*/
+         mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
+         int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+         if(isLocked == MAPCACHE_TRUE) {
+            /* this will query the source to create the tiles, and save them to the cache */
+            mapcache_tileset_render_metatile(&seed_ctx, mt);
+            mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+         }
       } else if (cmd->command == MAPCACHE_CMD_TRANSFER) {
-	  int i;
-	  mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-	  for(i=0;i<mt->ntiles;i++) {
-	    mapcache_tile *subtile = &mt->tiles[i];
-	    mapcache_tileset_tile_get(&seed_ctx,subtile);
-	    subtile->tileset =  tileset_transfer;
-	    tileset_transfer->cache->tile_set(&seed_ctx,subtile);
-	  }
+         int i;
+         mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
+         for(i=0;i<mt->ntiles;i++) {
+            mapcache_tile *subtile = &mt->tiles[i];
+            mapcache_tileset_tile_get(&seed_ctx,subtile);
+            subtile->tileset =  tileset_transfer;
+            tileset_transfer->cache->tile_set(&seed_ctx,subtile);
+         }
       }
       else { //CMD_DELETE
          mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);

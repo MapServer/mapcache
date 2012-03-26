@@ -379,7 +379,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
  *  - split the resulting image along the metabuffer / metatiles
  *  - save each tile to cache
  */
-void _mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt) {
+void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt) {
    int i;
 #ifdef DEBUG
    if(!mt->map.tileset->source) {
@@ -571,7 +571,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
                tile->tileset->name,tile->x, tile->y,tile->z);
 #endif
          /* this will query the source to create the tiles, and save them to the cache */
-         _mapcache_tileset_render_metatile(ctx, mt);
+         mapcache_tileset_render_metatile(ctx, mt);
 
          mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
       }
