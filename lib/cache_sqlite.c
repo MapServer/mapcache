@@ -247,6 +247,7 @@ static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *til
    sqlite3_stmt *stmt;
    int ret;
    GC_CHECK_ERROR(ctx);
+   
    sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
    _bind_sqlite_params(ctx,stmt,tile);
    do {
@@ -263,6 +264,39 @@ static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *til
    sqlite3_close(handle);
 }
 
+static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
+   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tiles[0].tileset->cache;
+   sqlite3* handle = _get_conn(ctx,&tiles[0],0);
+   sqlite3_stmt *stmt;
+   int ret,i;
+   GC_CHECK_ERROR(ctx);
+   sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
+   sqlite3_exec(handle, "BEGIN TRANSACTION", 0, 0, 0);
+   for(i=0;i<ntiles;i++) {
+      mapcache_tile *tile = &tiles[i];
+      _bind_sqlite_params(ctx,stmt,tile);
+      do {
+         ret = sqlite3_step(stmt);
+         if(ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+            ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(handle),ret);
+            break;
+         }
+         if(ret == SQLITE_BUSY) {
+            sqlite3_reset(stmt);
+         }
+      } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+      if(GC_HAS_ERROR(ctx)) break;
+      sqlite3_clear_bindings(stmt);
+      sqlite3_reset(stmt);
+   }
+   if(GC_HAS_ERROR(ctx)) {
+      sqlite3_exec(handle, "ROLLBACK TRANSACTION", 0, 0, 0);
+   } else {
+      sqlite3_exec(handle, "END TRANSACTION", 0, 0, 0);
+   }
+   sqlite3_finalize(stmt);
+   sqlite3_close(handle);
+}
 
 static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) {
    ezxml_t cur_node;
@@ -309,6 +343,7 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    cache->cache.tile_get = _mapcache_cache_sqlite_get;
    cache->cache.tile_exists = _mapcache_cache_sqlite_has_tile;
    cache->cache.tile_set = _mapcache_cache_sqlite_set;
+   cache->cache.tile_multi_set = _mapcache_cache_sqlite_multi_set;
    cache->cache.configuration_post_config = _mapcache_cache_sqlite_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_sqlite_configuration_parse_xml;
    cache->create_stmt.sql = apr_pstrdup(ctx->pool,
