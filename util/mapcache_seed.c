@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id$
+ * $Id: mapcache_seed.c 13201 2012-03-05 13:50:45Z tbonfort $
  *
  * Project:  MapServer
  * Purpose:  MapCache utility program for seeding and pruning caches
@@ -35,12 +35,22 @@
 
 #include <time.h>
 #ifndef _WIN32
+#include <unistd.h>
+#define USE_FORK
 #include <sys/time.h>
 #endif
 
 #include <apr_time.h>
-#include <apr_queue.h>
 #include <apr_strings.h>
+
+#ifdef USE_FORK
+   int msqid;
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#else
+   #include <apr_queue.h>
+   apr_queue_t *work_queue;
+#endif
 
 #if defined(USE_OGR) && defined(USE_GEOS)
 #define USE_CLIPPERS
@@ -67,7 +77,6 @@ int verbose = 0;
 int force = 0;
 int sig_int_received = 0;
 int error_detected = 0;
-apr_queue_t *work_queue;
 
 apr_time_t age_limit = 0;
 int seededtilestot=0, seededtiles=0, queuedtilestot=0;
@@ -95,9 +104,79 @@ struct seed_cmd {
    int z;
 };
 
+#ifdef USE_FORK
+struct msg_cmd {
+    long mtype;
+    struct seed_cmd cmd;
+};
+#endif
+
 int depthfirst = 1;
 
 cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either seed or delete */
+
+int push_queue(struct seed_cmd cmd) {
+#ifdef USE_FORK
+    struct msg_cmd mcmd;
+    mcmd.mtype = 1;
+    mcmd.cmd = cmd;
+    if (msgsnd(msqid, &mcmd, sizeof(struct seed_cmd), 0) == -1) {
+        printf("failed to push tile %d %d %d\n",cmd.z,cmd.y,cmd.x);
+        return APR_EGENERAL;
+    }
+    return APR_SUCCESS;
+#else
+    struct seed_cmd *pcmd = calloc(1,sizeof(struct seed_cmd));
+    *pcmd = cmd;
+    return apr_queue_push(work_queue,pcmd);
+#endif
+}
+
+int pop_queue(struct seed_cmd *cmd) {
+#ifdef USE_FORK
+    struct msg_cmd mcmd;
+    if (msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, 0) == -1) {
+        printf("failed to pop tile\n");
+        return APR_EGENERAL;
+    }
+    *cmd = mcmd.cmd;
+    return APR_SUCCESS;
+#else
+   int ret;
+   struct seed_cmd *pcmd;
+   ret = apr_queue_pop(work_queue, (void**)&pcmd);
+   if(ret == APR_SUCCESS) {
+      *cmd = *pcmd;
+      free(pcmd);
+   }
+   return ret;
+#endif
+}
+
+int trypop_queue(struct seed_cmd *cmd) {
+#ifdef USE_FORK
+    int ret;
+    struct msg_cmd mcmd;
+    ret = msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, IPC_NOWAIT);
+    if(errno == ENOMSG) return APR_EAGAIN;
+    if(ret>0) {
+    *cmd = mcmd.cmd;
+    return APR_SUCCESS;
+    } else {
+      printf("failed to trypop tile\n");
+      return APR_EGENERAL;
+    }
+#else
+   int ret;
+   struct seed_cmd *pcmd;
+   ret = apr_queue_trypop(work_queue,(void**)&pcmd);
+   if(ret == APR_SUCCESS) {
+      *cmd = *pcmd;
+      free(pcmd);
+   }
+   return ret;
+#endif
+}
 
 static const apr_getopt_option_t seed_options[] = {
     /* long-option, short-option, has-arg flag, description */
@@ -344,8 +423,8 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile) {
    apr_pool_clear(cmd_ctx->pool);
    if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
       //remove all items from the queue
-      void *entry;
-      while (apr_queue_trypop(work_queue,&entry)!=APR_EAGAIN) {queuedtilestot--;}
+      struct seed_cmd entry;
+      while (trypop_queue(&entry)!=APR_EAGAIN) {queuedtilestot--;}
       return;
    }
 
@@ -353,12 +432,12 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile) {
 
    if(action == MAPCACHE_CMD_SEED || action == MAPCACHE_CMD_DELETE || action == MAPCACHE_CMD_TRANSFER){
       //current x,y,z needs seeding, add it to the queue
-      struct seed_cmd *cmd = malloc(sizeof(struct seed_cmd));
-      cmd->x = tile->x;
-      cmd->y = tile->y;
-      cmd->z = tile->z;
-      cmd->command = action;
-      apr_queue_push(work_queue,cmd);
+      struct seed_cmd cmd;
+      cmd.x = tile->x;
+      cmd.y = tile->y;
+      cmd.z = tile->z;
+      cmd.command = action;
+      push_queue(cmd);
       queuedtilestot++;
       progresslog(tile->x,tile->y,tile->z);
    }
@@ -448,8 +527,8 @@ void cmd_thread() {
          apr_pool_clear(cmd_ctx.pool);
          if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
             //remove all items from the queue
-            void *entry;
-            while (apr_queue_trypop(work_queue,&entry)!=APR_EAGAIN) {queuedtilestot--;}
+            struct seed_cmd entry;
+            while (trypop_queue(&entry)!=APR_EAGAIN) {queuedtilestot--;}
             break;
          }
          tile->x = x;
@@ -459,12 +538,12 @@ void cmd_thread() {
 
          if(action == MAPCACHE_CMD_SEED || action == MAPCACHE_CMD_TRANSFER) {
             //current x,y,z needs seeding, add it to the queue
-            struct seed_cmd *cmd = malloc(sizeof(struct seed_cmd));
-            cmd->x = x;
-            cmd->y = y;
-            cmd->z = z;
-            cmd->command = action;
-            apr_queue_push(work_queue,cmd);
+            struct seed_cmd cmd;
+            cmd.x = x;
+            cmd.y = y;
+            cmd.z = z;
+            cmd.command = action;
+            push_queue(cmd);
             queuedtilestot++;
             progresslog(x,y,z);
          }
@@ -487,9 +566,9 @@ void cmd_thread() {
    //instruct rendering threads to stop working
 
    for(n=0;n<nthreads;n++) {
-      struct seed_cmd *cmd = malloc(sizeof(struct seed_cmd));
-      cmd->command = MAPCACHE_CMD_STOP;
-      apr_queue_push(work_queue,cmd);
+      struct seed_cmd cmd;
+      cmd.command = MAPCACHE_CMD_STOP;
+      push_queue(cmd);
    }
 
    if(error_detected && ctx.get_error_message(&ctx)) {
@@ -497,7 +576,12 @@ void cmd_thread() {
    }
 }
 
-static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
+#ifdef USE_FORK
+int seed_thread(void *data)
+#else
+static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data)
+#endif
+{
   mapcache_tile *tile;
    mapcache_context seed_ctx = ctx;
    seed_ctx.log = seed_log;
@@ -505,16 +589,16 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
    tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
    tile->dimensions = dimensions;
    while(1) {
-     struct seed_cmd *cmd;
+     struct seed_cmd cmd;
       apr_status_t ret;
       apr_pool_clear(seed_ctx.pool);
       
-      ret = apr_queue_pop(work_queue, (void**)&cmd);
-      if(ret != APR_SUCCESS || cmd->command == MAPCACHE_CMD_STOP) break;
-      tile->x = cmd->x;
-      tile->y = cmd->y;
-      tile->z = cmd->z;
-      if(cmd->command == MAPCACHE_CMD_SEED) {
+      ret = pop_queue(&cmd);
+      if(ret != APR_SUCCESS || cmd.command == MAPCACHE_CMD_STOP) break;
+      tile->x = cmd.x;
+      tile->y = cmd.y;
+      tile->z = cmd.z;
+      if(cmd.command == MAPCACHE_CMD_SEED) {
          /* aquire a lock on the metatile ?*/
          mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
          int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
@@ -523,14 +607,14 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
             mapcache_tileset_render_metatile(&seed_ctx, mt);
             mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
          }
-      } else if (cmd->command == MAPCACHE_CMD_TRANSFER) {
+      } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
          int i;
          mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-         for(i=0;i<mt->ntiles;i++) {
+         for (i = 0; i < mt->ntiles; i++) {
             mapcache_tile *subtile = &mt->tiles[i];
-            mapcache_tileset_tile_get(&seed_ctx,subtile);
-            subtile->tileset =  tileset_transfer;
-            tileset_transfer->cache->tile_set(&seed_ctx,subtile);
+            mapcache_tileset_tile_get(&seed_ctx, subtile);
+            subtile->tileset = tileset_transfer;
+            tileset_transfer->cache->tile_set(&seed_ctx, subtile);
          }
       }
       else { //CMD_DELETE
@@ -540,10 +624,13 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
          error_detected++;
          ctx.log(&ctx,MAPCACHE_INFO,seed_ctx.get_error_message(&seed_ctx));
       }
-      free(cmd);
    }
+#ifdef USE_FORK
+   return 0;
+#else
    apr_thread_exit(thread,MAPCACHE_SUCCESS);
    return NULL;
+#endif
 }
 
 void
@@ -595,8 +682,10 @@ int main(int argc, const char **argv) {
     /* initialize apr_getopt_t */
     apr_getopt_t *opt;
     const char *configfile=NULL;
+#ifndef USE_FORK
     apr_thread_t **threads;
     apr_threadattr_t *thread_attrs;
+#endif
     const char *tileset_name=NULL;
     const char *tileset_transfer_name=NULL;
     const char *grid_name = NULL;
@@ -941,6 +1030,36 @@ int main(int argc, const char **argv) {
     if( ! nthreads ) {
         return usage(argv[0],"failed to parse nthreads, must be int");
     } else {
+
+#ifdef USE_FORK
+        key_t key;
+        int i;
+        pid_t *pids = malloc(nthreads*sizeof(pid_t));
+        struct msqid_ds queue_ds;
+        key = ftok(argv[0], 'B');
+        if ((msqid = msgget(key, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
+            return usage(argv[0],"failed to create sysv ipc message queue");
+        }
+        if (-1 == msgctl(msqid, IPC_STAT, &queue_ds)) {
+            return usage(argv[0], "\nFailure in msgctl() 1");
+        }
+
+        for(i=0;i<nthreads;i++) {
+            int pid = fork();
+            if(pid==0) {
+                seed_thread(NULL);
+                exit(0);
+            } else {
+                pids[i] = pid;
+            }
+        }
+        cmd_thread();
+        for(i=0;i<nthreads;i++) {
+            int stat_loc; 
+            waitpid(pids[i],&stat_loc,0);
+        }
+        msgctl(msqid,IPC_RMID,NULL);
+#else
         //start the thread that will populate the queue.
         //create the queue where tile requests will be put
         apr_queue_create(&work_queue,nthreads,ctx.pool);
@@ -955,13 +1074,14 @@ int main(int argc, const char **argv) {
         for(n=0;n<nthreads;n++) {
            apr_thread_join(&rv, threads[n]);
         }
+#endif
         if(ctx.get_error(&ctx)) {
            printf("%s",ctx.get_error_message(&ctx));
         }
 
         if(seededtilestot>0) {
            struct mctimeval now_t;
-	   float duration;
+           float duration;
            mapcache_gettimeofday(&now_t,NULL);
            duration = ((now_t.tv_sec-starttime.tv_sec)*1000000+(now_t.tv_usec-starttime.tv_usec))/1000000.0;
            printf("\nseeded %d metatiles at %g tiles/sec\n",seededtilestot, seededtilestot/duration);
