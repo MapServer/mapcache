@@ -71,7 +71,14 @@ static sqlite3* _get_conn(mapcache_context *ctx, mapcache_tile* tile, int readon
          sqlite3_close(handle);
          return NULL;
       }
-      ret = sqlite3_exec(handle, cache->create_stmt.sql, 0, 0, NULL);
+      sqlite3_busy_timeout(handle,300000);
+      do {
+         ret = sqlite3_exec(handle, cache->create_stmt.sql, 0, 0, NULL);
+         if(ret != SQLITE_OK && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+            ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(handle),ret);
+            break;
+         }
+      } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
       if(ret != SQLITE_OK) {
          ctx->set_error(ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(handle));
          sqlite3_close(handle);
