@@ -56,9 +56,9 @@ static sqlite3* _get_conn(mapcache_context *ctx, mapcache_tile* tile, int readon
    char *dbfile;
    int flags, ret;
    if(readonly) {
-      flags = SQLITE_OPEN_READONLY;
+      flags = SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX;
    } else {
-      flags = SQLITE_OPEN_READWRITE;
+      flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX;
    }
    dbfile = _get_dbname(ctx,tile->tileset, tile->grid_link->grid);
    ret = sqlite3_open_v2(dbfile,&handle,flags,NULL);
