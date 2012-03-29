@@ -27,7 +27,6 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#ifdef USE_MAPSERVER
 
 #include "mapcache.h"
 #include "ezxml.h"
@@ -82,7 +81,6 @@ mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx) {
    return (mapcache_source*)source;
 }
 
-#endif
 
 /* vim: ai ts=3 sts=3 et sw=3
 */
