@@ -262,7 +262,7 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
       char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
       DB_MULTIPLE_KEY_WRITE_NEXT(ptrk, 
                             &key, skey, strlen(skey)+1,tile->encoded_data->buf, tile->encoded_data->size);
-                        assert(ptrk != NULL);
+      assert(ptrk != NULL);
       tile->encoded_data->size -= sizeof(apr_time_t);
    }
    ret = benv->db->put(benv->db,NULL,&key,&data,DB_MULTIPLE_KEY);
@@ -340,7 +340,7 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
    cache->cache.tile_get = _mapcache_cache_bdb_get;
    cache->cache.tile_exists = _mapcache_cache_bdb_has_tile;
    cache->cache.tile_set = _mapcache_cache_bdb_set;
-   cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
+   //cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
    cache->cache.configuration_post_config = _mapcache_cache_bdb_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
    cache->basedir = NULL;
