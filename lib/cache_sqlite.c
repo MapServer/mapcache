@@ -94,7 +94,7 @@ static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params
    char *dbfile = "/tmp/sqltiles.db";
    struct sqlite_conn *conn = apr_pcalloc(pool,sizeof(struct sqlite_conn));
    int flags;
-   flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX;
+   flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_CREATE;
    ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
    if(ret != SQLITE_OK) {
       cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(conn->handle));
@@ -421,7 +421,7 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    cache->cache.tile_get = _mapcache_cache_sqlite_get;
    cache->cache.tile_exists = _mapcache_cache_sqlite_has_tile;
    cache->cache.tile_set = _mapcache_cache_sqlite_set;
-   //cache->cache.tile_multi_set = _mapcache_cache_sqlite_multi_set;
+   cache->cache.tile_multi_set = _mapcache_cache_sqlite_multi_set;
    cache->cache.configuration_post_config = _mapcache_cache_sqlite_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_sqlite_configuration_parse_xml;
    cache->create_stmt.sql = apr_pstrdup(ctx->pool,
