@@ -65,7 +65,6 @@ static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile
        pool = cache->rw_connection_pool;
    }
    rv = apr_reslist_acquire(pool, (void **)&conn);
-   conn->readonly = readonly;
    if(rv != APR_SUCCESS) {
       ctx->set_error(ctx,500,"failed to aquire connection to sqlite backend: %s", cache->ctx->get_error_message(cache->ctx));
       cache->ctx->clear_errors(cache->ctx);
@@ -440,7 +439,7 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    rv = apr_reslist_create(&(cache->ro_connection_pool),
          0 /* min */,
          10 /* soft max */,
-         200 /* hard max */,
+         20 /* hard max */,
          60*1000000 /*60 seconds, ttl*/,
          _sqlite_reslist_get_ro_connection, /* resource constructor */
          _sqlite_reslist_free_connection, /* resource destructor */
