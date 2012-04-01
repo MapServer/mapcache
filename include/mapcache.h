@@ -436,6 +436,9 @@ struct mapcache_cache_sqlite {
    mapcache_cache_sqlite_stmt hitstat_stmt;
    mapcache_cache_sqlite_stmt set_stmt;
    mapcache_cache_sqlite_stmt delete_stmt;
+   apr_reslist_t *ro_connection_pool;
+   apr_reslist_t *rw_connection_pool;
+   mapcache_context *ctx;
 };
 
 /**

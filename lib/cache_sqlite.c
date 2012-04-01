@@ -41,7 +41,10 @@
 
 #include <sqlite3.h>
 
-
+struct sqlite_conn {
+    sqlite3 *handle;
+    int readonly;
+};
 
 static char* _get_dbname(mapcache_context *ctx,  mapcache_tileset *tileset, mapcache_grid *grid) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tileset->cache;
@@ -51,53 +54,117 @@ static char* _get_dbname(mapcache_context *ctx,  mapcache_tileset *tileset, mapc
    return path;
 }
 
-static sqlite3* _get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
-   sqlite3* handle;
-   char *dbfile;
-   int flags, ret;
+static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
+   apr_status_t rv;
+   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
+   struct sqlite_conn *conn;
+   apr_reslist_t *pool;
    if(readonly) {
-      flags = SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX;
+       pool = cache->ro_connection_pool;
    } else {
-      flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX;
+       pool = cache->rw_connection_pool;
    }
-   dbfile = _get_dbname(ctx,tile->tileset, tile->grid_link->grid);
-   ret = sqlite3_open_v2(dbfile,&handle,flags,NULL);
+   rv = apr_reslist_acquire(pool, (void **)&conn);
+   conn->readonly = readonly;
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to aquire connection to sqlite backend: %s", cache->ctx->get_error_message(cache->ctx));
+      cache->ctx->clear_errors(cache->ctx);
+      return NULL;
+   }
+   return conn;
+}
+
+static void _sqlite_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct sqlite_conn *conn) {
+   mapcache_cache_sqlite* cache = (mapcache_cache_sqlite*)tile->tileset->cache;
+   apr_reslist_t *pool;
+   if(conn->readonly) 
+       pool = cache->ro_connection_pool;
+   else
+       pool = cache->rw_connection_pool;
+   
+   if(GC_HAS_ERROR(ctx)) {
+      apr_reslist_invalidate(pool,(void*)conn);  
+   } else {
+      apr_reslist_release(pool, (void*)conn);
+   }
+}
+static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params, apr_pool_t *pool) {
+   int ret;
+   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)params;
+   char *dbfile = "/tmp/sqltiles.db";
+   struct sqlite_conn *conn = apr_pcalloc(pool,sizeof(struct sqlite_conn));
+   int flags;
+   flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX;
+   ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
+   if(ret != SQLITE_OK) {
+      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(conn->handle));
+      return APR_EGENERAL;
+   }
+   sqlite3_busy_timeout(conn->handle,300000);
+   do {
+      ret = sqlite3_exec(conn->handle, cache->create_stmt.sql, 0, 0, NULL);
+      if(ret != SQLITE_OK && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+         break;
+      }
+   } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+   if(ret != SQLITE_OK) {
+      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(conn->handle));
+      sqlite3_close(conn->handle);
+      return APR_EGENERAL;
+   }
+   conn->readonly = 0;
+   *conn_ = conn;
+   return APR_SUCCESS;
+}
+
+static apr_status_t _sqlite_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool) {
+   int ret;
+   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)params;
+   char *dbfile = "/tmp/sqltiles.db";
+   struct sqlite_conn *conn = apr_pcalloc(pool,sizeof(struct sqlite_conn));
+   int flags;
+   flags = SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX;
+   ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
    if(ret != SQLITE_OK) {
       /* maybe the database file doesn't exist yet. so we create it and setup the schema */
-      mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-      ret = sqlite3_open_v2(dbfile, &handle,SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,NULL);
+      ret = sqlite3_open_v2(dbfile, &conn->handle,SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,NULL);
       if (ret != SQLITE_OK) {
-         ctx->set_error(ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(handle));
-         sqlite3_close(handle);
-         return NULL;
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(conn->handle));
+         sqlite3_close(conn->handle);
+         return APR_EGENERAL;
       }
-      sqlite3_busy_timeout(handle,300000);
+      sqlite3_busy_timeout(conn->handle,300000);
       do {
-         ret = sqlite3_exec(handle, cache->create_stmt.sql, 0, 0, NULL);
+         ret = sqlite3_exec(conn->handle, cache->create_stmt.sql, 0, 0, NULL);
          if(ret != SQLITE_OK && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-            ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(handle),ret);
             break;
          }
       } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
       if(ret != SQLITE_OK) {
-         ctx->set_error(ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(handle));
-         sqlite3_close(handle);
-         return NULL;
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(conn->handle));
+         sqlite3_close(conn->handle);
+         return APR_EGENERAL;
       }
 
-      /* re-open the db read-only if that's what we were asked for */
-      if(readonly) {
-         sqlite3_close(handle);
-         ret = sqlite3_open_v2(dbfile,&handle,flags,NULL);
-         if (ret != SQLITE_OK) {
-            ctx->set_error(ctx, 500, "sqlite backend failed to re-open freshly created db %s readonly: %s",dbfile, sqlite3_errmsg(handle));
-            sqlite3_close(handle);
-            return NULL;
-         }
+      sqlite3_close(conn->handle);
+      ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
+      if (ret != SQLITE_OK) {
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to re-open freshly created db %s readonly: %s",dbfile, sqlite3_errmsg(conn->handle));
+         sqlite3_close(conn->handle);
+         return APR_EGENERAL;
       }
    }
-   sqlite3_busy_timeout(handle,300000);
-   return handle;
+   sqlite3_busy_timeout(conn->handle,300000);
+   conn->readonly = 1;
+
+   *conn_ = conn;
+   return APR_SUCCESS;
+}
+
+static apr_status_t _sqlite_reslist_free_connection(void *conn_, void *params, apr_pool_t *pool) {
+   struct sqlite_conn *conn = (struct sqlite_conn*)conn_;
+   sqlite3_close(conn->handle);
+   return APR_SUCCESS; 
 }
 
 /**
@@ -152,19 +219,19 @@ static void _bind_sqlite_params(mapcache_context *ctx, sqlite3_stmt *stmt, mapca
 
 static int _mapcache_cache_sqlite_has_tile(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-   sqlite3* handle = _get_conn(ctx,tile,1);
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx,tile,1);
    sqlite3_stmt *stmt;
    int ret;
    if(GC_HAS_ERROR(ctx)) {
-      sqlite3_close(handle);
+      _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_FALSE;
    }
 
-   sqlite3_prepare(handle,cache->exists_stmt.sql,-1,&stmt,NULL);
+   sqlite3_prepare(conn->handle,cache->exists_stmt.sql,-1,&stmt,NULL);
    _bind_sqlite_params(ctx,stmt,tile);
    ret = sqlite3_step(stmt);
    if(ret != SQLITE_DONE && ret != SQLITE_ROW) {
-      ctx->set_error(ctx,500,"sqlite backend failed on has_tile: %s",sqlite3_errmsg(handle));
+      ctx->set_error(ctx,500,"sqlite backend failed on has_tile: %s",sqlite3_errmsg(conn->handle));
    }
    if(ret == SQLITE_DONE) {
       ret = MAPCACHE_FALSE;
@@ -172,55 +239,58 @@ static int _mapcache_cache_sqlite_has_tile(mapcache_context *ctx, mapcache_tile 
       ret = MAPCACHE_TRUE;
    }
    sqlite3_finalize(stmt);
-   sqlite3_close(handle);
+   _sqlite_release_conn(ctx,tile,conn);
    return ret;
 }
 
 static void _mapcache_cache_sqlite_delete(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-   sqlite3* handle = _get_conn(ctx,tile,0);
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx,tile,0);
    sqlite3_stmt *stmt;
    int ret;
-   GC_CHECK_ERROR(ctx);
-   sqlite3_prepare(handle,cache->delete_stmt.sql,-1,&stmt,NULL);
+   if(GC_HAS_ERROR(ctx)) {
+       _sqlite_release_conn(ctx,tile,conn);
+       return;
+   }
+   sqlite3_prepare(conn->handle,cache->delete_stmt.sql,-1,&stmt,NULL);
    _bind_sqlite_params(ctx,stmt,tile);
    ret = sqlite3_step(stmt);
    if(ret != SQLITE_DONE && ret != SQLITE_ROW) {
-      ctx->set_error(ctx,500,"sqlite backend failed on delete: %s",sqlite3_errmsg(handle));
+      ctx->set_error(ctx,500,"sqlite backend failed on delete: %s",sqlite3_errmsg(conn->handle));
    }
    sqlite3_finalize(stmt);
-   sqlite3_close(handle);
+   _sqlite_release_conn(ctx,tile,conn);
 }
 
 
 static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-   sqlite3 *handle;
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx,tile,1);
    sqlite3_stmt *stmt;
    int ret;
    if(cache->hitstats) {
-      handle = _get_conn(ctx,tile,0);
+      conn = _sqlite_get_conn(ctx,tile,0);
    } else {
-      handle = _get_conn(ctx,tile,1);
+      conn = _sqlite_get_conn(ctx,tile,1);
    }
    if(GC_HAS_ERROR(ctx)) {
-      sqlite3_close(handle);
+      _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_FAILURE;
    }
-   sqlite3_prepare(handle,cache->get_stmt.sql,-1,&stmt,NULL);
+   sqlite3_prepare(conn->handle,cache->get_stmt.sql,-1,&stmt,NULL);
    _bind_sqlite_params(ctx,stmt,tile);
    do {
       ret = sqlite3_step(stmt);
       if(ret!=SQLITE_DONE && ret != SQLITE_ROW && ret!=SQLITE_BUSY && ret !=SQLITE_LOCKED) {
-         ctx->set_error(ctx,500,"sqlite backend failed on get: %s",sqlite3_errmsg(handle));
+         ctx->set_error(ctx,500,"sqlite backend failed on get: %s",sqlite3_errmsg(conn->handle));
          sqlite3_finalize(stmt);
-         sqlite3_close(handle);
+         _sqlite_release_conn(ctx,tile,conn);
          return MAPCACHE_FAILURE;
       }
    } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
    if(ret == SQLITE_DONE) {
       sqlite3_finalize(stmt);
-      sqlite3_close(handle);
+      _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_CACHE_MISS;
    } else {
       const void *blob = sqlite3_column_blob(stmt,0);
@@ -237,30 +307,30 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
       /* update the hitstats if we're configured for that */
       if(cache->hitstats) {
          sqlite3_stmt *hitstmt;
-         sqlite3_prepare(handle,cache->hitstat_stmt.sql,-1,&hitstmt,NULL);
+         sqlite3_prepare(conn->handle,cache->hitstat_stmt.sql,-1,&hitstmt,NULL);
          _bind_sqlite_params(ctx,stmt,tile);
          sqlite3_step(hitstmt); /* we ignore the return value , TODO?*/
          sqlite3_finalize(hitstmt);
       }
 
-      sqlite3_close(handle);
+      _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_SUCCESS;
    }
 }
 
 static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-   sqlite3* handle = _get_conn(ctx,tile,0);
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx,tile,0);
    sqlite3_stmt *stmt;
    int ret;
    GC_CHECK_ERROR(ctx);
    
-   sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
+   sqlite3_prepare(conn->handle,cache->set_stmt.sql,-1,&stmt,NULL);
    _bind_sqlite_params(ctx,stmt,tile);
    do {
       ret = sqlite3_step(stmt);
       if(ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-         ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(handle),ret);
+         ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(conn->handle),ret);
          break;
       }
       if(ret == SQLITE_BUSY) {
@@ -268,24 +338,24 @@ static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *til
       }
    } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
    sqlite3_finalize(stmt);
-   sqlite3_close(handle);
+   _sqlite_release_conn(ctx,tile,conn);
 }
 
 static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tiles[0].tileset->cache;
-   sqlite3* handle = _get_conn(ctx,&tiles[0],0);
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx,&tiles[0],0);
    sqlite3_stmt *stmt;
    int ret,i;
    GC_CHECK_ERROR(ctx);
-   sqlite3_prepare(handle,cache->set_stmt.sql,-1,&stmt,NULL);
-   sqlite3_exec(handle, "BEGIN TRANSACTION", 0, 0, 0);
+   sqlite3_prepare(conn->handle,cache->set_stmt.sql,-1,&stmt,NULL);
+   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
    for(i=0;i<ntiles;i++) {
       mapcache_tile *tile = &tiles[i];
       _bind_sqlite_params(ctx,stmt,tile);
       do {
          ret = sqlite3_step(stmt);
          if(ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-            ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(handle),ret);
+            ctx->set_error(ctx,500,"sqlite backend failed on set: %s (%d)",sqlite3_errmsg(conn->handle),ret);
             break;
          }
          if(ret == SQLITE_BUSY) {
@@ -297,12 +367,12 @@ static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_til
       sqlite3_reset(stmt);
    }
    if(GC_HAS_ERROR(ctx)) {
-      sqlite3_exec(handle, "ROLLBACK TRANSACTION", 0, 0, 0);
+      sqlite3_exec(conn->handle, "ROLLBACK TRANSACTION", 0, 0, 0);
    } else {
-      sqlite3_exec(handle, "END TRANSACTION", 0, 0, 0);
+      sqlite3_exec(conn->handle, "END TRANSACTION", 0, 0, 0);
    }
    sqlite3_finalize(stmt);
-   sqlite3_close(handle);
+   _sqlite_release_conn(ctx,&tiles[0],conn);
 }
 
 static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) {
@@ -340,6 +410,7 @@ static void _mapcache_cache_sqlite_configuration_post_config(mapcache_context *c
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    mapcache_cache_sqlite *cache = apr_pcalloc(ctx->pool,sizeof(mapcache_cache_sqlite));
+   apr_status_t rv;
    if(!cache) {
       ctx->set_error(ctx, 500, "failed to allocate sqlite cache");
       return NULL;
@@ -354,17 +425,42 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    cache->cache.configuration_post_config = _mapcache_cache_sqlite_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_sqlite_configuration_parse_xml;
    cache->create_stmt.sql = apr_pstrdup(ctx->pool,
-         "create table if not exists tiles(x integer, y integer, z integer, data blob, dim text, ctime datetime, atime datetime, hitcount integer default 0, primary key(x,y,z,dim))");
+         "create table if not exists tiles(tileset text, grid text, x integer, y integer, z integer, data blob, dim text, ctime datetime, primary key(tileset,grid,x,y,z,dim))");
    cache->exists_stmt.sql = apr_pstrdup(ctx->pool,
-         "select 1 from tiles where x=:x and y=:y and z=:z and dim=:dim");
+         "select 1 from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid");
    cache->get_stmt.sql = apr_pstrdup(ctx->pool,
-         "select data,strftime(\"%s\",ctime) from tiles where x=:x and y=:y and z=:z and dim=:dim");
+         "select data,strftime(\"%s\",ctime) from tiles where tileset=:tileset and grid=:grid and x=:x and y=:y and z=:z and dim=:dim");
    cache->set_stmt.sql = apr_pstrdup(ctx->pool,
-         "insert or replace into tiles(x,y,z,data,dim,ctime) values (:x,:y,:z,:data,:dim,datetime('now'))");
+         "insert or replace into tiles(tileset,grid,x,y,z,data,dim,ctime) values (:tileset,:grid,:x,:y,:z,:data,:dim,datetime('now'))");
    cache->delete_stmt.sql = apr_pstrdup(ctx->pool,
-         "delete from tiles where x=:x and y=:y and z=:z and dim=:dim");
+         "delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid");
    cache->hitstat_stmt.sql = apr_pstrdup(ctx->pool,
          "update tiles set hitcount=hitcount+1, atime=datetime('now') where x=:x and y=:y and z=:z and dim=:dim");
+   cache->ctx = ctx;
+   rv = apr_reslist_create(&(cache->ro_connection_pool),
+         0 /* min */,
+         10 /* soft max */,
+         200 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _sqlite_reslist_get_ro_connection, /* resource constructor */
+         _sqlite_reslist_free_connection, /* resource destructor */
+         cache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create sqlite read-only connection pool");
+      return NULL;
+   }
+   rv = apr_reslist_create(&(cache->rw_connection_pool),
+         0 /* min */,
+         1 /* soft max */,
+         1 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _sqlite_reslist_get_rw_connection, /* resource constructor */
+         _sqlite_reslist_free_connection, /* resource destructor */
+         cache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create sqlite read-write connection pool");
+      return NULL;
+   }
    return (mapcache_cache*)cache;
 }
 
