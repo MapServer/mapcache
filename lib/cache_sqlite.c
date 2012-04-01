@@ -265,7 +265,7 @@ static void _mapcache_cache_sqlite_delete(mapcache_context *ctx, mapcache_tile *
 
 static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
-   struct sqlite_conn *conn = _sqlite_get_conn(ctx,tile,1);
+   struct sqlite_conn *conn;
    sqlite3_stmt *stmt;
    int ret;
    if(cache->hitstats) {
@@ -379,6 +379,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
    ezxml_t cur_node;
    mapcache_cache_sqlite *dcache;
    sqlite3_initialize();
+   apr_status_t rv;
    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
    dcache = (mapcache_cache_sqlite*)cache;
    if ((cur_node = ezxml_child(node,"base")) != NULL) {
@@ -396,6 +397,33 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
       ctx->set_error(ctx,500,"sqlite cache \"%s\" is missing <dbname_template> entry",cache->name);
       return;
    }
+   dcache->ctx = ctx;
+   rv = apr_reslist_create(&(dcache->ro_connection_pool),
+         0 /* min */,
+         10 /* soft max */,
+         200 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _sqlite_reslist_get_ro_connection, /* resource constructor */
+         _sqlite_reslist_free_connection, /* resource destructor */
+         dcache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create sqlite read-only connection pool");
+      return;
+   }
+   apr_pool_cleanup_register(ctx->pool, dcache->ro_connection_pool,(void*)apr_reslist_destroy,apr_pool_cleanup_null) ;
+   rv = apr_reslist_create(&(dcache->rw_connection_pool),
+         0 /* min */,
+         1 /* soft max */,
+         1 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _sqlite_reslist_get_rw_connection, /* resource constructor */
+         _sqlite_reslist_free_connection, /* resource destructor */
+         dcache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create sqlite read-write connection pool");
+      return;
+   }
+   apr_pool_cleanup_register(ctx->pool, dcache->rw_connection_pool,(void*)apr_reslist_destroy,apr_pool_cleanup_null) ;
 }
    
 /**
@@ -436,31 +464,6 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
          "delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid");
    cache->hitstat_stmt.sql = apr_pstrdup(ctx->pool,
          "update tiles set hitcount=hitcount+1, atime=datetime('now') where x=:x and y=:y and z=:z and dim=:dim");
-   cache->ctx = ctx;
-   rv = apr_reslist_create(&(cache->ro_connection_pool),
-         0 /* min */,
-         10 /* soft max */,
-         200 /* hard max */,
-         60*1000000 /*60 seconds, ttl*/,
-         _sqlite_reslist_get_ro_connection, /* resource constructor */
-         _sqlite_reslist_free_connection, /* resource destructor */
-         cache, ctx->pool);
-   if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to create sqlite read-only connection pool");
-      return NULL;
-   }
-   rv = apr_reslist_create(&(cache->rw_connection_pool),
-         0 /* min */,
-         1 /* soft max */,
-         1 /* hard max */,
-         60*1000000 /*60 seconds, ttl*/,
-         _sqlite_reslist_get_rw_connection, /* resource constructor */
-         _sqlite_reslist_free_connection, /* resource destructor */
-         cache, ctx->pool);
-   if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to create sqlite read-write connection pool");
-      return NULL;
-   }
    return (mapcache_cache*)cache;
 }
 
