@@ -48,6 +48,7 @@
 struct bdb_env {
    DB* db;
    DB_ENV *env;
+   int readonly;
 };
 
 static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool) {
@@ -100,21 +101,32 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
    apr_status_t rv;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
    struct bdb_env *benv;
-   rv = apr_reslist_acquire(cache->connection_pool, (void **)&benv);
+   apr_reslist_t *pool;
+   if(readonly) 
+      pool = cache->ro_connection_pool;
+   else
+      pool = cache->rw_connection_pool;
+   rv = apr_reslist_acquire(pool, (void **)&benv);
    if(rv != APR_SUCCESS) {
       ctx->set_error(ctx,500,"failed to aquire connection to bdb backend: %s", cache->ctx->get_error_message(cache->ctx));
       cache->ctx->clear_errors(cache->ctx);
       return NULL;
    }
+   benv->readonly = readonly;
    return benv;
 }
 
 static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct bdb_env *benv) {
    mapcache_cache_bdb* cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   apr_reslist_t *pool;
+   if(benv->readonly) 
+      pool = cache->ro_connection_pool;
+   else
+      pool = cache->rw_connection_pool;
    if(GC_HAS_ERROR(ctx)) {
-      apr_reslist_invalidate(cache->connection_pool,(void*)benv);  
+      apr_reslist_invalidate(pool,(void*)benv);  
    } else {
-      apr_reslist_release(cache->connection_pool, (void*)benv);
+      apr_reslist_release(pool, (void*)benv);
    }
 }
 
@@ -296,10 +308,22 @@ static void _mapcache_cache_bdb_configuration_parse_xml(mapcache_context *ctx, e
       return;
    }
    dcache->ctx = ctx;
-   rv = apr_reslist_create(&(dcache->connection_pool),
+   rv = apr_reslist_create(&(dcache->ro_connection_pool),
          0 /* min */,
          10 /* soft max */,
          200 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _bdb_reslist_get_connection, /* resource constructor */
+         _bdb_reslist_free_connection, /* resource destructor */
+         dcache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create bdb connection pool");
+      return;
+   }
+   rv = apr_reslist_create(&(dcache->rw_connection_pool),
+         0 /* min */,
+         1 /* soft max */,
+         1 /* hard max */,
          60*1000000 /*60 seconds, ttl*/,
          _bdb_reslist_get_connection, /* resource constructor */
          _bdb_reslist_free_connection, /* resource destructor */
@@ -345,7 +369,8 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
    cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
    cache->basedir = NULL;
    cache->key_template = NULL;
-   cache->connection_pool = NULL;
+   cache->ro_connection_pool = NULL;
+   cache->rw_connection_pool = NULL;
    return (mapcache_cache*)cache;
 }
 

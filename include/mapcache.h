@@ -452,7 +452,8 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 typedef struct mapcache_cache_bdb mapcache_cache_bdb;
 struct mapcache_cache_bdb {
    mapcache_cache cache;
-   apr_reslist_t *connection_pool;
+   apr_reslist_t *rw_connection_pool;
+   apr_reslist_t *ro_connection_pool;
    char *basedir;
    char *key_template;
    mapcache_context *ctx;
