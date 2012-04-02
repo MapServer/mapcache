@@ -380,7 +380,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
       return;
    }
    if ((cur_node = ezxml_child(node,"dbfile")) != NULL) {
-      dcache->dbfile = apr_pstrdup(ctx->pool, node->txt);
+      dcache->dbfile = apr_pstrdup(ctx->pool, cur_node->txt);
    }
    if ((cur_node = ezxml_child(node,"hitstats")) != NULL) {
       if(!strcasecmp(cur_node->txt,"true")) {
