@@ -379,7 +379,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
       ctx->set_error(ctx,500,"sqlite config <dbname_template> not supported anymore, use <dbfile>");
       return;
    }
-   if ((cur_node = ezxml_child(node,"bdfile")) != NULL) {
+   if ((cur_node = ezxml_child(node,"dbfile")) != NULL) {
       dcache->dbfile = apr_pstrdup(ctx->pool, node->txt);
    }
    if ((cur_node = ezxml_child(node,"hitstats")) != NULL) {
@@ -388,7 +388,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
       }
    }
    if(!dcache->dbfile) {
-      ctx->set_error(ctx,500,"sqlite cache \"%s\" is missing <dbname_template> entry",cache->name);
+      ctx->set_error(ctx,500,"sqlite cache \"%s\" is missing <dbfile> entry",cache->name);
       return;
    }
    dcache->ctx = ctx;
