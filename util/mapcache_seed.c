@@ -36,7 +36,7 @@
 #include <time.h>
 #ifndef _WIN32
 #include <unistd.h>
-#define USE_FORK
+#define nUSE_FORK
 #include <sys/time.h>
 #endif
 
