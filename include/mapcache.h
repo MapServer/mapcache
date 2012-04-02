@@ -428,7 +428,7 @@ struct mapcache_cache_sqlite_stmt {
 
 struct mapcache_cache_sqlite {
    mapcache_cache cache;
-   char *dbname_template;
+   char *dbfile;
    int hitstats;
    mapcache_cache_sqlite_stmt create_stmt;
    mapcache_cache_sqlite_stmt exists_stmt;
