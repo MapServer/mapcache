@@ -601,6 +601,8 @@ struct mapcache_request_get_capabilities_tms {
 struct mapcache_request_get_capabilities_kml {
    mapcache_request_get_capabilities request;
    mapcache_tile *tile;
+   mapcache_tileset *tileset;
+   mapcache_grid_link *grid;
 };
 
 struct mapcache_request_get_capabilities_wms {

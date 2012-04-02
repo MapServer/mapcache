@@ -772,7 +772,7 @@ void _create_demo_kml(mapcache_context *ctx, mapcache_request_get_capabilities *
          }
          caps = apr_pstrcat(ctx->pool,caps,
                "<li><a href=\"",url_prefix,"kml/",tileset->name,
-               "@",grid->name,"/0/0/0.kml\">",tileset->name,"</a></li>",
+               "@",grid->name,".kml\">",tileset->name,"</a></li>",
                NULL);
       }
       tileindex_index = apr_hash_next(tileindex_index);
