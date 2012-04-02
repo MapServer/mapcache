@@ -54,7 +54,7 @@ struct bdb_env {
 static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool) {
    int ret;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)params;
-   char *dbfile = apr_pstrcat(pool,cache->basedir,"/tiles.db",NULL);
+   char *dbfile = apr_pstrcat(pool,cache->basedir,"/",cache->cache.name,".db",NULL);
    struct bdb_env *benv = apr_pcalloc(pool,sizeof(struct bdb_env));
 
    ret = db_env_create(&benv->env, 0);
