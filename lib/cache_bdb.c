@@ -275,6 +275,11 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
          break;
       }
    }
+   if(ret != 0) {
+      ret = benv->db->sync(benv->db,0);
+      if(ret)
+         ctx->set_error(ctx,500,"bdb backend sync failure on tile_set: %s",db_strerror(ret));
+   }
    _bdb_release_conn(ctx,&tiles[0],benv);
 }
 
