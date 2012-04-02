@@ -44,6 +44,7 @@
 #include <db.h>
 
 #define PAGESIZE 64*1024
+#define CACHESIZE 1024*1024
 
 struct bdb_env {
    DB* db;
@@ -58,32 +59,37 @@ static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_
    struct bdb_env *benv = apr_pcalloc(pool,sizeof(struct bdb_env));
 
    ret = db_env_create(&benv->env, 0);
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_env_create: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
+   ret = benv->env->set_cachesize(benv->env,0,CACHESIZE,1); /* set a larger cache size than default */
+   if(ret) { 
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    int env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
    ret = benv->env->open(benv->env,cache->basedir,env_flags,0);
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for env->open: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
 
-	if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
-		cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+   if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    int mode = DB_BTREE;
    ret = benv->db->set_pagesize(benv->db,PAGESIZE); /* set pagesize to maximum allowed, as tile data is usually pretty large */
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
 
    if ((ret = benv->db->open(benv->db, NULL, dbfile, NULL, mode, DB_CREATE, 0664)) != 0) {
-	   cache->ctx->set_error(cache->ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
-	   return APR_EGENERAL;
-	}
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    *conn_ = benv;
    return APR_SUCCESS;
 }
