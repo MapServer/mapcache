@@ -46,14 +46,6 @@ struct sqlite_conn {
     int readonly;
 };
 
-static char* _get_dbname(mapcache_context *ctx,  mapcache_tileset *tileset, mapcache_grid *grid) {
-   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tileset->cache;
-   char *path = cache->dbname_template;
-   path = mapcache_util_str_replace(ctx->pool, path, "{tileset}", tileset->name);
-   path = mapcache_util_str_replace(ctx->pool, path, "{grid}", grid->name);
-   return path;
-}
-
 static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
    apr_status_t rv;
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)tile->tileset->cache;
@@ -90,13 +82,12 @@ static void _sqlite_release_conn(mapcache_context *ctx, mapcache_tile *tile, str
 static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params, apr_pool_t *pool) {
    int ret;
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)params;
-   char *dbfile = "/tmp/sqltiles.db";
    struct sqlite_conn *conn = apr_pcalloc(pool,sizeof(struct sqlite_conn));
    int flags;
    flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_CREATE;
-   ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
+   ret = sqlite3_open_v2(cache->dbfile,&conn->handle,flags,NULL);
    if(ret != SQLITE_OK) {
-      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(conn->handle));
+      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", cache->dbfile, sqlite3_errmsg(conn->handle));
       return APR_EGENERAL;
    }
    sqlite3_busy_timeout(conn->handle,300000);
@@ -107,7 +98,7 @@ static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params
       }
    } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
    if(ret != SQLITE_OK) {
-      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(conn->handle));
+      cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",cache->dbfile, sqlite3_errmsg(conn->handle));
       sqlite3_close(conn->handle);
       return APR_EGENERAL;
    }
@@ -119,16 +110,15 @@ static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params
 static apr_status_t _sqlite_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool) {
    int ret;
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*)params;
-   char *dbfile = "/tmp/sqltiles.db";
    struct sqlite_conn *conn = apr_pcalloc(pool,sizeof(struct sqlite_conn));
    int flags;
    flags = SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX;
-   ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
+   ret = sqlite3_open_v2(cache->dbfile,&conn->handle,flags,NULL);
    if(ret != SQLITE_OK) {
       /* maybe the database file doesn't exist yet. so we create it and setup the schema */
-      ret = sqlite3_open_v2(dbfile, &conn->handle,SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,NULL);
+      ret = sqlite3_open_v2(cache->dbfile, &conn->handle,SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,NULL);
       if (ret != SQLITE_OK) {
-         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", dbfile, sqlite3_errmsg(conn->handle));
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to open db %s: %s", cache->dbfile, sqlite3_errmsg(conn->handle));
          sqlite3_close(conn->handle);
          return APR_EGENERAL;
       }
@@ -140,15 +130,15 @@ static apr_status_t _sqlite_reslist_get_ro_connection(void **conn_, void *params
          }
       } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
       if(ret != SQLITE_OK) {
-         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",dbfile, sqlite3_errmsg(conn->handle));
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to create db schema on %s: %s",cache->dbfile, sqlite3_errmsg(conn->handle));
          sqlite3_close(conn->handle);
          return APR_EGENERAL;
       }
 
       sqlite3_close(conn->handle);
-      ret = sqlite3_open_v2(dbfile,&conn->handle,flags,NULL);
+      ret = sqlite3_open_v2(cache->dbfile,&conn->handle,flags,NULL);
       if (ret != SQLITE_OK) {
-         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to re-open freshly created db %s readonly: %s",dbfile, sqlite3_errmsg(conn->handle));
+         cache->ctx->set_error(cache->ctx, 500, "sqlite backend failed to re-open freshly created db %s readonly: %s",cache->dbfile, sqlite3_errmsg(conn->handle));
          sqlite3_close(conn->handle);
          return APR_EGENERAL;
       }
@@ -382,17 +372,22 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
    dcache = (mapcache_cache_sqlite*)cache;
    if ((cur_node = ezxml_child(node,"base")) != NULL) {
-      dcache->dbname_template = apr_pstrcat(ctx->pool,cur_node->txt,"/{tileset}#{grid}.db",NULL);
+      ctx->set_error(ctx,500,"sqlite config <dbname_template> not supported anymore, use <dbfile>");
+      return;
    }
    if ((cur_node = ezxml_child(node,"dbname_template")) != NULL) {
-      dcache->dbname_template = apr_pstrdup(ctx->pool,cur_node->txt);
+      ctx->set_error(ctx,500,"sqlite config <dbname_template> not supported anymore, use <dbfile>");
+      return;
+   }
+   if ((cur_node = ezxml_child(node,"bdfile")) != NULL) {
+      dcache->dbfile = apr_pstrdup(ctx->pool, node->txt);
    }
    if ((cur_node = ezxml_child(node,"hitstats")) != NULL) {
       if(!strcasecmp(cur_node->txt,"true")) {
          dcache->hitstats = 1;
       }
    }
-   if(!dcache->dbname_template) {
+   if(!dcache->dbfile) {
       ctx->set_error(ctx,500,"sqlite cache \"%s\" is missing <dbname_template> entry",cache->name);
       return;
    }
@@ -437,7 +432,6 @@ static void _mapcache_cache_sqlite_configuration_post_config(mapcache_context *c
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
    mapcache_cache_sqlite *cache = apr_pcalloc(ctx->pool,sizeof(mapcache_cache_sqlite));
-   apr_status_t rv;
    if(!cache) {
       ctx->set_error(ctx, 500, "failed to allocate sqlite cache");
       return NULL;
