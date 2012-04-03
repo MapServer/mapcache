@@ -12,6 +12,10 @@ install: libmapcache.la
 .c.lo:
 	$(LIBTOOL) --tag CC --mode=compile $(CC) $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) -c $<
 
+source_mapserver.lo: source_mapserver.c
+	$(LIBTOOL) --tag CC --mode=compile $(CC) $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) $(MAPSERVER_INC) $(MAPSERVER_DEFS) -c $<
+
+
 libmapcache.la: $(LOBJS)
 	$(LIBTOOL) --mode=link --tag CC $(CC) -rpath $(libdir) $(LOBJS) $(LIBS) -o $@
 
