@@ -1,7 +1,7 @@
 Unix compilation instructions
 -----------------------------
 
-If you are using an svn checkout rather than a tarball distribution, you must first
+If you are using a git clone rather than a tarball distribution, you must first
 run autoconf in the root directory, to create the configure file from configure.in:
 
 $ autoconf
