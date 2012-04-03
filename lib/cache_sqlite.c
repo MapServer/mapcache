@@ -257,11 +257,7 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
    struct sqlite_conn *conn;
    sqlite3_stmt *stmt;
    int ret;
-   if(cache->hitstats) {
-      conn = _sqlite_get_conn(ctx,tile,0);
-   } else {
-      conn = _sqlite_get_conn(ctx,tile,1);
-   }
+   conn = _sqlite_get_conn(ctx,tile,1);
    if(GC_HAS_ERROR(ctx)) {
       _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_FAILURE;
@@ -292,16 +288,6 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
          apr_time_ansi_put(&(tile->mtime),mtime);
       }
       sqlite3_finalize(stmt);
-
-      /* update the hitstats if we're configured for that */
-      if(cache->hitstats) {
-         sqlite3_stmt *hitstmt;
-         sqlite3_prepare(conn->handle,cache->hitstat_stmt.sql,-1,&hitstmt,NULL);
-         _bind_sqlite_params(ctx,stmt,tile);
-         sqlite3_step(hitstmt); /* we ignore the return value , TODO?*/
-         sqlite3_finalize(hitstmt);
-      }
-
       _sqlite_release_conn(ctx,tile,conn);
       return MAPCACHE_SUCCESS;
    }
@@ -372,7 +358,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
    dcache = (mapcache_cache_sqlite*)cache;
    if ((cur_node = ezxml_child(node,"base")) != NULL) {
-      ctx->set_error(ctx,500,"sqlite config <dbname_template> not supported anymore, use <dbfile>");
+      ctx->set_error(ctx,500,"sqlite config <base> not supported anymore, use <dbfile>");
       return;
    }
    if ((cur_node = ezxml_child(node,"dbname_template")) != NULL) {
@@ -384,7 +370,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
    }
    if ((cur_node = ezxml_child(node,"hitstats")) != NULL) {
       if(!strcasecmp(cur_node->txt,"true")) {
-         dcache->hitstats = 1;
+         ctx->set_error(ctx,500,"sqlite config <hitstats> not supported anymore");
       }
    }
    if(!dcache->dbfile) {
@@ -455,8 +441,6 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
          "insert or replace into tiles(tileset,grid,x,y,z,data,dim,ctime) values (:tileset,:grid,:x,:y,:z,:data,:dim,datetime('now'))");
    cache->delete_stmt.sql = apr_pstrdup(ctx->pool,
          "delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid");
-   cache->hitstat_stmt.sql = apr_pstrdup(ctx->pool,
-         "update tiles set hitcount=hitcount+1, atime=datetime('now') where x=:x and y=:y and z=:z and dim=:dim");
    return (mapcache_cache*)cache;
 }
 
@@ -478,8 +462,6 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx) {
          "insert or replace into tiles(tile_column,tile_row,zoom_level,tile_data) values (:x,:y,:z,:data)");
    cache->delete_stmt.sql = apr_pstrdup(ctx->pool,
          "delete from tiles where tile_column=:x and tile_row=:y and zoom_level=:z");
-   cache->hitstat_stmt.sql = apr_pstrdup(ctx->pool,
-         "select 1");
    return (mapcache_cache*)cache;
 }
 
