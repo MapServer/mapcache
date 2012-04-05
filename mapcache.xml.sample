@@ -385,12 +385,15 @@
            apache
       -->
       <dbfile>/tmp/mysqlitetiles.db</dbfile>
-      <!-- hitstats
-           log last access time and total number of hits for each tile in the cache.
-           note that this slows the tile accesses drastically as it requires a write
-           to the database for each tile access
+
+      <!-- pragma
+           special sqlite pargmas sent to db at connection time. The following
+           would execute:
+           PRAGMA key=value;
+           usefull for changing default values e.g. on large databases.
+
       -->
-      <hitstats>false</hitstats>
+      <pragma name="key">value</pragma>
    </cache>
    <!--
    <cache name="mbtiles" type="mbtiles">
