@@ -474,8 +474,14 @@ AC_DEFUN([MAPSERVER_CHECK],[
        fi
     fi
     if test -n "$MAPSERVER_DIR"; then
+       MSDEFS=`$MAPSERVER_DIR/mapserver-config --defines`
+       echo $MSDEFS | grep USE_THREAD > /dev/null
+       if test $? -ne 0 ; then
+          AC_MSG_ERROR([mapserver-config from $MAPSERVER_DIR reports that the build does not have thread safety enabled. Reconfigure,recompile and reinstall mapserver build with --enable-threads])
+       fi
        AC_SUBST(MAPSERVER_ENABLED,"-DUSE_MAPSERVER")
-       AC_SUBST(MAPSERVER_INC,"-I $MAPSERVER_DIR")
+       AC_SUBST(MAPSERVER_DEFS,$MSDEFS)
+       AC_SUBST(MAPSERVER_INC,"-I $MAPSERVER_DIR `$MAPSERVER_DIR/mapserver-config --includes`")
        AC_SUBST(MAPSERVER_LIB,"$MAPSERVER_DIR/libmapserver.la")
     fi
 ])
