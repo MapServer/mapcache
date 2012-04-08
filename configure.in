@@ -269,7 +269,7 @@ AC_DEFUN([MEMCACHE_CHECK],[
       if test -z "$APUCONFIG"; then
          AC_MSG_ERROR(memcache check failed: apu-config utility not found)
       fi
-      OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS `$APUCONFIG --ldflags --libs --link-ld`"
+      OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS `$APUCONFIG --ldflags --libs --link-libtool`"
       OLDCPPFLAGS="$CPPFLAGS" ; CPPFLAGS="$CPPFLAGS `$APUCONFIG --includes`"
 
       #check we can link against the memcache functions (i.e. is apr-util recent enough)
@@ -345,7 +345,7 @@ AC_DEFUN([APU_CHECK],[
     if test -z "$APUCONFIG"; then
       AC_MSG_ERROR(apu-config utility not found)
     else
-      APU_LIBS=`$APUCONFIG --link-ld`
+      APU_LIBS=`$APUCONFIG --link-libtool`
       APU_INC=`$APUCONFIG --includes`
       APU_INCDIR=`$APUCONFIG --includedir`
     fi
@@ -410,7 +410,7 @@ AC_DEFUN([APR_CHECK],[
     AC_SUBST(APR_CFLAGS,`$APRCONFIG --cppflags --cflags`) 
     AC_SUBST(APR_INC,`$APRCONFIG --includes`)
     AC_SUBST(APR_INCDIR,`$APRCONFIG --includedir`)
-    AC_SUBST(APR_LIBS,`$APRCONFIG --link-ld`)
+    AC_SUBST(APR_LIBS,`$APRCONFIG --link-libtool`)
 ])
 
 AC_DEFUN([PCRE_CHECK],[
