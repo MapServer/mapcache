@@ -44,45 +44,52 @@
 #include <db.h>
 
 #define PAGESIZE 64*1024
+#define CACHESIZE 1024*1024
 
 struct bdb_env {
    DB* db;
    DB_ENV *env;
+   int readonly;
 };
 
 static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool) {
    int ret;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)params;
-   char *dbfile = apr_pstrcat(pool,cache->basedir,"/tiles.db",NULL);
+   char *dbfile = apr_pstrcat(pool,cache->basedir,"/",cache->cache.name,".db",NULL);
    struct bdb_env *benv = apr_pcalloc(pool,sizeof(struct bdb_env));
 
    ret = db_env_create(&benv->env, 0);
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_env_create: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
+   ret = benv->env->set_cachesize(benv->env,0,CACHESIZE,1); /* set a larger cache size than default */
+   if(ret) { 
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    int env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
    ret = benv->env->open(benv->env,cache->basedir,env_flags,0);
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for env->open: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
 
-	if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
-		cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+   if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    int mode = DB_BTREE;
    ret = benv->db->set_pagesize(benv->db,PAGESIZE); /* set pagesize to maximum allowed, as tile data is usually pretty large */
-	if(ret) { 
+   if(ret) { 
       cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
-		return APR_EGENERAL;
-	}
+      return APR_EGENERAL;
+   }
 
    if ((ret = benv->db->open(benv->db, NULL, dbfile, NULL, mode, DB_CREATE, 0664)) != 0) {
-	   cache->ctx->set_error(cache->ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
-	   return APR_EGENERAL;
-	}
+      cache->ctx->set_error(cache->ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
+      return APR_EGENERAL;
+   }
    *conn_ = benv;
    return APR_SUCCESS;
 }
@@ -100,21 +107,32 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
    apr_status_t rv;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
    struct bdb_env *benv;
-   rv = apr_reslist_acquire(cache->connection_pool, (void **)&benv);
+   apr_reslist_t *pool;
+   if(readonly) 
+      pool = cache->ro_connection_pool;
+   else
+      pool = cache->rw_connection_pool;
+   rv = apr_reslist_acquire(pool, (void **)&benv);
    if(rv != APR_SUCCESS) {
       ctx->set_error(ctx,500,"failed to aquire connection to bdb backend: %s", cache->ctx->get_error_message(cache->ctx));
       cache->ctx->clear_errors(cache->ctx);
       return NULL;
    }
+   benv->readonly = readonly;
    return benv;
 }
 
 static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct bdb_env *benv) {
    mapcache_cache_bdb* cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   apr_reslist_t *pool;
+   if(benv->readonly) 
+      pool = cache->ro_connection_pool;
+   else
+      pool = cache->rw_connection_pool;
    if(GC_HAS_ERROR(ctx)) {
-      apr_reslist_invalidate(cache->connection_pool,(void*)benv);  
+      apr_reslist_invalidate(pool,(void*)benv);  
    } else {
-      apr_reslist_release(cache->connection_pool, (void*)benv);
+      apr_reslist_release(pool, (void*)benv);
    }
 }
 
@@ -241,6 +259,8 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
    memset(&data, 0, sizeof(DBT));
 
    for(i=0;i<ntiles;i++) {
+      memset(&key, 0, sizeof(DBT));
+      memset(&data, 0, sizeof(DBT));
       char *skey;
       mapcache_tile *tile = &tiles[i];
       skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
@@ -249,33 +269,24 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
          GC_CHECK_ERROR(ctx);
       }
       mapcache_buffer_append(tile->encoded_data,sizeof(apr_time_t),&now);
-      key.ulen += strlen(skey)+1+tile->encoded_data->size;
-   }
-   /* set the key length. has to be at least the db pagesize, and must be a multiple of 1024*/
-   key.ulen = MAPCACHE_MAX((key.ulen / 1024 + 1)*1024,PAGESIZE);
-   key.flags = DB_DBT_USERMEM | DB_DBT_BULK;
-   key.data = malloc(key.ulen);
-   void *ptrk, *ptrd;
-   DB_MULTIPLE_WRITE_INIT(ptrk, &key);
-   for(i=0;i<ntiles;i++) {
-      mapcache_tile *tile = &tiles[i];
-      char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-      DB_MULTIPLE_KEY_WRITE_NEXT(ptrk, 
-                            &key, skey, strlen(skey)+1,tile->encoded_data->buf, tile->encoded_data->size);
-      assert(ptrk != NULL);
+      key.data = skey;
+      key.size = strlen(skey)+1;
+      data.data = tile->encoded_data->buf;
+      data.size = tile->encoded_data->size;
+
+      ret = benv->db->put(benv->db,NULL,&key,&data,0);
       tile->encoded_data->size -= sizeof(apr_time_t);
+      if(ret != 0) {
+         ctx->set_error(ctx,500,"dbd backend failed on tile_set: %s", db_strerror(ret));
+         break;
+      }
    }
-   ret = benv->db->put(benv->db,NULL,&key,&data,DB_MULTIPLE_KEY);
    if(ret != 0) {
-      ctx->set_error(ctx,500,"dbd backend failed on tile_multiset: %s", db_strerror(ret));
-   } else {
       ret = benv->db->sync(benv->db,0);
       if(ret)
-         ctx->set_error(ctx,500,"bdb backend sync failure on tile_multiset: %s",db_strerror(ret));
+         ctx->set_error(ctx,500,"bdb backend sync failure on tile_set: %s",db_strerror(ret));
    }
    _bdb_release_conn(ctx,&tiles[0],benv);
-   free(key.data);
-   free(data.data);
 }
 
 
@@ -296,10 +307,22 @@ static void _mapcache_cache_bdb_configuration_parse_xml(mapcache_context *ctx, e
       return;
    }
    dcache->ctx = ctx;
-   rv = apr_reslist_create(&(dcache->connection_pool),
+   rv = apr_reslist_create(&(dcache->ro_connection_pool),
          0 /* min */,
          10 /* soft max */,
          200 /* hard max */,
+         60*1000000 /*60 seconds, ttl*/,
+         _bdb_reslist_get_connection, /* resource constructor */
+         _bdb_reslist_free_connection, /* resource destructor */
+         dcache, ctx->pool);
+   if(rv != APR_SUCCESS) {
+      ctx->set_error(ctx,500,"failed to create bdb connection pool");
+      return;
+   }
+   rv = apr_reslist_create(&(dcache->rw_connection_pool),
+         0 /* min */,
+         1 /* soft max */,
+         1 /* hard max */,
          60*1000000 /*60 seconds, ttl*/,
          _bdb_reslist_get_connection, /* resource constructor */
          _bdb_reslist_free_connection, /* resource destructor */
@@ -340,12 +363,13 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
    cache->cache.tile_get = _mapcache_cache_bdb_get;
    cache->cache.tile_exists = _mapcache_cache_bdb_has_tile;
    cache->cache.tile_set = _mapcache_cache_bdb_set;
-   //cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
+   cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
    cache->cache.configuration_post_config = _mapcache_cache_bdb_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
    cache->basedir = NULL;
    cache->key_template = NULL;
-   cache->connection_pool = NULL;
+   cache->ro_connection_pool = NULL;
+   cache->rw_connection_pool = NULL;
    return (mapcache_cache*)cache;
 }
 

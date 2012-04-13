@@ -378,19 +378,22 @@
         requires building with "with-sqlite"
    -->
    <cache name="sqlite" type="sqlite3">
-      <!-- base
+      <!-- dbfile
            
            absolute filesystem path where the sqlite database files will be stored.
-           this directory needs to be readable and writable by the user running
+           this file needs to be readable and writable by the user running
            apache
       -->
-      <dbname_template>/tmp/{tileset}-{grid}.db</dbname_template>
-      <!-- hitstats
-           log last access time and total number of hits for each tile in the cache.
-           note that this slows the tile accesses drastically as it requires a write
-           to the database for each tile access
+      <dbfile>/tmp/mysqlitetiles.db</dbfile>
+
+      <!-- pragma
+           special sqlite pargmas sent to db at connection time. The following
+           would execute:
+           PRAGMA key=value;
+           usefull for changing default values e.g. on large databases.
+
       -->
-      <hitstats>false</hitstats>
+      <pragma name="key">value</pragma>
    </cache>
    <!--
    <cache name="mbtiles" type="mbtiles">

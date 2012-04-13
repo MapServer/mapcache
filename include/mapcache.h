@@ -428,14 +428,16 @@ struct mapcache_cache_sqlite_stmt {
 
 struct mapcache_cache_sqlite {
    mapcache_cache cache;
-   char *dbname_template;
-   int hitstats;
+   char *dbfile;
    mapcache_cache_sqlite_stmt create_stmt;
    mapcache_cache_sqlite_stmt exists_stmt;
    mapcache_cache_sqlite_stmt get_stmt;
-   mapcache_cache_sqlite_stmt hitstat_stmt;
    mapcache_cache_sqlite_stmt set_stmt;
    mapcache_cache_sqlite_stmt delete_stmt;
+   apr_reslist_t *ro_connection_pool;
+   apr_reslist_t *rw_connection_pool;
+   apr_table_t *pragmas;
+   mapcache_context *ctx;
 };
 
 /**
@@ -449,7 +451,8 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 typedef struct mapcache_cache_bdb mapcache_cache_bdb;
 struct mapcache_cache_bdb {
    mapcache_cache cache;
-   apr_reslist_t *connection_pool;
+   apr_reslist_t *rw_connection_pool;
+   apr_reslist_t *ro_connection_pool;
    char *basedir;
    char *key_template;
    mapcache_context *ctx;
