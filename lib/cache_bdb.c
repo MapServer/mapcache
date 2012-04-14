@@ -276,7 +276,7 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile) {
          dd[plte_offset+8] = (unsigned char)((pltecrc >> 16) & 0xff);
          dd[plte_offset+9] = (unsigned char)((pltecrc >> 8) & 0xff);
          dd[plte_offset+10] = (unsigned char)(pltecrc & 0xff);
-         if(dd[4] != 255) {
+         if((unsigned char*)(data.data+4) != 255) {
             memcpy(dd+trns_offset+4,data.data+4,1); // a;
             int trnscrc = crc(dd+trns_offset,5);
             dd[trns_offset+5] = (unsigned char)((trnscrc >> 24) & 0xff);
