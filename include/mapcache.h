@@ -36,6 +36,11 @@
 
 #include <apr_tables.h>
 #include <apr_hash.h>
+
+#if defined USE_SQLITE || defined USE_BDB
+#include <apr_reslist.h>
+#endif
+
 #include "util.h"
 #include "ezxml.h"
 
