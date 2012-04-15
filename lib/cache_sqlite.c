@@ -221,6 +221,24 @@ static void _bind_sqlite_params(mapcache_context *ctx, sqlite3_stmt *stmt, mapca
    /* tileset */
    paramidx = sqlite3_bind_parameter_index(stmt, ":tileset");
    if (paramidx) sqlite3_bind_text(stmt, paramidx, tile->tileset->name, -1, SQLITE_STATIC);
+   
+   /* mbtiles foreign key */
+   paramidx = sqlite3_bind_parameter_index(stmt, ":key");
+   if (paramidx) {
+      char *key = apr_psprintf(ctx->pool,"%d-%d-%d",tile->x,tile->y,tile->z);
+      sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
+   }
+   
+   paramidx = sqlite3_bind_parameter_index(stmt, ":color");
+   if (paramidx) {
+      assert(tile->raw_image);
+      char *key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
+              tile->raw_image->data[0],
+              tile->raw_image->data[1],
+              tile->raw_image->data[2],
+              tile->raw_image->data[3]);
+      sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
+   }
 
    /* tile blob data */
    paramidx = sqlite3_bind_parameter_index(stmt, ":data");
@@ -234,6 +252,27 @@ static void _bind_sqlite_params(mapcache_context *ctx, sqlite3_stmt *stmt, mapca
       } else {
          sqlite3_bind_text(stmt, paramidx, "", -1, SQLITE_STATIC);
       }
+   }
+}
+
+static void _bind_mbtiles_params(mapcache_context *ctx, sqlite3_stmt *stmt, mapcache_tile *tile) {
+   int paramidx;
+   /* mbtiles foreign key */
+   paramidx = sqlite3_bind_parameter_index(stmt, ":key");
+   if (paramidx) {
+      char *key = apr_psprintf(ctx->pool,"%d-%d-%d",tile->x,tile->y,tile->z);
+      sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
+   }
+   
+   paramidx = sqlite3_bind_parameter_index(stmt, ":color");
+   if (paramidx) {
+      assert(tile->raw_image);
+      char *key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
+              tile->raw_image->data[0],
+              tile->raw_image->data[1],
+              tile->raw_image->data[2],
+              tile->raw_image->data[3]);
+      sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
    }
 }
 
@@ -323,13 +362,72 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
    }
 }
 
+static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *tile) {
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
+   sqlite3_stmt *stmt1,*stmt2;
+   int ret;
+   GC_CHECK_ERROR(ctx);
+   if(!tile->raw_image) {
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+   }
+   if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+      sqlite3_prepare(conn->handle,
+            "insert or ignore into images(tile_id,tile_data) values (:color,:data);",
+            -1, &stmt1, NULL);
+      _bind_sqlite_params(ctx, stmt1, tile);
+      _bind_mbtiles_params(ctx, stmt1, tile);
+      sqlite3_prepare(conn->handle,
+            "insert or replace into map(tile_column,tile_row,zoom_level,tile_id) values (:x,:y,:z,:color);",
+            -1, &stmt2, NULL);
+      _bind_sqlite_params(ctx, stmt2, tile);
+      _bind_mbtiles_params(ctx, stmt2, tile);
+   } else {
+      sqlite3_prepare(conn->handle,
+            "insert or ignore into images(tile_id,tile_data) values (:key,:data);",
+            -1, &stmt1, NULL);
+      _bind_sqlite_params(ctx, stmt1, tile);
+      _bind_mbtiles_params(ctx, stmt1, tile);
+      sqlite3_prepare(conn->handle,
+            "insert or replace into map(tile_column,tile_row,zoom_level,tile_id) values (:x,:y,:z,:key);",
+            -1, &stmt2, NULL);
+      _bind_sqlite_params(ctx, stmt2, tile);
+      _bind_mbtiles_params(ctx, stmt2, tile);
+   }
+   do {
+      ret = sqlite3_step(stmt1);
+      if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+         ctx->set_error(ctx, 500, "mbtiles backend failed on image set: %s (%d)", sqlite3_errmsg(conn->handle), ret);
+         break;
+      }
+      if (ret == SQLITE_BUSY) {
+         sqlite3_reset(stmt1);
+      }
+   } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+   if(ret == SQLITE_DONE) {
+      do {
+         ret = sqlite3_step(stmt2);
+         if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+            ctx->set_error(ctx, 500, "mbtiles backend failed on map set: %s (%d)", sqlite3_errmsg(conn->handle), ret);
+            break;
+         }
+         if (ret == SQLITE_BUSY) {
+            sqlite3_reset(stmt2);
+         }
+      } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+   }
+   sqlite3_finalize(stmt1);
+   sqlite3_finalize(stmt2);
+   _sqlite_release_conn(ctx, tile, conn);
+}
+
 static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
    struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
    sqlite3_stmt *stmt;
    int ret;
    GC_CHECK_ERROR(ctx);
-
+   
    sqlite3_prepare(conn->handle, cache->set_stmt.sql, -1, &stmt, NULL);
    _bind_sqlite_params(ctx, stmt, tile);
    do {
@@ -494,14 +592,18 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx) {
    if (!cache) {
       return NULL;
    }
+   cache->cache.tile_set = _mapcache_cache_mbtiles_set;
+   cache->cache.tile_multi_set = NULL;
    cache->create_stmt.sql = apr_pstrdup(ctx->pool,
-           "CREATE TABLE  IF NOT EXISTS tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob, primary key(tile_row, tile_column, zoom_level)); create table if not exists metadata(name text, value text);");
+           "create table if not exists images(tile_id text, tile_data blob, primary key(tile_id));"\
+           "CREATE TABLE  IF NOT EXISTS map (zoom_level integer, tile_column integer, tile_row integer, tile_id text, foreign key(tile_id) references images(tile_id), primary key(tile_row,tile_column,zoom_level));"\
+           "create table if not exists metadata(name text, value text);"\
+           "create view if not exists tiles AS SELECT map.zoom_level AS zoom_level, map.tile_column AS tile_column, map.tile_row AS tile_row, images.tile_data AS tile_data FROM map JOIN images ON images.tile_id = map.tile_id;"
+           );
    cache->exists_stmt.sql = apr_pstrdup(ctx->pool,
            "select 1 from tiles where tile_column=:x and tile_row=:y and zoom_level=:z");
    cache->get_stmt.sql = apr_pstrdup(ctx->pool,
            "select tile_data from tiles where tile_column=:x and tile_row=:y and zoom_level=:z");
-   cache->set_stmt.sql = apr_pstrdup(ctx->pool,
-           "insert or replace into tiles(tile_column,tile_row,zoom_level,tile_data) values (:x,:y,:z,:data)");
    cache->delete_stmt.sql = apr_pstrdup(ctx->pool,
            "delete from tiles where tile_column=:x and tile_row=:y and zoom_level=:z");
    return (mapcache_cache*) cache;
