@@ -321,52 +321,10 @@ static void _mapcache_cache_sqlite_delete(mapcache_context *ctx, mapcache_tile *
    _sqlite_release_conn(ctx, tile, conn);
 }
 
-static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile) {
-   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
-   struct sqlite_conn *conn;
-   sqlite3_stmt *stmt;
-   int ret;
-   conn = _sqlite_get_conn(ctx, tile, 1);
-   if (GC_HAS_ERROR(ctx)) {
-      if(conn) _sqlite_release_conn(ctx, tile, conn);
-      return MAPCACHE_FAILURE;
-   }
-   sqlite3_prepare(conn->handle, cache->get_stmt.sql, -1, &stmt, NULL);
-   _bind_sqlite_params(ctx, stmt, tile);
-   do {
-      ret = sqlite3_step(stmt);
-      if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-         ctx->set_error(ctx, 500, "sqlite backend failed on get: %s", sqlite3_errmsg(conn->handle));
-         sqlite3_finalize(stmt);
-         _sqlite_release_conn(ctx, tile, conn);
-         return MAPCACHE_FAILURE;
-      }
-   } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-   if (ret == SQLITE_DONE) {
-      sqlite3_finalize(stmt);
-      _sqlite_release_conn(ctx, tile, conn);
-      return MAPCACHE_CACHE_MISS;
-   } else {
-      const void *blob = sqlite3_column_blob(stmt, 0);
-      int size = sqlite3_column_bytes(stmt, 0);
-      tile->encoded_data = mapcache_buffer_create(size, ctx->pool);
-      memcpy(tile->encoded_data->buf, blob, size);
-      tile->encoded_data->size = size;
-      if (sqlite3_column_count(stmt) > 1) {
-         time_t mtime = sqlite3_column_int64(stmt, 1);
-         apr_time_ansi_put(&(tile->mtime), mtime);
-      }
-      sqlite3_finalize(stmt);
-      _sqlite_release_conn(ctx, tile, conn);
-      return MAPCACHE_SUCCESS;
-   }
-}
 
-static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *tile) {
-   struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
+static void _single_mbtile_set(mapcache_context *ctx, mapcache_tile *tile, struct sqlite_conn *conn) {
    sqlite3_stmt *stmt1,*stmt2;
    int ret;
-   GC_CHECK_ERROR(ctx);
    if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
@@ -418,16 +376,54 @@ static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *ti
    }
    sqlite3_finalize(stmt1);
    sqlite3_finalize(stmt2);
-   _sqlite_release_conn(ctx, tile, conn);
 }
 
-static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *tile) {
+static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile) {
    mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
-   struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
+   struct sqlite_conn *conn;
    sqlite3_stmt *stmt;
    int ret;
-   GC_CHECK_ERROR(ctx);
-   
+   conn = _sqlite_get_conn(ctx, tile, 1);
+   if (GC_HAS_ERROR(ctx)) {
+      if(conn) _sqlite_release_conn(ctx, tile, conn);
+      return MAPCACHE_FAILURE;
+   }
+   sqlite3_prepare(conn->handle, cache->get_stmt.sql, -1, &stmt, NULL);
+   _bind_sqlite_params(ctx, stmt, tile);
+   do {
+      ret = sqlite3_step(stmt);
+      if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+         ctx->set_error(ctx, 500, "sqlite backend failed on get: %s", sqlite3_errmsg(conn->handle));
+         sqlite3_finalize(stmt);
+         _sqlite_release_conn(ctx, tile, conn);
+         return MAPCACHE_FAILURE;
+      }
+   } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+   if (ret == SQLITE_DONE) {
+      sqlite3_finalize(stmt);
+      _sqlite_release_conn(ctx, tile, conn);
+      return MAPCACHE_CACHE_MISS;
+   } else {
+      const void *blob = sqlite3_column_blob(stmt, 0);
+      int size = sqlite3_column_bytes(stmt, 0);
+      tile->encoded_data = mapcache_buffer_create(size, ctx->pool);
+      memcpy(tile->encoded_data->buf, blob, size);
+      tile->encoded_data->size = size;
+      if (sqlite3_column_count(stmt) > 1) {
+         time_t mtime = sqlite3_column_int64(stmt, 1);
+         apr_time_ansi_put(&(tile->mtime), mtime);
+      }
+      sqlite3_finalize(stmt);
+      _sqlite_release_conn(ctx, tile, conn);
+      return MAPCACHE_SUCCESS;
+   }
+}
+
+static void _single_sqlitetile_set(mapcache_context *ctx, mapcache_tile *tile, struct sqlite_conn *conn) {
+   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
+   sqlite3_stmt *stmt;
+   int ret;
+
    sqlite3_prepare(conn->handle, cache->set_stmt.sql, -1, &stmt, NULL);
    _bind_sqlite_params(ctx, stmt, tile);
    do {
@@ -441,40 +437,67 @@ static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *til
       }
    } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
    sqlite3_finalize(stmt);
+}
+
+static void _mapcache_cache_sqlite_set(mapcache_context *ctx, mapcache_tile *tile) {
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
+   GC_CHECK_ERROR(ctx);
+   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
+   _single_sqlitetile_set(ctx,tile,conn);
+   if (GC_HAS_ERROR(ctx)) {
+      sqlite3_exec(conn->handle, "ROLLBACK TRANSACTION", 0, 0, 0);
+   } else {
+      sqlite3_exec(conn->handle, "END TRANSACTION", 0, 0, 0);
+   }
    _sqlite_release_conn(ctx, tile, conn);
 }
 
 static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
-   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tiles[0].tileset->cache;
    struct sqlite_conn *conn = _sqlite_get_conn(ctx, &tiles[0], 0);
-   sqlite3_stmt *stmt;
-   int ret, i;
+   int i;
    GC_CHECK_ERROR(ctx);
-   sqlite3_prepare(conn->handle, cache->set_stmt.sql, -1, &stmt, NULL);
    sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
    for (i = 0; i < ntiles; i++) {
       mapcache_tile *tile = &tiles[i];
-      _bind_sqlite_params(ctx, stmt, tile);
-      do {
-         ret = sqlite3_step(stmt);
-         if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-            ctx->set_error(ctx, 500, "sqlite backend failed on set: %s (%d)", sqlite3_errmsg(conn->handle), ret);
-            break;
-         }
-         if (ret == SQLITE_BUSY) {
-            sqlite3_reset(stmt);
-         }
-      } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-      if (GC_HAS_ERROR(ctx)) break;
-      sqlite3_clear_bindings(stmt);
-      sqlite3_reset(stmt);
+      _single_sqlitetile_set(ctx,tile,conn);
+      if(GC_HAS_ERROR(ctx)) break;
    }
    if (GC_HAS_ERROR(ctx)) {
       sqlite3_exec(conn->handle, "ROLLBACK TRANSACTION", 0, 0, 0);
    } else {
       sqlite3_exec(conn->handle, "END TRANSACTION", 0, 0, 0);
    }
-   sqlite3_finalize(stmt);
+   _sqlite_release_conn(ctx, &tiles[0], conn);
+}
+
+static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *tile) {
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
+   GC_CHECK_ERROR(ctx);
+   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
+   _single_mbtile_set(ctx,tile,conn);
+   if (GC_HAS_ERROR(ctx)) {
+      sqlite3_exec(conn->handle, "ROLLBACK TRANSACTION", 0, 0, 0);
+   } else {
+      sqlite3_exec(conn->handle, "END TRANSACTION", 0, 0, 0);
+   }
+   _sqlite_release_conn(ctx, tile, conn);
+}
+
+static void _mapcache_cache_mbtiles_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
+   struct sqlite_conn *conn = _sqlite_get_conn(ctx, &tiles[0], 0);
+   int i;
+   GC_CHECK_ERROR(ctx);
+   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
+   for (i = 0; i < ntiles; i++) {
+      mapcache_tile *tile = &tiles[i];
+      _single_mbtile_set(ctx,tile,conn);
+      if(GC_HAS_ERROR(ctx)) break;
+   }
+   if (GC_HAS_ERROR(ctx)) {
+      sqlite3_exec(conn->handle, "ROLLBACK TRANSACTION", 0, 0, 0);
+   } else {
+      sqlite3_exec(conn->handle, "END TRANSACTION", 0, 0, 0);
+   }
    _sqlite_release_conn(ctx, &tiles[0], conn);
 }
 
@@ -593,7 +616,7 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx) {
       return NULL;
    }
    cache->cache.tile_set = _mapcache_cache_mbtiles_set;
-   cache->cache.tile_multi_set = NULL;
+   cache->cache.tile_multi_set = _mapcache_cache_mbtiles_multi_set;
    cache->create_stmt.sql = apr_pstrdup(ctx->pool,
            "create table if not exists images(tile_id text, tile_data blob, primary key(tile_id));"\
            "CREATE TABLE  IF NOT EXISTS map (zoom_level integer, tile_column integer, tile_row integer, tile_id text, foreign key(tile_id) references images(tile_id), primary key(tile_row,tile_column,zoom_level));"\
