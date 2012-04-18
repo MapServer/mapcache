@@ -76,6 +76,7 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
 
 static void _release_mapboj(mapcache_context *ctx, mapcache_map *map, struct mc_mapobj *mcmap) {
    mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
+   msFreeLabelCache(&mcmap->map->labelcache);
    if (GC_HAS_ERROR(ctx)) {
       apr_reslist_invalidate(src->mapobj, (void*) mcmap);
    } else {
@@ -193,7 +194,7 @@ void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapca
            0 /* min */,
            1 /* soft max */,
            30 /* hard max */,
-           600 * 1000000 /*600 seconds, ttl*/,
+           6 * 1000000 /*6 seconds, ttl*/,
            _ms_get_mapobj, /* resource constructor */
            _ms_free_mapobj, /* resource destructor */
            src, ctx->pool);
