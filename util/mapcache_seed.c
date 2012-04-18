@@ -68,8 +68,8 @@ mapcache_tileset *tileset_transfer;
 mapcache_cfg *cfg;
 mapcache_context ctx;
 apr_table_t *dimensions;
-int minzoom=0;
-int maxzoom=0;
+int minzoom=-1;
+int maxzoom=-1;
 mapcache_grid_link *grid_link;
 int nthreads=1;
 int quiet = 0;
@@ -944,7 +944,7 @@ int main(int argc, const char **argv) {
               return usage(argv[0],"grid not configured for tileset");
            }
         }
-        if(minzoom == 0 && maxzoom ==0) {
+        if(minzoom == -1 && maxzoom == -1) {
             minzoom = grid_link->minz;
             maxzoom = grid_link->maxz - 1;
         }
