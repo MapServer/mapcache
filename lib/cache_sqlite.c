@@ -321,9 +321,9 @@ static int _mapcache_cache_sqlite_has_tile(mapcache_context *ctx, mapcache_tile 
    }
    stmt = conn->prepared_statements[HAS_TILE_STMT_IDX];
    if(!stmt) {
-      sqlite3_prepare(conn->handle, cache->exists_stmt.sql, -1, &stmt, NULL);
+      sqlite3_prepare(conn->handle, cache->exists_stmt.sql, -1, &conn->prepared_statements[HAS_TILE_STMT_IDX], NULL);
+      stmt = conn->prepared_statements[HAS_TILE_STMT_IDX];
    }
-   stmt = conn->prepared_statements[HAS_TILE_STMT_IDX];
    cache->bind_stmt(ctx, stmt, tile);
    ret = sqlite3_step(stmt);
    if (ret != SQLITE_DONE && ret != SQLITE_ROW) {
@@ -349,7 +349,8 @@ static void _mapcache_cache_sqlite_delete(mapcache_context *ctx, mapcache_tile *
       return;
    }
    if(!stmt) {
-      sqlite3_prepare(conn->handle, cache->delete_stmt.sql, -1, &stmt, NULL);
+      sqlite3_prepare(conn->handle, cache->delete_stmt.sql, -1, &conn->prepared_statements[SQLITE_DEL_TILE_STMT_IDX], NULL);
+      stmt = conn->prepared_statements[SQLITE_DEL_TILE_STMT_IDX];
    }
    cache->bind_stmt(ctx, stmt, tile);
    ret = sqlite3_step(stmt);
@@ -376,9 +377,12 @@ static void _mapcache_cache_mbtiles_delete(mapcache_context *ctx, mapcache_tile 
    stmt2 = conn->prepared_statements[MBTILES_DEL_TILE_STMT1_IDX];
    stmt3 = conn->prepared_statements[MBTILES_DEL_TILE_STMT2_IDX];
    if(!stmt1) {
-      sqlite3_prepare(conn->handle, "select tile_id from map where tile_col=:x and tile_row=:y and zoom_level=:z",-1,&stmt1, NULL);
-      sqlite3_prepare(conn->handle, "delete from map where tile_col=:x and tile_row=:y and zoom_level=:z", -1, &stmt2, NULL);
-      sqlite3_prepare(conn->handle, "delete from images where tile_id=:foobar", -1, &stmt3, NULL);
+      sqlite3_prepare(conn->handle, "select tile_id from map where tile_col=:x and tile_row=:y and zoom_level=:z",-1,&conn->prepared_statements[MBTILES_DEL_TILE_SELECT_STMT_IDX], NULL);
+      sqlite3_prepare(conn->handle, "delete from map where tile_col=:x and tile_row=:y and zoom_level=:z", -1, &conn->prepared_statements[MBTILES_DEL_TILE_STMT1_IDX], NULL);
+      sqlite3_prepare(conn->handle, "delete from images where tile_id=:foobar", -1, &conn->prepared_statements[MBTILES_DEL_TILE_STMT2_IDX], NULL);
+      stmt1 = conn->prepared_statements[MBTILES_DEL_TILE_SELECT_STMT_IDX];
+      stmt2 = conn->prepared_statements[MBTILES_DEL_TILE_STMT1_IDX];
+      stmt3 = conn->prepared_statements[MBTILES_DEL_TILE_STMT2_IDX];
    }
    
    /* first extract tile_id from the tile we will delete. We need this because we do not know
@@ -454,10 +458,12 @@ static void _single_mbtile_set(mapcache_context *ctx, mapcache_tile *tile, struc
       if(!stmt1) {
          sqlite3_prepare(conn->handle,
                "insert or ignore into images(tile_id,tile_data) values (:color,:data);",
-               -1, &stmt1, NULL);
+               -1, &conn->prepared_statements[MBTILES_SET_EMPTY_TILE_STMT1_IDX], NULL);
          sqlite3_prepare(conn->handle,
                "insert or replace into map(tile_column,tile_row,zoom_level,tile_id) values (:x,:y,:z,:color);",
-               -1, &stmt2, NULL);
+               -1, &conn->prepared_statements[MBTILES_SET_EMPTY_TILE_STMT2_IDX], NULL);
+         stmt1 = conn->prepared_statements[MBTILES_SET_EMPTY_TILE_STMT1_IDX];
+         stmt2 = conn->prepared_statements[MBTILES_SET_EMPTY_TILE_STMT2_IDX];
       }
       cache->bind_stmt(ctx, stmt1, tile);
       cache->bind_stmt(ctx, stmt2, tile);
@@ -467,10 +473,12 @@ static void _single_mbtile_set(mapcache_context *ctx, mapcache_tile *tile, struc
       if(!stmt1) {
          sqlite3_prepare(conn->handle,
                "insert or replace into images(tile_id,tile_data) values (:key,:data);",
-               -1, &stmt1, NULL);
+               -1, &conn->prepared_statements[MBTILES_SET_TILE_STMT1_IDX], NULL);
          sqlite3_prepare(conn->handle,
                "insert or replace into map(tile_column,tile_row,zoom_level,tile_id) values (:x,:y,:z,:key);",
-               -1, &stmt2, NULL);
+               -1, &conn->prepared_statements[MBTILES_SET_TILE_STMT2_IDX], NULL);
+         stmt1 = conn->prepared_statements[MBTILES_SET_TILE_STMT1_IDX];
+         stmt2 = conn->prepared_statements[MBTILES_SET_TILE_STMT2_IDX];
       }
       cache->bind_stmt(ctx, stmt1, tile);
       cache->bind_stmt(ctx, stmt2, tile);
@@ -513,7 +521,8 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
    }
    stmt = conn->prepared_statements[GET_TILE_STMT_IDX];
    if(!stmt) {
-      sqlite3_prepare(conn->handle, cache->get_stmt.sql, -1, &stmt, NULL);
+      sqlite3_prepare(conn->handle, cache->get_stmt.sql, -1, &conn->prepared_statements[GET_TILE_STMT_IDX], NULL);
+      stmt = conn->prepared_statements[GET_TILE_STMT_IDX];
    }
    cache->bind_stmt(ctx, stmt, tile);
    do {
@@ -551,7 +560,8 @@ static void _single_sqlitetile_set(mapcache_context *ctx, mapcache_tile *tile, s
    int ret;
 
    if(!stmt) {
-      sqlite3_prepare(conn->handle, cache->set_stmt.sql, -1, &stmt, NULL);
+      sqlite3_prepare(conn->handle, cache->set_stmt.sql, -1, &conn->prepared_statements[SQLITE_SET_TILE_STMT_IDX], NULL);
+      stmt = conn->prepared_statements[SQLITE_SET_TILE_STMT_IDX];
    }
    cache->bind_stmt(ctx, stmt, tile);
    do {
