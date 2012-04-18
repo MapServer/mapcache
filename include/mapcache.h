@@ -37,7 +37,7 @@
 #include <apr_tables.h>
 #include <apr_hash.h>
 
-#if defined USE_SQLITE || defined USE_BDB
+#if defined USE_SQLITE || defined USE_BDB || defined USE_MAPSERVER
 #include <apr_reslist.h>
 #endif
 
@@ -305,7 +305,7 @@ typedef struct mapcache_source_mapserver mapcache_source_mapserver;
 struct mapcache_source_mapserver {
     mapcache_source source;
     char *mapfile;
-    void *mapobj;
+    apr_reslist_t *mapobj;
 };
 #endif
 
