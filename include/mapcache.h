@@ -1253,7 +1253,7 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
 void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset, double *resolution, int *level);
 
 void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid *grid, double resolution, int *level);
-void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
+void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile, int readonly);
 
 /**
  * \brief delete tile from cache
@@ -1312,9 +1312,9 @@ char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_met
 
 
 mapcache_http_response* mapcache_core_get_capabilities(mapcache_context *ctx, mapcache_service *service, mapcache_request_get_capabilities *req_caps, char *url, char *path_info, mapcache_cfg *config);
-mapcache_http_response* mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile);
+mapcache_http_response* mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile, int readonly);
 
-mapcache_http_response* mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map);
+mapcache_http_response* mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map, int readonly);
 
 mapcache_http_response* mapcache_core_get_featureinfo(mapcache_context *ctx, mapcache_request_get_feature_info *req_fi);
 

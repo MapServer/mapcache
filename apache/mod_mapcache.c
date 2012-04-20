@@ -287,13 +287,13 @@ static int mod_mapcache_request_handler(request_rec *r) {
             url,original->path_info,global_ctx->config);
    } else if( request->type == MAPCACHE_REQUEST_GET_TILE) {
       mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
-      http_response = mapcache_core_get_tile(global_ctx,req_tile);
+      http_response = mapcache_core_get_tile(global_ctx,req_tile,0);
    } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
       mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
       http_response = mapcache_core_proxy_request(global_ctx, req_proxy);
    } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
       mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
-      http_response = mapcache_core_get_map(global_ctx,req_map);
+      http_response = mapcache_core_get_map(global_ctx,req_map,0);
    } else if( request->type == MAPCACHE_REQUEST_GET_FEATUREINFO) {
       mapcache_request_get_feature_info *req_fi = (mapcache_request_get_feature_info*)request;
       http_response = mapcache_core_get_featureinfo(global_ctx,req_fi);

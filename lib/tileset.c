@@ -522,7 +522,7 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
  *    - release mutex
  *  
  */
-void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
+void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile, int readonly) {
    int isLocked,ret;
    mapcache_metatile *mt=NULL;
    ret = tile->tileset->cache->tile_get(ctx, tile);
@@ -543,6 +543,10 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
 
    if(ret == MAPCACHE_CACHE_MISS) {
       /* bail out straight away if the tileset has no source */
+      if(readonly) {
+         ctx->set_error(ctx,404,"tile not in cache, and configured for readonly mode");
+         return;
+      }
       if(!tile->tileset->source) {
          ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",
                tile->tileset->name);

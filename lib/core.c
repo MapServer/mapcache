@@ -50,11 +50,12 @@ typedef struct {
    mapcache_tile *tile;
    mapcache_context *ctx;
    int launch;
+   int readonly;
 } _thread_tile;
 
 static void* APR_THREAD_FUNC _thread_get_tile(apr_thread_t *thread, void *data) {
    _thread_tile* t = (_thread_tile*)data;
-   mapcache_tileset_tile_get(t->ctx, t->tile);
+   mapcache_tileset_tile_get(t->ctx, t->tile,t->readonly);
 #if !USE_THREADPOOL
    apr_thread_exit(thread, APR_SUCCESS);
 #endif
@@ -73,7 +74,7 @@ mapcache_http_response *mapcache_http_response_create(apr_pool_t *pool) {
    return response;
 }
 
-void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int ntiles) {
+void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int ntiles, int readonly) {
 
    apr_thread_t **threads;
    apr_threadattr_t *thread_attrs;
@@ -81,7 +82,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 #if !APR_HAS_THREADS
    int i;
    for(i=0;i<ntiles;i++) {
-      mapcache_tileset_tile_get(ctx, tiles[i]);
+      mapcache_tileset_tile_get(ctx, tiles[i], readonly);
       GC_CHECK_ERROR(ctx);
    }
 #else
@@ -90,7 +91,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
    if(ntiles==1 || ctx->config->threaded_fetching == 0) {
    /* if threads disabled, or only fetching a single tile, don't launch a thread for the operation */
       for(i=0;i<ntiles;i++) {
-         mapcache_tileset_tile_get(ctx, tiles[i]);
+         mapcache_tileset_tile_get(ctx, tiles[i], readonly);
          GC_CHECK_ERROR(ctx);
       }
       return;
@@ -108,6 +109,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
      int j;
       thread_tiles[i].tile = tiles[i];
       thread_tiles[i].launch = 1;
+      thread_tiles[i].readonly = readonly;
       j=i-1;
       /* 
        * we only launch one thread per metatile as in the unseeded case the threads
@@ -156,7 +158,8 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
    for(i=0;i<ntiles;i++) {
       /* fetch the tiles that did not get a thread launched for them */
       if(thread_tiles[i].launch) continue;
-      mapcache_tileset_tile_get(ctx, tiles[i]);
+      mapcache_tileset_tile_get(ctx, tiles[i],readonly);
+      GC_CHECK_ERROR(ctx);
    }
 #else
     /* experimental version using a threadpool, disabled for stability reasons */
@@ -188,7 +191,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 
 }
 
-mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile) {
+mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile, int readonly) {
   int expires = 0;
   mapcache_http_response *response;
    int i;
@@ -206,7 +209,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
    response = mapcache_http_response_create(ctx->pool);
   
 
-   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles);
+   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles, readonly);
    if(GC_HAS_ERROR(ctx))
       return NULL;
 
@@ -291,7 +294,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
    return response;
 }
 
-void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode ) {
+void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode, int readonly) {
    mapcache_tile ***maptiles;
    int *nmaptiles;
    mapcache_tile **tiles;
@@ -315,7 +318,8 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
          ntiles++;
       }
    }
-   mapcache_prefetch_tiles(ctx,tiles,ntiles);
+   mapcache_prefetch_tiles(ctx,tiles,ntiles,readonly);
+   GC_CHECK_ERROR(ctx);
    for(i=0;i<nmaps;i++) {
       int j;
       for(j=0;j<nmaptiles[i];j++) {
@@ -335,7 +339,7 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
    }
 }
 
-mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map) {
+mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map, int readonly) {
   mapcache_image_format *format = NULL;
   mapcache_http_response *response;
   mapcache_map *basemap;
@@ -360,7 +364,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
    
    if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
-      mapcache_fetch_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
+      mapcache_fetch_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode, readonly);
       if(GC_HAS_ERROR(ctx)) return NULL;
       for(i=1;i<req_map->nmaps;i++) {
          mapcache_map *overlaymap = req_map->maps[i];
@@ -370,7 +374,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
          if(overlaymap->mtime > basemap->mtime) basemap->mtime = overlaymap->mtime;
          if(!basemap->expires || overlaymap->expires<basemap->expires) basemap->expires = overlaymap->expires;
       }
-   } else /*if(ctx->config->getmap_strategy == MAPCACHE_GETMAP_FORWARD)*/ {
+   } else if(req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD && !readonly) {
       int i;
       for(i=0;i<req_map->nmaps;i++) {
          if(!req_map->maps[i]->tileset->source) {
@@ -400,6 +404,9 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
             if(!basemap->expires || overlaymap->expires<basemap->expires) basemap->expires = overlaymap->expires;
          }
       }
+   } else {
+      ctx->set_error(ctx,400,"failed getmap, readonly mode");
+      return NULL;
    }
    
    if(basemap->raw_image) {
