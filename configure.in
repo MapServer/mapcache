@@ -346,6 +346,7 @@ AC_DEFUN([APU_CHECK],[
       AC_MSG_ERROR(apu-config utility not found)
     else
       APU_LIBS=`$APUCONFIG --link-libtool`
+      APU_LDLIBS=`$APUCONFIG --link-ld`
       APU_INC=`$APUCONFIG --includes`
       APU_INCDIR=`$APUCONFIG --includedir`
     fi
@@ -353,6 +354,7 @@ AC_DEFUN([APU_CHECK],[
     AC_SUBST(APU_INC) 
     AC_SUBST(APU_INCDIR) 
     AC_SUBST(APU_LIBS)
+    AC_SUBST(APU_LDLIBS)
 ])
 
 AC_DEFUN([APR_CHECK],[
@@ -411,6 +413,7 @@ AC_DEFUN([APR_CHECK],[
     AC_SUBST(APR_INC,`$APRCONFIG --includes`)
     AC_SUBST(APR_INCDIR,`$APRCONFIG --includedir`)
     AC_SUBST(APR_LIBS,`$APRCONFIG --link-libtool`)
+    AC_SUBST(APR_LDLIBS,`$APRCONFIG --link-ld`)
 ])
 
 AC_DEFUN([PCRE_CHECK],[
