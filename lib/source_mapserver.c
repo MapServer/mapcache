@@ -37,6 +37,7 @@
 
 struct mc_mapobj {
    mapObj *map;
+   mapcache_grid_link *grid_link;
    char *error;
 };
 
@@ -92,23 +93,26 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   
    struct mc_mapobj *mcmap = _get_mapboj(ctx,map);
    GC_CHECK_ERROR(ctx);
-   
-   if (msLoadProjectionString(&(mcmap->map->projection), map->grid_link->grid->srs) != 0) {
-      errors = msGetErrorObj();
-      ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
-      _release_mapboj(ctx,map,mcmap);
-      return;
-   }
-   switch(map->grid_link->grid->unit) {
-      case MAPCACHE_UNIT_DEGREES:
-         mcmap->map->units = MS_DD;
-         break;
-      case MAPCACHE_UNIT_FEET:
-         mcmap->map->units = MS_FEET;
-         break;
-      case MAPCACHE_UNIT_METERS:
-         mcmap->map->units = MS_METERS;
-         break;
+
+   if(mcmap->grid_link != map->grid_link) {
+      if (msLoadProjectionString(&(mcmap->map->projection), map->grid_link->grid->srs) != 0) {
+         errors = msGetErrorObj();
+         ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
+         _release_mapboj(ctx,map,mcmap);
+         return;
+      }
+      switch(map->grid_link->grid->unit) {
+         case MAPCACHE_UNIT_DEGREES:
+            mcmap->map->units = MS_DD;
+            break;
+         case MAPCACHE_UNIT_FEET:
+            mcmap->map->units = MS_FEET;
+            break;
+         case MAPCACHE_UNIT_METERS:
+            mcmap->map->units = MS_METERS;
+            break;
+      }
+      mcmap->grid_link = map->grid_link;
    }
 
   
