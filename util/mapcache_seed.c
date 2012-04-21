@@ -612,7 +612,7 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data)
          mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
          for (i = 0; i < mt->ntiles; i++) {
             mapcache_tile *subtile = &mt->tiles[i];
-            mapcache_tileset_tile_get(&seed_ctx, subtile, 0);
+            mapcache_tileset_tile_get(&seed_ctx, subtile);
             subtile->tileset = tileset_transfer;
             tileset_transfer->cache->tile_set(&seed_ctx, subtile);
          }

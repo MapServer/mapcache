@@ -220,10 +220,10 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
          http_response = mapcache_core_get_capabilities(ctx,request->service,req,url,pathInfo,ctx->config);
       } else if( request->type == MAPCACHE_REQUEST_GET_TILE) {
          mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
-         http_response = mapcache_core_get_tile(ctx,req_tile,1);
+         http_response = mapcache_core_get_tile(ctx,req_tile);
       } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
          mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
-         http_response = mapcache_core_get_map(ctx,req_map,1);
+         http_response = mapcache_core_get_map(ctx,req_map);
 #ifdef NGINX_RW
       } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
          mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
@@ -271,6 +271,7 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
    if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
    mapcache_configuration_post_config(ctx, ctx->config);
    if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
+   ctx->config->non_blocking = 1;
    
    ngx_http_core_loc_conf_t  *clcf;
 

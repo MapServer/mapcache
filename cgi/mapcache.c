@@ -304,13 +304,13 @@ int main(int argc, const char **argv) {
          http_response = mapcache_core_get_capabilities(ctx,request->service,req,url,pathInfo,ctx->config);
       } else if( request->type == MAPCACHE_REQUEST_GET_TILE) {
          mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
-         http_response = mapcache_core_get_tile(ctx,req_tile, 0);
+         http_response = mapcache_core_get_tile(ctx,req_tile);
       } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
          mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
          http_response = mapcache_core_proxy_request(ctx, req_proxy);
       } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
          mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
-         http_response = mapcache_core_get_map(ctx,req_map, 0);
+         http_response = mapcache_core_get_map(ctx,req_map);
       } else if( request->type == MAPCACHE_REQUEST_GET_FEATUREINFO) {
          mapcache_request_get_feature_info *req_fi = (mapcache_request_get_feature_info*)request;
          http_response = mapcache_core_get_featureinfo(ctx,req_fi);
