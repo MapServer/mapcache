@@ -441,7 +441,9 @@ struct mapcache_cache_sqlite {
    mapcache_cache_sqlite_stmt delete_stmt;
    apr_reslist_t *ro_connection_pool;
    apr_reslist_t *rw_connection_pool;
+   void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
    apr_table_t *pragmas;
+   int n_prepared_statements;
    mapcache_context *ctx;
 };
 
