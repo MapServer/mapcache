@@ -268,9 +268,15 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
    char *conffile = (char*)value[1].data;
    ctx->config = mapcache_configuration_create(ctx->pool);
    mapcache_configuration_parse(ctx,conffile,ctx->config,1);
-   if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
+   if(GC_HAS_ERROR(ctx)) {
+      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
+      return NGX_CONF_ERROR;
+   }
    mapcache_configuration_post_config(ctx, ctx->config);
-   if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
+   if(GC_HAS_ERROR(ctx)) {
+      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
+      return NGX_CONF_ERROR;
+   }
    ctx->config->non_blocking = 1;
    
    ngx_http_core_loc_conf_t  *clcf;
