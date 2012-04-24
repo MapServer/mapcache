@@ -424,8 +424,8 @@ static void _mapcache_cache_bdb_configuration_parse_xml(mapcache_context *ctx, e
    dcache->ctx = ctx;
    rv = apr_reslist_create(&(dcache->ro_connection_pool),
          0 /* min */,
-         10 /* soft max */,
-         200 /* hard max */,
+         2 /* soft max */,
+         10 /* hard max */,
          60*1000000 /*60 seconds, ttl*/,
          _bdb_reslist_get_connection, /* resource constructor */
          _bdb_reslist_free_connection, /* resource destructor */
