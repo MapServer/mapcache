@@ -367,27 +367,39 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
       char *skey;
       mapcache_tile *tile = &tiles[i];
       skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-      if(!tile->encoded_data) {
-         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+      if(!tile->raw_image) {
+         tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
          GC_CHECK_ERROR(ctx);
       }
-      mapcache_buffer_append(tile->encoded_data,sizeof(apr_time_t),&now);
+      if(tile->raw_image->h==256 && tile->raw_image->w==256 && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+         data.size = 5+sizeof(apr_time_t);
+         data.data = apr_palloc(ctx->pool,data.size);
+         (((char*)data.data)[0])='#';
+         memcpy(data.data+1,tile->raw_image->data,4);
+         memcpy(data.data+5,&now,sizeof(apr_time_t));
+      } else {
+         if(!tile->encoded_data) {
+            tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+            GC_CHECK_ERROR(ctx);
+         }
+         mapcache_buffer_append(tile->encoded_data,sizeof(apr_time_t),&now);
+         data.data = tile->encoded_data->buf;
+         data.size = tile->encoded_data->size;
+         tile->encoded_data->size -= sizeof(apr_time_t);
+      }
       key.data = skey;
       key.size = strlen(skey)+1;
-      data.data = tile->encoded_data->buf;
-      data.size = tile->encoded_data->size;
 
       ret = benv->db->put(benv->db,NULL,&key,&data,0);
-      tile->encoded_data->size -= sizeof(apr_time_t);
       if(ret != 0) {
-         ctx->set_error(ctx,500,"dbd backend failed on tile_set: %s", db_strerror(ret));
+         ctx->set_error(ctx,500,"dbd backend failed on tile_multiset: %s", db_strerror(ret));
          break;
       }
    }
-   if(ret != 0) {
+   if(ret == 0) {
       ret = benv->db->sync(benv->db,0);
       if(ret)
-         ctx->set_error(ctx,500,"bdb backend sync failure on tile_set: %s",db_strerror(ret));
+         ctx->set_error(ctx,500,"bdb backend sync failure on sync in tile_multiset: %s",db_strerror(ret));
    }
    _bdb_release_conn(ctx,&tiles[0],benv);
 }
@@ -466,7 +478,7 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
    cache->cache.tile_get = _mapcache_cache_bdb_get;
    cache->cache.tile_exists = _mapcache_cache_bdb_has_tile;
    cache->cache.tile_set = _mapcache_cache_bdb_set;
-   //cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
+   cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
    cache->cache.configuration_post_config = _mapcache_cache_bdb_configuration_post_config;
    cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
    cache->basedir = NULL;
