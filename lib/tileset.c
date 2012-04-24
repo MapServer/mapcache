@@ -543,6 +543,10 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
 
    if(ret == MAPCACHE_CACHE_MISS) {
       /* bail out straight away if the tileset has no source */
+      if(ctx->config->non_blocking) {
+         ctx->set_error(ctx,404,"tile not in cache, and configured for readonly mode");
+         return;
+      }
       if(!tile->tileset->source) {
          ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",
                tile->tileset->name);

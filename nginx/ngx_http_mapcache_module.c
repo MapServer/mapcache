@@ -3,6 +3,7 @@
 #include <ngx_http.h>
 #include "../include/mapcache.h"
 #include <apr_date.h>
+#include <apr_strings.h>
 
 
 static char *ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -181,6 +182,7 @@ static ngx_int_t urlprefix_index;
 static ngx_int_t
 ngx_http_mapcache_handler(ngx_http_request_t *r)
 {
+    int ret = NGX_HTTP_OK;
     if (!(r->method & (NGX_HTTP_GET))) {
         return NGX_HTTP_NOT_ALLOWED;
     }
@@ -192,7 +194,7 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
     mapcache_request *request = NULL;
     mapcache_http_response *http_response;
 
-   ngx_http_variable_value_t      *pathinfovv = ngx_http_get_indexed_variable(r, pathinfo_index);
+    ngx_http_variable_value_t      *pathinfovv = ngx_http_get_indexed_variable(r, pathinfo_index);
 
     char* pathInfo = apr_pstrndup(ctx->pool, (char*)pathinfovv->data, pathinfovv->len);
       char *sparams = apr_pstrndup(ctx->pool, (char*)r->args.data, r->args.len);
@@ -219,22 +221,24 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
       } else if( request->type == MAPCACHE_REQUEST_GET_TILE) {
          mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
          http_response = mapcache_core_get_tile(ctx,req_tile);
-      } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
-         mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
-         http_response = mapcache_core_proxy_request(ctx, req_proxy);
       } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
          mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
          http_response = mapcache_core_get_map(ctx,req_map);
+#ifdef NGINX_RW
+      } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
+         mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
+         http_response = mapcache_core_proxy_request(ctx, req_proxy);
       } else if( request->type == MAPCACHE_REQUEST_GET_FEATUREINFO) {
          mapcache_request_get_feature_info *req_fi = (mapcache_request_get_feature_info*)request;
          http_response = mapcache_core_get_featureinfo(ctx,req_fi);
+#endif
 #ifdef DEBUG
       } else {
          ctx->set_error(ctx,500,"###BUG### unknown request type");
 #endif
       }
       if(GC_HAS_ERROR(ctx)) {
-         ngx_http_mapcache_write_response(ctx,r, mapcache_core_respond_to_error(ctx));
+      //   ngx_http_mapcache_write_response(ctx,r, mapcache_core_respond_to_error(ctx));
          goto cleanup;
       }
 #ifdef DEBUG
@@ -246,10 +250,12 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
 #endif
       ngx_http_mapcache_write_response(ctx,r,http_response);
 cleanup:
+      if(GC_HAS_ERROR(ctx))
+         ret = ctx->_errcode?ctx->_errcode:500;
       ctx->clear_errors(ctx);
       apr_pool_destroy(ctx->pool);
       ctx->pool = main_pool;
-      return NGX_HTTP_OK;
+      return ret;
 }
 
 
@@ -262,9 +268,16 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
    char *conffile = (char*)value[1].data;
    ctx->config = mapcache_configuration_create(ctx->pool);
    mapcache_configuration_parse(ctx,conffile,ctx->config,1);
-   if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
+   if(GC_HAS_ERROR(ctx)) {
+      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
+      return NGX_CONF_ERROR;
+   }
    mapcache_configuration_post_config(ctx, ctx->config);
-   if(GC_HAS_ERROR(ctx)) return NGX_CONF_ERROR;
+   if(GC_HAS_ERROR(ctx)) {
+      ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
+      return NGX_CONF_ERROR;
+   }
+   ctx->config->non_blocking = 1;
    
    ngx_http_core_loc_conf_t  *clcf;
 
