@@ -76,7 +76,7 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
    apr_status_t rv;
    mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
    struct mc_mapobj *mcmap;
-   apr_reslist_t *mapobjs;
+   apr_reslist_t *mapobjs = NULL;
    if(!mapobj_container || NULL == (mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING))) {
 #ifdef APR_HAS_THREADS
       if(ctx->threadlock)
@@ -104,6 +104,7 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
 #endif
             return NULL;
          }
+         apr_hash_set(mapobj_container,src->source.name,APR_HASH_KEY_STRING,mapobjs);
       }
       assert(mapobjs);
 #ifdef APR_HAS_THREADS
