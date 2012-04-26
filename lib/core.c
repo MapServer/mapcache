@@ -81,7 +81,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 #if !APR_HAS_THREADS
    int i;
    for(i=0;i<ntiles;i++) {
-      mapcache_tileset_tile_get(ctx, tiles[i]);
+      mapcache_tileset_tile_get(ctx, tiles[i], readonly);
       GC_CHECK_ERROR(ctx);
    }
 #else
@@ -157,6 +157,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
       /* fetch the tiles that did not get a thread launched for them */
       if(thread_tiles[i].launch) continue;
       mapcache_tileset_tile_get(ctx, tiles[i]);
+      GC_CHECK_ERROR(ctx);
    }
 #else
     /* experimental version using a threadpool, disabled for stability reasons */
@@ -291,7 +292,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
    return response;
 }
 
-void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode ) {
+void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode) {
    mapcache_tile ***maptiles;
    int *nmaptiles;
    mapcache_tile **tiles;
@@ -316,6 +317,7 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
       }
    }
    mapcache_prefetch_tiles(ctx,tiles,ntiles);
+   GC_CHECK_ERROR(ctx);
    for(i=0;i<nmaps;i++) {
       int j;
       for(j=0;j<nmaptiles[i];j++) {
@@ -370,7 +372,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
          if(overlaymap->mtime > basemap->mtime) basemap->mtime = overlaymap->mtime;
          if(!basemap->expires || overlaymap->expires<basemap->expires) basemap->expires = overlaymap->expires;
       }
-   } else /*if(ctx->config->getmap_strategy == MAPCACHE_GETMAP_FORWARD)*/ {
+   } else if(!ctx->config->non_blocking && req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD) {
       int i;
       for(i=0;i<req_map->nmaps;i++) {
          if(!req_map->maps[i]->tileset->source) {
@@ -400,6 +402,9 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
             if(!basemap->expires || overlaymap->expires<basemap->expires) basemap->expires = overlaymap->expires;
          }
       }
+   } else {
+      ctx->set_error(ctx,400,"failed getmap, readonly mode");
+      return NULL;
    }
    
    if(basemap->raw_image) {

@@ -653,11 +653,13 @@ PKGCONFIG
 SQLITE_ENABLED
 SQLITE_LIB
 SQLITE_INC
+APU_LDLIBS
 APU_LIBS
 APU_INCDIR
 APU_INC
 MEMCACHE_ENABLED
 APUCONFIG
+APR_LDLIBS
 APR_LIBS
 APR_INCDIR
 APR_INC
@@ -12222,7 +12224,9 @@ $as_echo "yes" >&6; }
 
     APR_INCDIR=`$APRCONFIG --includedir`
 
-    APR_LIBS=`$APRCONFIG --link-ld`
+    APR_LIBS=`$APRCONFIG --link-libtool`
+
+    APR_LDLIBS=`$APRCONFIG --link-ld`
 
 
 
@@ -12362,10 +12366,12 @@ $as_echo "yes" >&6; }
     if test -z "$APUCONFIG"; then
       as_fn_error $? "apu-config utility not found" "$LINENO" 5
     else
-      APU_LIBS=`$APUCONFIG --link-ld`
+      APU_LIBS=`$APUCONFIG --link-libtool`
+      APU_LDLIBS=`$APUCONFIG --link-ld`
       APU_INC=`$APUCONFIG --includes`
       APU_INCDIR=`$APUCONFIG --includedir`
     fi
+
 
 
 
@@ -12386,7 +12392,7 @@ fi
       if test -z "$APUCONFIG"; then
          as_fn_error $? "memcache check failed: apu-config utility not found" "$LINENO" 5
       fi
-      OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS `$APUCONFIG --ldflags --libs --link-ld`"
+      OLDLDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS `$APUCONFIG --ldflags --libs --link-libtool`"
       OLDCPPFLAGS="$CPPFLAGS" ; CPPFLAGS="$CPPFLAGS `$APUCONFIG --includes`"
 
       #check we can link against the memcache functions (i.e. is apr-util recent enough)

@@ -995,6 +995,10 @@ struct mapcache_cfg {
                                     as in that case the apache LogLevel directive is
                                     used. */
     mapcache_mode mode;
+
+    /* return 404 on potentially blocking operations (proxying, source getmaps,
+     locks on metatile waiting, ... Used for nginx module */
+    int non_blocking;
 };
 
 /**
