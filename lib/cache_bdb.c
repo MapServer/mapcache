@@ -50,8 +50,8 @@
 #define PAGESIZE 64*1024
 #define CACHESIZE 1024*1024
 
-apr_hash_t *ro_connection_pools = NULL;
-apr_hash_t *rw_connection_pools = NULL;
+static apr_hash_t *ro_connection_pools = NULL;
+static apr_hash_t *rw_connection_pools = NULL;
 
 struct bdb_env {
    DB* db;
@@ -149,8 +149,10 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
                cache, ctx->process_pool);
          if(rv != APR_SUCCESS) {
             ctx->set_error(ctx,500,"failed to create bdb ro connection pool");
+#ifdef APR_HAS_THREADS
             if(ctx->threadlock)
                apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
             return NULL;
          }
          apr_hash_set(ro_connection_pools,cache->cache.name,APR_HASH_KEY_STRING,pool);
@@ -164,8 +166,10 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
                cache, ctx->process_pool);
          if(rv != APR_SUCCESS) {
             ctx->set_error(ctx,500,"failed to create bdb rw connection pool");
+#ifdef APR_HAS_THREADS
             if(ctx->threadlock)
                apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
             return NULL;
          }
          apr_hash_set(rw_connection_pools,cache->cache.name,APR_HASH_KEY_STRING,pool);
