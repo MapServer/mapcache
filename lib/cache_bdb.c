@@ -36,6 +36,9 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#ifdef APR_HAS_THREADS
+#include <apr_thread_mutex.h>
+#endif
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -46,51 +49,55 @@
 #define PAGESIZE 64*1024
 #define CACHESIZE 1024*1024
 
+apr_reslist_t *ro_connection_pool = NULL;
+apr_reslist_t *rw_connection_pool = NULL;
+
 struct bdb_env {
    DB* db;
    DB_ENV *env;
    int readonly;
+   char *errmsg;
 };
 
 static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool) {
    int ret;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)params;
    char *dbfile = apr_pstrcat(pool,cache->basedir,"/",cache->cache.name,".db",NULL);
-   struct bdb_env *benv = apr_pcalloc(pool,sizeof(struct bdb_env));
+   struct bdb_env *benv = calloc(1,sizeof(struct bdb_env));
+   *conn_ = benv;
 
    ret = db_env_create(&benv->env, 0);
    if(ret) { 
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_env_create: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool,"bdb cache failure for db_env_create: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
    ret = benv->env->set_cachesize(benv->env,0,CACHESIZE,1); /* set a larger cache size than default */
    if(ret) { 
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool, "bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
    int env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
    ret = benv->env->open(benv->env,cache->basedir,env_flags,0);
    if(ret) { 
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for env->open: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool,"bdb cache failure for env->open: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
 
    if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool,"bdb cache failure for db_create: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
    int mode = DB_BTREE;
    ret = benv->db->set_pagesize(benv->db,PAGESIZE); /* set pagesize to maximum allowed, as tile data is usually pretty large */
    if(ret) { 
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
 
    if ((ret = benv->db->open(benv->db, NULL, dbfile, NULL, mode, DB_CREATE, 0664)) != 0) {
-      cache->ctx->set_error(cache->ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
+      benv->errmsg = apr_psprintf(pool,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
       return APR_EGENERAL;
    }
-   *conn_ = benv;
    return APR_SUCCESS;
 }
 
@@ -98,6 +105,8 @@ static apr_status_t _bdb_reslist_free_connection(void *conn_, void *params, apr_
    struct bdb_env *benv = (struct bdb_env*)conn_;
    benv->db->close(benv->db,0);
    benv->env->close(benv->env,0);
+   free(benv);
+   
    return APR_SUCCESS; 
 }
 
@@ -108,14 +117,53 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
    struct bdb_env *benv;
    apr_reslist_t *pool;
+   if(!ro_connection_pool) {
+#ifdef APR_HAS_THREADS
+      if(ctx->threadlock)
+         apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
+      if(!ro_connection_pool) {
+         rv = apr_reslist_create(&ro_connection_pool,
+               0 /* min */,
+               10 /* soft max */,
+               200 /* hard max */,
+               60*1000000 /*60 seconds, ttl*/,
+               _bdb_reslist_get_connection, /* resource constructor */
+               _bdb_reslist_free_connection, /* resource destructor */
+               cache, ctx->process_pool);
+         if(rv != APR_SUCCESS) {
+            ctx->set_error(ctx,500,"failed to create bdb ro connection pool");
+            if(ctx->threadlock)
+               apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+            return NULL;
+         }
+         rv = apr_reslist_create(&rw_connection_pool,
+               0 /* min */,
+               1 /* soft max */,
+               1 /* hard max */,
+               60*1000000 /*60 seconds, ttl*/,
+               _bdb_reslist_get_connection, /* resource constructor */
+               _bdb_reslist_free_connection, /* resource destructor */
+               cache, ctx->process_pool);
+         if(rv != APR_SUCCESS) {
+            ctx->set_error(ctx,500,"failed to create bdb rw connection pool");
+            if(ctx->threadlock)
+               apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+            return NULL;
+         }
+      }
+#ifdef APR_HAS_THREADS
+      if(ctx->threadlock)
+         apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
+   }
    if(readonly) 
-      pool = cache->ro_connection_pool;
+      pool = ro_connection_pool;
    else
-      pool = cache->rw_connection_pool;
+      pool = rw_connection_pool;
    rv = apr_reslist_acquire(pool, (void **)&benv);
    if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to aquire connection to bdb backend: %s", cache->ctx->get_error_message(cache->ctx));
-      cache->ctx->clear_errors(cache->ctx);
+      ctx->set_error(ctx,500,"failed to aquire connection to bdb backend");
       return NULL;
    }
    benv->readonly = readonly;
@@ -123,12 +171,11 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
 }
 
 static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct bdb_env *benv) {
-   mapcache_cache_bdb* cache = (mapcache_cache_bdb*)tile->tileset->cache;
    apr_reslist_t *pool;
    if(benv->readonly) 
-      pool = cache->ro_connection_pool;
+      pool = ro_connection_pool;
    else
-      pool = cache->rw_connection_pool;
+      pool = rw_connection_pool;
    if(GC_HAS_ERROR(ctx)) {
       apr_reslist_invalidate(pool,(void*)benv);  
    } else {
@@ -421,31 +468,6 @@ static void _mapcache_cache_bdb_configuration_parse_xml(mapcache_context *ctx, e
       ctx->set_error(ctx,500,"dbd cache \"%s\" is missing <base> entry",cache->name);
       return;
    }
-   dcache->ctx = ctx;
-   rv = apr_reslist_create(&(dcache->ro_connection_pool),
-         0 /* min */,
-         2 /* soft max */,
-         10 /* hard max */,
-         60*1000000 /*60 seconds, ttl*/,
-         _bdb_reslist_get_connection, /* resource constructor */
-         _bdb_reslist_free_connection, /* resource destructor */
-         dcache, ctx->pool);
-   if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to create bdb connection pool");
-      return;
-   }
-   rv = apr_reslist_create(&(dcache->rw_connection_pool),
-         0 /* min */,
-         1 /* soft max */,
-         1 /* hard max */,
-         60*1000000 /*60 seconds, ttl*/,
-         _bdb_reslist_get_connection, /* resource constructor */
-         _bdb_reslist_free_connection, /* resource destructor */
-         dcache, ctx->pool);
-   if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to create bdb connection pool");
-      return;
-   }
 }
    
 /**
@@ -483,8 +505,6 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
    cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
    cache->basedir = NULL;
    cache->key_template = NULL;
-   cache->ro_connection_pool = NULL;
-   cache->rw_connection_pool = NULL;
    return (mapcache_cache*)cache;
 }
 

@@ -191,6 +191,8 @@ struct mapcache_context {
     const char* (*get_instance_id)(mapcache_context * ctx);
     mapcache_context* (*clone)(mapcache_context *ctx);
     apr_pool_t *pool;
+    apr_pool_t *process_pool;
+    void *threadlock;
     char *_contenttype;
     char *_errmsg;
     int _errcode;
@@ -458,11 +460,8 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 typedef struct mapcache_cache_bdb mapcache_cache_bdb;
 struct mapcache_cache_bdb {
    mapcache_cache cache;
-   apr_reslist_t *rw_connection_pool;
-   apr_reslist_t *ro_connection_pool;
    char *basedir;
    char *key_template;
-   mapcache_context *ctx;
 };
 mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
 #endif

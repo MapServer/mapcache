@@ -4,8 +4,10 @@
 #include "../include/mapcache.h"
 #include <apr_date.h>
 #include <apr_strings.h>
+#include <apr_pools.h>
 
 
+apr_pool_t *process_pool = NULL;
 static char *ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
@@ -50,13 +52,14 @@ static mapcache_context* ngx_mapcache_context_clone(mapcache_context *ctx) {
 static void *
 ngx_http_mapcache_create_conf(ngx_conf_t *cf)
 {
-    apr_pool_t  *pool;
     apr_initialize();
     atexit(apr_terminate);
     apr_pool_initialize();
-    apr_pool_create(&pool,NULL);
-    mapcache_context *ctx = apr_pcalloc(pool, sizeof(mapcache_ngx_context));
-    ctx->pool = pool;
+    apr_pool_create(&process_pool,NULL);
+    mapcache_context *ctx = apr_pcalloc(process_pool, sizeof(mapcache_ngx_context));
+    ctx->pool = process_pool;
+    ctx->process_pool = process_pool;
+    ctx->threadlock = NULL;
     mapcache_context_init(ctx);
     ctx->log = ngx_mapcache_context_log;
     ctx->clone = ngx_mapcache_context_clone;
@@ -159,6 +162,18 @@ static ngx_http_module_t  ngx_http_mapcache_module_ctx = {
     NULL                           /* merge location configuration */
 };
 
+static ngx_int_t ngx_mapcache_init_process(ngx_cycle_t *cycle) {
+    apr_initialize();
+    atexit(apr_terminate);
+    apr_pool_initialize();
+    apr_pool_create(&process_pool,NULL);
+    return NGX_OK;
+}
+
+static void ngx_mapcache_exit_process(ngx_cycle_t *cycle) {
+    apr_pool_destroy(process_pool);
+}
+
 ngx_module_t  ngx_http_mapcache_module = {
     NGX_MODULE_V1,
     &ngx_http_mapcache_module_ctx, /* module context */
@@ -166,11 +181,11 @@ ngx_module_t  ngx_http_mapcache_module = {
     NGX_HTTP_MODULE,               /* module type */
     NULL,                          /* init master */
     NULL,                          /* init module */
-    NULL,/* init process */
+    ngx_mapcache_init_process,/* init process */
     NULL,                          /* init thread */
     NULL,                          /* exit thread */
-    NULL,                          /* exit process */
-    NULL,                          /* exit master */
+    ngx_mapcache_exit_process,                          /* exit process */
+    ngx_mapcache_exit_process,                          /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
@@ -188,8 +203,8 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
     }
     mapcache_ngx_context *ngctx = ngx_http_get_module_loc_conf(r, ngx_http_mapcache_module);
     mapcache_context *ctx = (mapcache_context*)ngctx;
-    apr_pool_t *main_pool = ctx->pool;
-    apr_pool_create(&(ctx->pool),main_pool);
+    apr_pool_create(&(ctx->pool),process_pool);
+    ctx->process_pool = process_pool;
     ngctx->r = r;
     mapcache_request *request = NULL;
     mapcache_http_response *http_response;
@@ -254,7 +269,6 @@ cleanup:
          ret = ctx->_errcode?ctx->_errcode:500;
       ctx->clear_errors(ctx);
       apr_pool_destroy(ctx->pool);
-      ctx->pool = main_pool;
       return ret;
 }
 
