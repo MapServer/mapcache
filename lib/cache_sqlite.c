@@ -34,6 +34,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <apr_reslist.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -44,6 +45,7 @@
 struct sqlite_conn {
    sqlite3 *handle;
    int readonly;
+   char *errmsg;
 };
 
 static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
