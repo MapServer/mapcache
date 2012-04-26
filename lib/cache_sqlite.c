@@ -715,6 +715,35 @@ static void _mapcache_cache_sqlite_configuration_post_config(mapcache_context *c
 }
 
 /**
+ * \private \memberof mapcache_cache_sqlite
+ */
+static void _mapcache_cache_mbtiles_configuration_post_config(mapcache_context *ctx,
+        mapcache_cache *cache, mapcache_cfg *cfg) {
+   /* check that only one tileset/grid references this cache, as mbtiles does
+    not support multiple tilesets/grids per cache */
+   int nrefs = 0;
+   apr_hash_index_t *tileseti = apr_hash_first(ctx->pool,cfg->tilesets);
+   while(tileseti) {
+      mapcache_tileset *tileset;
+      const void *key; apr_ssize_t keylen;
+      apr_hash_this(tileseti,&key,&keylen,(void**)&tileset);
+      if(tileset->cache == cache) {
+         nrefs++;
+         if(nrefs>1) {
+            ctx->set_error(ctx,500,"mbtiles cache %s is referenced by more than 1 tileset, which is not supported",cache->name);
+            return;
+         }
+         if(tileset->grid_links->nelts > 1) {
+            ctx->set_error(ctx,500,"mbtiles cache %s is referenced by tileset %s which has more than 1 grid, which is not supported",cache->name,tileset->name);
+            return;
+         }
+      }
+      tileseti = apr_hash_next(tileseti);
+   }
+   
+}
+
+/**
  * \brief creates and initializes a mapcache_sqlite_cache
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
@@ -755,6 +784,7 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx) {
    if (!cache) {
       return NULL;
    }
+   cache->cache.configuration_post_config = _mapcache_cache_mbtiles_configuration_post_config;
    cache->cache.tile_set = _mapcache_cache_mbtiles_set;
    cache->cache.tile_multi_set = _mapcache_cache_mbtiles_multi_set;
    cache->cache.tile_delete = _mapcache_cache_mbtiles_delete;
