@@ -213,6 +213,8 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst) {
    dst->set_exception = src->set_exception;
    dst->service = src->service;
    dst->exceptions = src->exceptions;
+   dst->threadlock = src->threadlock;
+   dst->process_pool = src->process_pool;
 }
 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to) {
