@@ -247,7 +247,7 @@ int main(int argc, const char **argv) {
    }
 #endif
    if(!conffile) {
-      ctx->log(ctx,MAPCACHE_ERROR,"no config file found in MAPCACHE_CONFIG_FILE envirronement");
+      ctx->log(ctx,MAPCACHE_ERROR,"no config file found in MAPCACHE_CONFIG_FILE environment");
       return 1;
    }
    ctx->log(ctx,MAPCACHE_INFO,"mapcache fcgi conf file: %s",conffile);
