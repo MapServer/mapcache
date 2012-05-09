@@ -415,6 +415,7 @@ struct mapcache_cache_disk {
 struct mapcache_cache_tiff {
     mapcache_cache cache;
     char *filename_template;
+    char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
     int count_x;
     int count_y;
     mapcache_image_format_jpeg *format;

@@ -89,23 +89,23 @@ static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_tile *
    
    while(strstr(*path,"{z}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
-            apr_psprintf(ctx->pool,"%d",tile->z));
+            apr_psprintf(ctx->pool,dcache->z_fmt,tile->z));
    /*
     * x and y replacing, when the tiff files are numbered with an increasing
     * x,y scheme (adjacent tiffs have x-x'=1 or y-y'=1
     */
    while(strstr(*path,"{div_x}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{div_x}",
-            apr_psprintf(ctx->pool,"%d",tile->x/dcache->count_x));
+            apr_psprintf(ctx->pool,dcache->div_x_fmt,tile->x/dcache->count_x));
    while(strstr(*path,"{div_y}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{div_y}",
-            apr_psprintf(ctx->pool,"%d",tile->y/dcache->count_y));
+            apr_psprintf(ctx->pool,dcache->div_y_fmt,tile->y/dcache->count_y));
    while(strstr(*path,"{inv_div_y}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_div_y}",
-            apr_psprintf(ctx->pool,"%d",(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y));
+            apr_psprintf(ctx->pool,dcache->inv_div_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y));
    while(strstr(*path,"{inv_div_x}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_div_x}",
-            apr_psprintf(ctx->pool,"%d",(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x));
+            apr_psprintf(ctx->pool,dcache->inv_div_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x));
    
    /*
     * x and y replacing, when the tiff files are numbered with the index
@@ -114,16 +114,16 @@ static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_tile *
     */
    while(strstr(*path,"{x}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
-            apr_psprintf(ctx->pool,"%d",tile->x/dcache->count_x*dcache->count_x));
+            apr_psprintf(ctx->pool,dcache->x_fmt,tile->x/dcache->count_x*dcache->count_x));
    while(strstr(*path,"{y}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
-            apr_psprintf(ctx->pool,"%d",tile->y/dcache->count_y*dcache->count_y));
+            apr_psprintf(ctx->pool,dcache->y_fmt,tile->y/dcache->count_y*dcache->count_y));
    while(strstr(*path,"{inv_y}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
-            apr_psprintf(ctx->pool,"%d",(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y*dcache->count_y));
+            apr_psprintf(ctx->pool,dcache->inv_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y*dcache->count_y));
    while(strstr(*path,"{inv_x}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
-            apr_psprintf(ctx->pool,"%d",(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x*dcache->count_y));
+            apr_psprintf(ctx->pool,dcache->inv_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x*dcache->count_y));
    if(!*path) {
       ctx->set_error(ctx,500, "failed to allocate tile key");
    }
@@ -744,7 +744,44 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
    char * format_name;
    mapcache_image_format *pformat;
    if ((cur_node = ezxml_child(node,"template")) != NULL) {
+      char *fmt;
       dcache->filename_template = apr_pstrdup(ctx->pool,cur_node->txt);
+      fmt = (char*)ezxml_attr(cur_node,"x_fmt");
+      if(fmt && *fmt) {
+         dcache->x_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"y_fmt");
+      if(fmt && *fmt) {
+         dcache->y_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"z_fmt");
+      if(fmt && *fmt) {
+         dcache->z_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"inv_x_fmt");
+      if(fmt && *fmt) {
+         dcache->inv_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"inv_y_fmt");
+      if(fmt && *fmt) {
+         dcache->inv_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"div_x_fmt");
+      if(fmt && *fmt) {
+         dcache->div_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"div_y_fmt");
+      if(fmt && *fmt) {
+         dcache->div_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"inv_div_x_fmt");
+      if(fmt && *fmt) {
+         dcache->inv_div_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
+      fmt = (char*)ezxml_attr(cur_node,"inv_div_y_fmt");
+      if(fmt && *fmt) {
+         dcache->inv_div_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      }
    }
    xcount = ezxml_child(node,"xcount");
    if(xcount && xcount->txt && *xcount->txt) {
@@ -821,6 +858,10 @@ mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx) {
    cache->cache.configuration_parse_xml = _mapcache_cache_tiff_configuration_parse_xml;
    cache->count_x = 10;
    cache->count_y = 10;
+   cache->x_fmt = cache->y_fmt = cache->z_fmt
+      = cache->inv_x_fmt = cache->inv_y_fmt
+      = cache->div_x_fmt = cache->div_y_fmt
+      = cache->inv_div_x_fmt = cache->inv_div_y_fmt = apr_pstrdup(ctx->pool,"%d");
 #ifndef DEBUG
    TIFFSetWarningHandler(NULL);
    TIFFSetErrorHandler(NULL);
