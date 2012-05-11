@@ -810,6 +810,15 @@ typedef enum {
     GC_UNKNOWN, GC_PNG, GC_JPEG
 } mapcache_image_format_type;
 
+typedef enum {
+    MC_EMPTY_UNKNOWN, MC_EMPTY_YES, MC_EMPTY_NO
+} mapcache_image_blank_type;
+
+typedef enum {
+    MC_ALPHA_UNKNOWN, MC_ALPHA_YES, MC_ALPHA_NO
+} mapcache_image_alpha_type;
+
+
 /**\class mapcache_image
  * \brief representation of an RGBA image
  * 
@@ -820,6 +829,9 @@ struct mapcache_image {
     size_t w; /**< width of the image */
     size_t h; /**< height of the image */
     size_t stride; /**< stride of an image row */
+    mapcache_image_blank_type is_blank;
+    mapcache_image_alpha_type has_alpha;
+
 };
 
 /** \def GET_IMG_PIXEL
