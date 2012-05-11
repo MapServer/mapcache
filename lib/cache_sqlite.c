@@ -703,9 +703,8 @@ static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *ti
 }
 
 static void _mapcache_cache_mbtiles_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
-   struct sqlite_conn *conn = _sqlite_get_conn(ctx, &tiles[0], 0);
+   struct sqlite_conn *conn = NULL;
    int i;
-   GC_CHECK_ERROR(ctx);
 
    /* decode/encode image data before going into the sqlite write lock */
    for (i = 0; i < ntiles; i++) {
@@ -720,6 +719,8 @@ static void _mapcache_cache_mbtiles_multi_set(mapcache_context *ctx, mapcache_ti
          GC_CHECK_ERROR(ctx);
       }
    }
+   conn = _sqlite_get_conn(ctx, &tiles[0], 0);
+
    sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
    for (i = 0; i < ntiles; i++) {
       mapcache_tile *tile = &tiles[i];
