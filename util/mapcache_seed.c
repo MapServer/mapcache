@@ -184,6 +184,7 @@ static const apr_getopt_option_t seed_options[] = {
     { "tileset", 't', TRUE, "tileset to seed" },
     { "grid", 'g', TRUE, "grid to seed" },
     { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+    { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
     { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
     { "nthreads", 'n', TRUE, "number of parallel threads to use" },
     { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
@@ -678,6 +679,11 @@ int usage(const char *progname, char *msg) {
    return 1;
 }
 
+static int isPowerOfTwo(int x)
+{
+    return (x & (x - 1)) == 0;
+}
+
 int main(int argc, const char **argv) {
     /* initialize apr_getopt_t */
     apr_getopt_t *opt;
@@ -698,6 +704,8 @@ int main(int argc, const char **argv) {
     apr_table_t *argdimensions;
     char *dimkey=NULL, *dimvalue=NULL,*key, *last, *optargcpy=NULL;
     int keyidx;
+    int *metasizes = NULL;//[2];
+    int metax=-1,metay=-1;
 
 #ifdef USE_CLIPPERS
     const char *ogr_where = NULL;
@@ -775,6 +783,15 @@ int main(int argc, const char **argv) {
                 } else {
                    minzoom = zooms[0];
                    maxzoom = zooms[1];
+                }
+                break;
+            case 'M':
+                if ( MAPCACHE_SUCCESS != mapcache_util_extract_int_list(&ctx, (char*)optarg, ",", &metasizes, &n) ||
+                        n != 2 || metasizes[0] <= 0 || metasizes[1] <=0) {
+                    return usage(argv[0], "failed to parse metasize, expecting comma separated 2 positive ints (e.g. -m 8,8");
+                } else {
+                   metax = metasizes[0];
+                   metay = metasizes[1];
                 }
                 break;
             case 'o':
@@ -950,6 +967,21 @@ int main(int argc, const char **argv) {
         }
         if(minzoom<grid_link->minz) minzoom = grid_link->minz;
         if(maxzoom>= grid_link->maxz) maxzoom = grid_link->maxz - 1;
+
+        /* adjust metasize */
+        if(metax>0) {
+           tileset->metasize_x = metax;
+           tileset->metasize_y = metay;
+        }
+
+        /* ensure our metasize is a power of 2 in drill down mode */
+        if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
+           if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
+              return usage(argv[0],"metatile size is not set to a power of two, rerun with e.g -m 8,8");
+           }
+        }
+
+
     }
 
     if (mode == MAPCACHE_CMD_TRANSFER) {
