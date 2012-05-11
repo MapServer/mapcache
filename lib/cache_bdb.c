@@ -33,6 +33,7 @@
 #include <apr_strings.h>
 #include <apr_reslist.h>
 #include <apr_file_info.h>
+#include <apr_hash.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
@@ -49,8 +50,8 @@
 #define PAGESIZE 64*1024
 #define CACHESIZE 1024*1024
 
-apr_reslist_t *ro_connection_pool = NULL;
-apr_reslist_t *rw_connection_pool = NULL;
+static apr_hash_t *ro_connection_pools = NULL;
+static apr_hash_t *rw_connection_pools = NULL;
 
 struct bdb_env {
    DB* db;
@@ -115,15 +116,30 @@ static apr_status_t _bdb_reslist_free_connection(void *conn_, void *params, apr_
 static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
    apr_status_t rv;
    mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+   
    struct bdb_env *benv;
-   apr_reslist_t *pool;
-   if(!ro_connection_pool) {
+   apr_hash_t *pool_container;
+   apr_reslist_t *pool = NULL;
+   if(readonly) {
+      pool_container = ro_connection_pools;
+   } else {
+      pool_container = rw_connection_pools;
+   }
+   if(!pool_container || NULL == (pool = apr_hash_get(pool_container,cache->cache.name, APR_HASH_KEY_STRING)) ) {
 #ifdef APR_HAS_THREADS
       if(ctx->threadlock)
          apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
 #endif
-      if(!ro_connection_pool) {
-         rv = apr_reslist_create(&ro_connection_pool,
+      if(!ro_connection_pools) {
+         ro_connection_pools = apr_hash_make(ctx->process_pool);
+         rw_connection_pools = apr_hash_make(ctx->process_pool);
+      }
+
+      /* probably doesn't exist, unless the previous mutex locked us, so we check */
+      pool = apr_hash_get(ro_connection_pools,cache->cache.name, APR_HASH_KEY_STRING);
+      if(!pool) {
+         /* there where no existing connection pools, create them*/
+         rv = apr_reslist_create(&pool,
                0 /* min */,
                10 /* soft max */,
                200 /* hard max */,
@@ -133,11 +149,14 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
                cache, ctx->process_pool);
          if(rv != APR_SUCCESS) {
             ctx->set_error(ctx,500,"failed to create bdb ro connection pool");
+#ifdef APR_HAS_THREADS
             if(ctx->threadlock)
                apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
             return NULL;
          }
-         rv = apr_reslist_create(&rw_connection_pool,
+         apr_hash_set(ro_connection_pools,cache->cache.name,APR_HASH_KEY_STRING,pool);
+         rv = apr_reslist_create(&pool,
                0 /* min */,
                1 /* soft max */,
                1 /* hard max */,
@@ -147,23 +166,27 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
                cache, ctx->process_pool);
          if(rv != APR_SUCCESS) {
             ctx->set_error(ctx,500,"failed to create bdb rw connection pool");
+#ifdef APR_HAS_THREADS
             if(ctx->threadlock)
                apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
             return NULL;
          }
+         apr_hash_set(rw_connection_pools,cache->cache.name,APR_HASH_KEY_STRING,pool);
       }
 #ifdef APR_HAS_THREADS
       if(ctx->threadlock)
          apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
 #endif
+      if(readonly)
+         pool = apr_hash_get(ro_connection_pools,cache->cache.name, APR_HASH_KEY_STRING);
+      else
+         pool = apr_hash_get(rw_connection_pools,cache->cache.name, APR_HASH_KEY_STRING);
+      assert(pool);
    }
-   if(readonly) 
-      pool = ro_connection_pool;
-   else
-      pool = rw_connection_pool;
    rv = apr_reslist_acquire(pool, (void **)&benv);
    if(rv != APR_SUCCESS) {
-      ctx->set_error(ctx,500,"failed to aquire connection to bdb backend");
+      ctx->set_error(ctx,500,"failed to aquire connection to bdb backend: %s", (benv&& benv->errmsg)?benv->errmsg:"unknown error");
       return NULL;
    }
    benv->readonly = readonly;
@@ -172,10 +195,13 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
 
 static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct bdb_env *benv) {
    apr_reslist_t *pool;
-   if(benv->readonly) 
-      pool = ro_connection_pool;
-   else
-      pool = rw_connection_pool;
+   apr_hash_t *pool_container;
+   if(benv->readonly) {
+      pool_container = ro_connection_pools;
+   } else {
+      pool_container = rw_connection_pools;
+   }
+   pool = apr_hash_get(pool_container,tile->tileset->cache->name, APR_HASH_KEY_STRING);
    if(GC_HAS_ERROR(ctx)) {
       apr_reslist_invalidate(pool,(void*)benv);  
    } else {
@@ -454,7 +480,6 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
 
 static void _mapcache_cache_bdb_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) {
    ezxml_t cur_node;
-   apr_status_t rv;
    mapcache_cache_bdb *dcache = (mapcache_cache_bdb*)cache;
    if ((cur_node = ezxml_child(node,"base")) != NULL) {
       dcache->basedir = apr_pstrdup(ctx->pool,cur_node->txt);

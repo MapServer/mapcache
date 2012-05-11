@@ -33,16 +33,26 @@
 #include "ezxml.h"
 #include <apr_tables.h>
 #include <apr_strings.h>
+#ifdef APR_HAS_THREADS
+#include <apr_thread_mutex.h>
+#endif
+#include <apr_hash.h>
+#include <apr_reslist.h>
 #include <mapserver.h>
+
+/* hash table key = source->name, value = apr_reslist_t of mapObjs */
+static apr_hash_t *mapobj_container = NULL;
 
 struct mc_mapobj {
    mapObj *map;
+   mapcache_grid_link *grid_link;
    char *error;
 };
 
 static apr_status_t _ms_get_mapobj(void **conn_, void *params, apr_pool_t *pool) {
    mapcache_source_mapserver *src = (mapcache_source_mapserver*) params;
-   struct mc_mapobj *mcmap = apr_pcalloc(pool,sizeof(struct mc_mapobj));
+   struct mc_mapobj *mcmap = calloc(1,sizeof(struct mc_mapobj));
+   *conn_ = mcmap;
    mcmap->map = msLoadMap(src->mapfile,NULL);
    if(!mcmap->map) {
       errorObj *errors = NULL;
@@ -52,13 +62,13 @@ static apr_status_t _ms_get_mapobj(void **conn_, void *params, apr_pool_t *pool)
       return APR_EGENERAL;
    }
    msMapSetLayerProjections(mcmap->map);
-   *conn_ = mcmap;
    return APR_SUCCESS;
 }
 
 static apr_status_t _ms_free_mapobj(void *conn_, void *params, apr_pool_t *pool) {
    struct mc_mapobj *mcmap = (struct mc_mapobj*) conn_;
    msFreeMap(mcmap->map);
+   free(mcmap);
    return APR_SUCCESS;
 }
 
@@ -66,7 +76,43 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
    apr_status_t rv;
    mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
    struct mc_mapobj *mcmap;
-   rv = apr_reslist_acquire(src->mapobj, (void **) &mcmap);
+   apr_reslist_t *mapobjs = NULL;
+   if(!mapobj_container || NULL == (mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING))) {
+#ifdef APR_HAS_THREADS
+      if(ctx->threadlock)
+         apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
+      if(!mapobj_container) {
+         mapobj_container = apr_hash_make(ctx->process_pool);
+      }
+      mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING);
+      if(!mapobjs) {
+         apr_status_t rv;
+         rv = apr_reslist_create(&mapobjs,
+                 0 /* min */,
+                 1 /* soft max */,
+                 30 /* hard max */,
+                 6 * 1000000 /*6 seconds, ttl*/,
+                 _ms_get_mapobj, /* resource constructor */
+                 _ms_free_mapobj, /* resource destructor */
+                 src, ctx->process_pool);
+         if (rv != APR_SUCCESS) {
+            ctx->set_error(ctx, 500, "failed to create mapobj connection pool for cache %s", src->source.name);
+#ifdef APR_HAS_THREADS
+            if(ctx->threadlock)
+               apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
+            return NULL;
+         }
+         apr_hash_set(mapobj_container,src->source.name,APR_HASH_KEY_STRING,mapobjs);
+      }
+      assert(mapobjs);
+#ifdef APR_HAS_THREADS
+      if(ctx->threadlock)
+         apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
+#endif
+   }
+   rv = apr_reslist_acquire(mapobjs, (void **) &mcmap);
    if (rv != APR_SUCCESS) {
       ctx->set_error(ctx, 500, "failed to aquire mappObj instance: %s", mcmap->error);
       return NULL;
@@ -77,10 +123,12 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
 static void _release_mapboj(mapcache_context *ctx, mapcache_map *map, struct mc_mapobj *mcmap) {
    mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
    msFreeLabelCache(&mcmap->map->labelcache);
+   apr_reslist_t *mapobjs = apr_hash_get(mapobj_container,src->source.name, APR_HASH_KEY_STRING);
+   assert(mapobjs);
    if (GC_HAS_ERROR(ctx)) {
-      apr_reslist_invalidate(src->mapobj, (void*) mcmap);
+      apr_reslist_invalidate(mapobjs, (void*) mcmap);
    } else {
-      apr_reslist_release(src->mapobj, (void*) mcmap);
+      apr_reslist_release(mapobjs, (void*) mcmap);
    }
 }
 /**
@@ -92,23 +140,26 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   
    struct mc_mapobj *mcmap = _get_mapboj(ctx,map);
    GC_CHECK_ERROR(ctx);
-   
-   if (msLoadProjectionString(&(mcmap->map->projection), map->grid_link->grid->srs) != 0) {
-      errors = msGetErrorObj();
-      ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
-      _release_mapboj(ctx,map,mcmap);
-      return;
-   }
-   switch(map->grid_link->grid->unit) {
-      case MAPCACHE_UNIT_DEGREES:
-         mcmap->map->units = MS_DD;
-         break;
-      case MAPCACHE_UNIT_FEET:
-         mcmap->map->units = MS_FEET;
-         break;
-      case MAPCACHE_UNIT_METERS:
-         mcmap->map->units = MS_METERS;
-         break;
+
+   if(mcmap->grid_link != map->grid_link) {
+      if (msLoadProjectionString(&(mcmap->map->projection), map->grid_link->grid->srs) != 0) {
+         errors = msGetErrorObj();
+         ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
+         _release_mapboj(ctx,map,mcmap);
+         return;
+      }
+      switch(map->grid_link->grid->unit) {
+         case MAPCACHE_UNIT_DEGREES:
+            mcmap->map->units = MS_DD;
+            break;
+         case MAPCACHE_UNIT_FEET:
+            mcmap->map->units = MS_FEET;
+            break;
+         case MAPCACHE_UNIT_METERS:
+            mcmap->map->units = MS_METERS;
+            break;
+      }
+      mcmap->grid_link = map->grid_link;
    }
 
   
@@ -179,7 +230,6 @@ void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, e
 void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapcache_cfg *cfg,
       mapcache_source *source) {
    mapcache_source_mapserver *src = (mapcache_source_mapserver*)source;
-   apr_status_t rv;
    /* check all required parameters are configured */
    if(!src->mapfile) {
       ctx->set_error(ctx, 400, "mapserver source %s has no <mapfile> configured",source->name);
@@ -190,19 +240,6 @@ void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapca
    }
 
    msSetup();
-   rv = apr_reslist_create(&(src->mapobj),
-           0 /* min */,
-           1 /* soft max */,
-           30 /* hard max */,
-           6 * 1000000 /*6 seconds, ttl*/,
-           _ms_get_mapobj, /* resource constructor */
-           _ms_free_mapobj, /* resource destructor */
-           src, ctx->pool);
-   if (rv != APR_SUCCESS) {
-      ctx->set_error(ctx, 500, "failed to create sqlite read-only connection pool");
-      return;
-   }
-   apr_pool_cleanup_register(ctx->pool, src->mapobj, (void*) apr_reslist_destroy, apr_pool_cleanup_null);
    
    /* do a test load to check the mapfile is correct */
    mapObj *map = msLoadMap(src->mapfile, NULL);

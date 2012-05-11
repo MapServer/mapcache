@@ -37,10 +37,6 @@
 #include <apr_tables.h>
 #include <apr_hash.h>
 
-#if defined USE_SQLITE || defined USE_BDB || defined USE_MAPSERVER
-#include <apr_reslist.h>
-#endif
-
 #include "util.h"
 #include "ezxml.h"
 
@@ -307,7 +303,6 @@ typedef struct mapcache_source_mapserver mapcache_source_mapserver;
 struct mapcache_source_mapserver {
     mapcache_source source;
     char *mapfile;
-    apr_reslist_t *mapobj;
 };
 #endif
 
@@ -441,12 +436,9 @@ struct mapcache_cache_sqlite {
    mapcache_cache_sqlite_stmt get_stmt;
    mapcache_cache_sqlite_stmt set_stmt;
    mapcache_cache_sqlite_stmt delete_stmt;
-   apr_reslist_t *ro_connection_pool;
-   apr_reslist_t *rw_connection_pool;
-   void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
    apr_table_t *pragmas;
+   void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
    int n_prepared_statements;
-   mapcache_context *ctx;
 };
 
 /**
@@ -470,7 +462,6 @@ mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
 typedef struct mapcache_cache_tc mapcache_cache_tc;
 struct mapcache_cache_tc {
    mapcache_cache cache;
-   apr_reslist_t *connection_pool;
    char *basedir;
    char *key_template;
    mapcache_context *ctx;
