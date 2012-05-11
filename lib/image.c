@@ -38,22 +38,34 @@ mapcache_image* mapcache_image_create(mapcache_context *ctx) {
     mapcache_image *img = (mapcache_image*)apr_pcalloc(ctx->pool,sizeof(mapcache_image));
     img->w= img->h= 0;
     img->data=NULL;
+    img->has_alpha = MC_ALPHA_UNKNOWN;
+    img->is_blank = MC_EMPTY_UNKNOWN;
     return img;
 }
 
 int mapcache_image_has_alpha(mapcache_image *img) {
    size_t i,j;
-   unsigned char *ptr, *rptr = img->data;
-   for(i=0;i<img->h;i++) {     
-      ptr = rptr;
-      for(j=0;j<img->w;j++) {
-         if(ptr[3]<(unsigned char)255)
-            return 1;
-         ptr += 4;
+   if(img->has_alpha == MC_ALPHA_UNKNOWN) {
+      unsigned char *ptr, *rptr = img->data;
+      for(i=0;i<img->h;i++) {     
+         ptr = rptr;
+         for(j=0;j<img->w;j++) {
+            if(ptr[3]<(unsigned char)255) {
+               img->has_alpha = MC_ALPHA_YES;
+               return 1;
+            }
+            ptr += 4;
+         }
+         rptr += img->stride;
       }
-      rptr += img->stride;
+      img->has_alpha = MC_ALPHA_NO;
    }
-   return 0;
+   assert(img->has_alpha != MC_ALPHA_UNKNOWN);
+   if(img->has_alpha == MC_ALPHA_YES) {
+      return 1;
+   } else {
+      return 0;
+   }
 }
 
 void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_image *overlay) {
@@ -256,7 +268,7 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
       }
       for(i=0;i<mt->metasize_x;i++) {
          for(j=0;j<mt->metasize_y;j++) {
-            tileimg = (mapcache_image*)apr_pcalloc(ctx->pool,sizeof(mapcache_image));
+            tileimg = mapcache_image_create(ctx);
             tileimg->w = mt->map.grid_link->grid->tile_sx;
             tileimg->h = mt->map.grid_link->grid->tile_sy;
             tileimg->stride = metatile->stride;
@@ -286,17 +298,25 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
 }
 
 int mapcache_image_blank_color(mapcache_image* image) {
-   int* pixptr;
-   int r,c;
-   for(r=0;r<image->h;r++) {
-      pixptr = (int*)(image->data + r * image->stride);
-      for(c=0;c<image->w;c++) {
-         if(*(pixptr++) != *((int*)image->data)) {
-            return MAPCACHE_FALSE;
+   if(image->is_blank == MC_EMPTY_UNKNOWN) {
+      int* pixptr;
+      int r,c;
+      for(r=0;r<image->h;r++) {
+         pixptr = (int*)(image->data + r * image->stride);
+         for(c=0;c<image->w;c++) {
+            if(*(pixptr++) != *((int*)image->data)) {
+               image->is_blank = MC_EMPTY_NO;
+               return MAPCACHE_FALSE;
+            }
          }
       }
+      image->is_blank = MC_EMPTY_YES;
    }
-   return MAPCACHE_TRUE;
+   assert(image->is_blank != MC_EMPTY_UNKNOWN);
+   if(image->is_blank == MC_EMPTY_YES)
+      return MAPCACHE_TRUE;
+   else
+      return MAPCACHE_FALSE;
 }
 
 /* vim: ai ts=3 sts=3 et sw=3

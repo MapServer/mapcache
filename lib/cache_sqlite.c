@@ -688,6 +688,10 @@ static void _mapcache_cache_sqlite_multi_set(mapcache_context *ctx, mapcache_til
 static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *tile) {
    struct sqlite_conn *conn = _sqlite_get_conn(ctx, tile, 0);
    GC_CHECK_ERROR(ctx);
+   if(!tile->raw_image) {
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+   }
    sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
    _single_mbtile_set(ctx,tile,conn);
    if (GC_HAS_ERROR(ctx)) {
@@ -702,6 +706,20 @@ static void _mapcache_cache_mbtiles_multi_set(mapcache_context *ctx, mapcache_ti
    struct sqlite_conn *conn = _sqlite_get_conn(ctx, &tiles[0], 0);
    int i;
    GC_CHECK_ERROR(ctx);
+
+   /* decode/encode image data before going into the sqlite write lock */
+   for (i = 0; i < ntiles; i++) {
+      mapcache_tile *tile = &tiles[i];
+      if(!tile->raw_image) {
+         tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+         GC_CHECK_ERROR(ctx);
+      }
+      /* only encode to image format if tile is not blank */
+      if (mapcache_image_blank_color(tile->raw_image) != MAPCACHE_TRUE && !tile->encoded_data) {
+         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+         GC_CHECK_ERROR(ctx);
+      }
+   }
    sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
    for (i = 0; i < ntiles; i++) {
       mapcache_tile *tile = &tiles[i];
