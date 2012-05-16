@@ -335,13 +335,15 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
 
    str = apr_table_get(params,"SERVICE");
    if(!str) {
-      errcode=400;
-      errmsg = "received wms request with no service param";
-      /* set the service to null as we don't want service exceptions to be generated */
-      ctx->service = NULL;
-      goto proxies;
-   }
-   if( strcasecmp(str,"wms") ) {
+      /* service is optional if we have a getmap */
+      str = apr_table_get(params,"REQUEST");
+      if(!str) {
+         errcode = 400;
+         errmsg = "received wms with no service and request";
+         ctx->service = NULL;
+         goto proxies;
+      }
+   } else if( strcasecmp(str,"wms") ) {
       errcode = 400;
       errmsg = apr_psprintf(ctx->pool,"received wms request with invalid service param %s", str);
       goto proxies;
