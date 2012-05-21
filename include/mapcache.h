@@ -400,7 +400,6 @@ struct mapcache_cache_disk {
     char *base_directory;
     char *filename_template;
     int symlink_blank;
-    int symlink_rel;
     int creation_retry;
 
     /**
