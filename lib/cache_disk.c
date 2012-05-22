@@ -40,75 +40,67 @@
 #endif
 
 /**
- * \brief computes the relative path bewteen two destinations
+ * \brief computes the relative path between two destinations
  *
- * \param pointer to char* that will contain path to tile
- * \param pointer to char* that will contain path to blank
- * \param pointer to buffer that will contain the result
- * \param size of buffer
- *
- * \return 0 on success, 1 if buffer is to small.
+ * \param tilename the absolute filename of the tile
+ * \param blankname the absolute path of the blank tile image
  */
-int relative_path(char* tile, char* blank, char* buffer, int size) {
-   char* tileptr = tile;
-   char* blankptr = blank;
-   char* l_tileptr = tile;
-   char* l_blankptr = blank;
-   int next = 1;
 
-   while(next && *tileptr != '\0' && *blankptr != '\0') {
-      tileptr++;
-      blankptr++;
+char* relative_path(mapcache_context *ctx, char* tilename, char* blankname) {
+   int updir_cnt = 0;
+   char *blank_rel = "";
 
-      if(*tileptr == '/' && *blankptr == '/') {
-         *tileptr = '\0';
-         *blankptr = '\0';
-
-         if(strcmp(l_tileptr, l_blankptr) == 0) {
-            l_tileptr = tileptr;
-            l_blankptr = blankptr;
-         } else {
-            next = 0;
-         }
-
-         *tileptr = '/';
-         *blankptr = '/';
-      } else if(*tileptr == '/') {
-         next = 0;
-      } else if(*blankptr == '/') {
-         next = 0;
-      }
+   /* work up the directory paths of the tile and blank filename to find the common
+    root */
+   char *tile_it = tilename, *blank_it = blankname;
+   if(*tile_it != *blank_it) {
+       /* the two files have no common root.
+        * This really shouldn't happen on a unix FS hierarchy, and symbolic linking
+        * is enabled only on these platforms, so this case should in practice never 
+        * happen.
+        * we return the absolute path, and should probably set a warning message
+        */
+       return apr_pstrdup(ctx->pool, blankname);
+   }
+   while(*(tile_it+1) && *(blank_it+1) && *(tile_it+1) == *(blank_it+1)) {
+       tile_it++;
+       blank_it++;
    }
 
-   char go_back[]="../";
-   char *ptr=buffer;
+   /* tile_it and blank_it point on the last common character of the two filenames,
+    which should be a '/'. If not, return the full blank name
+    * (and set a warning message? )*/
+   if(*tile_it != *blank_it || *tile_it != '/') {
+      return apr_pstrdup(ctx->pool, blankname);
+   }
+   
+   blank_it++;
+   while(*tile_it == '/') tile_it++; /*skip leading '/'s*/
+   
+   /* blank_it now contains the path that must be appended after the relative
+    part of the constructed path,e.g.:
+      - tilename = "/basepath/tilesetname/gridname/03/000/05/08.png"
+      - blankname = "/basepath/tilesetname/gridname/blanks/005599FF.png"
+    then
+      - tile_it is "03/000/05/08.png"
+      - blank_it is "blanks/005599FF.png"
+    */
 
-   while(*l_tileptr != '\0') {
-      l_tileptr++;
-
-      if(*l_tileptr == '/') {
-         if(size < 4) {
-            return 1;
-         }
-
-         memcpy(ptr, go_back, 3);
-         ptr+=3;
-         size-=3;
-      }
+   /* we now count the number of '/' in the remaining tilename */
+   while(*tile_it) {
+       if(*tile_it == '/') {
+           updir_cnt++;
+           /* also skip consecutive '/'s */
+           while(*(tile_it+1)=='/') tile_it++;
+       }
+       tile_it ++;
    }
 
-   l_blankptr++;
-   const int length = strlen(l_blankptr);
-
-   if(size <= length) {
-      return 1;
+   while(updir_cnt--) {
+       blank_rel = apr_pstrcat(ctx->pool, blank_rel, "../", NULL);
    }
-
-   memcpy(ptr, l_blankptr, length);
-   ptr+=length;
-   *ptr = '\0';
-
-   return 0;
+   blank_rel = apr_pstrcat(ctx->pool,blank_rel,blank_it,NULL);
+   return blank_rel;
 }
 
 /**
@@ -531,33 +523,25 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
          }
 
          int retry_count_create_symlink = 0;
-         const int symlink_rel = ((mapcache_cache_disk*)tile->tileset->cache)->symlink_rel;
-         char* blankname_ptr = blankname;
 
          /*
-          * compute the relative path between tile and blank tile if symlink_rel is set.
+          * compute the relative path between tile and blank tile
           */
-         if(symlink_rel) {
-            char blankname_rel[255];
-            if(relative_path(filename, blankname, blankname_rel, 255) != 0) {
-               ctx->set_error(ctx, 500, "failed to link tile %s to %s, buffer is to small", filename, blankname);
-               return; /* we could not create the file */
-            }
-
-            blankname_ptr=blankname_rel;
-         }
+         char *blankname_rel = NULL;
+         blankname_rel = relative_path(ctx,filename, blankname);
+         GC_CHECK_ERROR(ctx);
 
          /*
           * depending on configuration symlink creation will retry if it fails.
           * this can happen on nfs mounted network storage.
           * the solution is to create the containing directory again and retry the symlink creation.
           */
-         while(symlink(blankname_ptr, filename) != 0) {
+         while(symlink(blankname_rel, filename) != 0) {
             retry_count_create_symlink++;
 
             if(retry_count_create_symlink > creation_retry) {
                char *error = strerror(errno);
-               ctx->set_error(ctx, 500, "failed to link tile %s to %s: %s",filename, blankname_ptr, error);
+               ctx->set_error(ctx, 500, "failed to link tile %s to %s: %s",filename, blankname_rel, error);
                return; /* we could not create the file */
             }
 
@@ -670,15 +654,7 @@ static void _mapcache_cache_disk_configuration_parse_xml(mapcache_context *ctx, 
    if (!template_layout && (cur_node = ezxml_child(node,"symlink_blank")) != NULL) {
      if(strcasecmp(cur_node->txt,"false")){
 #ifdef HAVE_SYMLINK
-        char* linking=NULL;
         dcache->symlink_blank=1;
-        dcache->symlink_rel=0;
-
-        if((linking = (char*) ezxml_attr(cur_node,"linking")) != NULL) {
-           if(strcasecmp(linking, "relative") == 0) {
-              dcache->symlink_rel=1;
-           }
-        }
 #else
        ctx->set_error(ctx,400,"cache %s: host system does not support file symbolic linking",cache->name);
        return;
@@ -715,7 +691,6 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx) {
       return NULL;
    }
    cache->symlink_blank = 0;
-   cache->symlink_rel = 0;
    cache->creation_retry = 0;
    cache->cache.metadata = apr_table_make(ctx->pool,3);
    cache->cache.type = MAPCACHE_CACHE_DISK;
