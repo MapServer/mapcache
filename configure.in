@@ -19,7 +19,6 @@ AC_CHECK_FUNC(symlink,[CFLAGS="$CFLAGS -DHAVE_SYMLINK"])
 TARGETS=
 
 
-AC_SUBST(MISC_ENABLED)
 
 # macro that is used to parse a --with-apxs parameter
 AC_DEFUN([APXS_CHECK],[
@@ -1722,6 +1721,22 @@ int main(int argc,char **argv)
 #############################################################################
 
 
+AC_DEFUN([BDB_CHECK],[
+  AC_ARG_WITH(bdb,
+              AC_HELP_STRING([--with-bdb], [enable berkeley db support]),
+              ,
+              [with_bdb=yes]
+              )
+   if test "x$with_bdb" != "xno"; then
+      AX_PATH_BDB([4],[
+                  BDB_ENABLED="-DUSE_BDB"
+                  BDB_LIB="$BDB_LDFLAGS $BDB_LIBS"
+                  BDB_INC="$BDB_CPPFLAGS"])
+   fi
+   AC_SUBST(BDB_ENABLED, [$BDB_ENABLED])
+   AC_SUBST(BDB_LIB, [$BDB_LIB])
+   AC_SUBST(BDB_INC, [$BDB_INC])
+])
 
 DEBUG_CHECK
 
@@ -1746,6 +1761,7 @@ else
     AC_SUBST(MODULE_TARGET,"")
 fi
 
+
 FASTCGI_CHECK
 
 APR_CHECK
@@ -1768,12 +1784,10 @@ GEOS_CHECK
 
 MAPSERVER_CHECK
 
-AX_PATH_BDB([4],[AC_SUBST(BDB_ENABLED,[-DUSE_BDB])])
-AC_SUBST(BDB_LIB, "$BDB_LDFLAGS $BDB_LIBS")
-AC_SUBST(BDB_INC,$BDB_CPPFLAGS)
-AC_SUBST(MISC_ENABLED,$MISC_ENABLED)
-
+BDB_CHECK
 CURL_CHECK
+
+AC_SUBST(MISC_ENABLED,$MISC_ENABLED)
 
 # Write config.status and the Makefile
 AC_CONFIG_FILES(Makefile.inc nginx/config lib/Makefile apache/Makefile util/Makefile cgi/Makefile)
