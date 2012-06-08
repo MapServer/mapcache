@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ "$1" = configure ] ; then
+	# only enable on new installs, not on upgrades
+	if [ -z "$2" ] ; then
+		a2enmod -q mapcache
+	fi
+	# only restart if mod_something is enabled
+	if [ -e /etc/apache2/mods-enabled/mapcache.load ] ; then
+		invoke-rc.d apache2 restart
+	fi
+fi

@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+#
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+#
+# Modified to make a template file for a multi-binary package with separated
+# build-arch and build-indep targets  by Bill Allombert 2001
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+
+%:
+	dh $@ 
+
+override_dh_auto_build:
+	dh_auto_build
+	# Make apache module
+	$(MAKE) libdir=$(CURDIR)/lib module
+
+override_dh_auto_install:
+	$(MAKE) prefix=$(CURDIR)/debian/tmp/usr exec_prefix=$(CURDIR)/debian/tmp/usr install-lib install-util install-cgi
+	# Install apache module
+	install -d $(CURDIR)/debian/tmp/etc/apache2/mods-available
+	install -m 644 debian/mapcache.load $(CURDIR)/debian/tmp/etc/apache2/mods-available
+	install -d $(CURDIR)/debian/tmp/usr/lib/apache2/modules
+	install -m 644 apache/.libs/mod_mapcache.so $(CURDIR)/debian/tmp/usr/lib/apache2/modules
+	dh_install --sourcedir debian/tmp

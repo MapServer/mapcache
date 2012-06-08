@@ -1,0 +1,51 @@
+Source: mapcache
+Section: devel
+Priority: extra
+Maintainer: Tom Payne <tom.payne@camptocamp.com>
+Build-Depends: debhelper (>= 7.0.50~), autotools-dev,
+ apache2-prefork-dev, libpng12-dev, libjpeg62-dev, libcurl4-gnutls-dev,
+ libpcre3-dev, libpixman-1-dev, libfcgi-dev, libgdal1-dev, libgeos-dev,
+ libsqlite3-dev, libtiff4-dev
+Standards-Version: 3.8.4
+Homepage: http://mapserver.org/trunk/mapcache/
+
+Package: libmapcache
+Section: misc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: tile caching server
+ MapCache is a server that implements tile caching to speed up access to WMS
+ layers. The primary objectives are to be fast and easily deployable, while
+ offering the essential features (and more!) expected from a tile caching
+ solution.
+
+Package: mapcache-cgi
+Section: web
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libmapcache
+Description: tile caching server - CGI binary
+ MapCache is a server that implements tile caching to speed up access to WMS
+ layers. The primary objectives are to be fast and easily deployable, while
+ offering the essential features (and more!) expected from a tile caching
+ solution.
+
+Package: mapcache-tools
+Section: misc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libmapcache
+Description: tile caching server - tools
+ MapCache is a server that implements tile caching to speed up access to WMS
+ layers. The primary objectives are to be fast and easily deployable, while
+ offering the essential features (and more!) expected from a tile caching
+ solution.
+
+Package: libapache2-mod-mapcache
+Section: web
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ apache2-mpm-prefork | apache2-mpm-itk, apache2.2-common, libmapcache
+Description: tile caching server - Apache module
+ MapCache is a server that implements tile caching to speed up access to WMS
+ layers. The primary objectives are to be fast and easily deployable, while
+ offering the essential features (and more!) expected from a tile caching
+ solution.
