@@ -230,6 +230,18 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   mapcache_image *image = mapcache_image_create(ctx);
   mapcache_image *srcimage;
   double tileresolution, dstminx, dstminy, hf, vf;
+#ifdef DEBUG
+  /* we know at least one tile contains data */
+  for(i=0; i<ntiles; i++) {
+    if(!tiles[i]->nodata) {
+      break;
+    }
+  }
+  if(i==ntiles) {
+    ctx->set_error(ctx,500,"###BUG#### mapcache_tileset_assemble_map_tiles called with no tiles containing data");
+    return NULL;
+  }
+#endif
 
   image->w = width;
   image->h = height;
@@ -291,6 +303,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
         oy = (tile->y - my) * tile->grid_link->grid->tile_sy;
         break;
     }
+    if(tile->nodata) continue;
 
 
     fakeimg.stride = srcimage->stride;
@@ -598,19 +611,25 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
   }
 
   if(ret == MAPCACHE_CACHE_MISS) {
+
     /* bail out straight away if the tileset has no source */
+    if(!tile->tileset->source) {
+      /* there is no source configured for this tile. not an error, let caller now*/
+      /*
+      ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",
+            tile->tileset->name);
+      */
+      tile->nodata = 1;
+      return;
+    }
+
+    /* bail out in non-blocking mode */
     if(ctx->config->non_blocking) {
       ctx->set_error(ctx,404,"tile not in cache, and configured for readonly mode");
       return;
     }
-    if(!tile->tileset->source) {
-      ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",
-                     tile->tileset->name);
-      return;
-    }
 
     /* the tile does not exist, we must take action before re-asking for it */
-
     /*
      * is the tile already being rendered by another thread ?
      * the call is protected by the same mutex that sets the lock on the tile,

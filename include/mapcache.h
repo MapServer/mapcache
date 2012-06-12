@@ -567,6 +567,7 @@ struct mapcache_map {
   apr_table_t *dimensions;
   mapcache_buffer *encoded_data;
   mapcache_image *raw_image;
+  int nodata; /**< \sa mapcache_tile::nodata */
   int width, height;
   mapcache_extent extent;
   apr_time_t mtime; /**< last modification time */
@@ -1109,6 +1110,15 @@ struct mapcache_tile {
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 
   apr_table_t *dimensions;
+  /**
+   * flag stating the tile is empty (i.e. fully transparent).
+   * if set, this indicates that there was no error per se, but that there was
+   * no way to get data back from the cache for this tile. This will happen for
+   * a tileset with no <source> configured, for tiles that have not been preseeded.
+   * Tile assembling functions should look for this flag and ignore such a tile when
+   * compositing image data
+   */
+  int nodata;
 };
 
 /**

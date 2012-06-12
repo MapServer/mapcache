@@ -196,7 +196,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 {
   int expires = 0;
   mapcache_http_response *response;
-  int i;
+  int i,first = -1;
+  int ntiles_with_data = 0;
   char *timestr;
   mapcache_image *base=NULL,*overlay;
   mapcache_image_format *format = NULL;
@@ -215,17 +216,27 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   if(GC_HAS_ERROR(ctx))
     return NULL;
 
+  /* count how many tiles actually contain data */
+  for(i=0; i<req_tile->ntiles; i++) {
+    /* add 1 if tile->nodata == 0 */
+    ntiles_with_data -= req_tile->tiles[i]->nodata - 1;
+  }
+  if(ntiles_with_data == 0) {
+    ctx->set_error(ctx,404,
+                   "no tiles containing image data could be retrieved (not in cache, and/or no source configured)");
+    return NULL;
+  }
   /* this loop retrieves the tiles from the caches, and eventually decodes and merges them together
    * if multiple tiles were asked for */
   for(i=0; i<req_tile->ntiles; i++) {
     mapcache_tile *tile = req_tile->tiles[i];
-    if(GC_HAS_ERROR(ctx))
-      return NULL;
-    if(i==0) {
+    if(tile->nodata) continue;
+    if(first == -1) {
+      first = i;
       response->mtime = tile->mtime;
       expires = tile->expires;
       /* if we have multiple tiles to merge, decode the image data */
-      if(req_tile->ntiles>1) {
+      if(ntiles_with_data>1) {
         if(!tile->raw_image) {
           tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
           if(!tile->raw_image) return NULL;
@@ -252,12 +263,11 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   format = NULL;
 
   /* if we had more than one tile, we need to encode the raw image data into a mapcache_buffer */
-  if(req_tile->ntiles > 1) {
-    if(req_tile->ntiles>1) {
-      format = req_tile->tiles[0]->tileset->format;
-      if(req_tile->format) {
-        format = req_tile->format;
-      }
+  if(ntiles_with_data > 1) {
+    if(req_tile->format) {
+      format = req_tile->format;
+    } else {
+      format = req_tile->tiles[first]->tileset->format;
       if(!format) {
         format = ctx->config->default_image_format; /* this one is always defined */
       }
@@ -267,8 +277,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       return NULL;
     }
   } else {
-    response->data = req_tile->tiles[0]->encoded_data;
-    format = req_tile->tiles[0]->tileset->format;
+    response->data = req_tile->tiles[first]->encoded_data;
+    format = req_tile->tiles[first]->tileset->format;
   }
 
   /* compute the content-type */
@@ -324,21 +334,34 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
   mapcache_prefetch_tiles(ctx,tiles,ntiles);
   GC_CHECK_ERROR(ctx);
   for(i=0; i<nmaps; i++) {
-    int j;
+    int j,hasdata = 0;
     for(j=0; j<nmaptiles[i]; j++) {
+      mapcache_tile *tile = maptiles[i][j];
+      if(tile->nodata) {
+        continue;
+      }
+      hasdata++;
       /* update the map modification time if it is older than the tile mtime */
-      if(maptiles[i][j]->mtime>maps[i]->mtime) maps[i]->mtime = maptiles[i][j]->mtime;
+      if(tile->mtime>maps[i]->mtime) {
+        maps[i]->mtime = tile->mtime;
+      }
 
       /* set the map expiration delay to the tile expiration delay,
        * either if the map hasn't got an expiration delay yet
        * or if the tile expiration is shorter than the map expiration
        */
-      if(!maps[i]->expires || maptiles[i][j]->expires<maps[i]->expires) maps[i]->expires =maptiles[i][j]->expires;
+      if(!maps[i]->expires || tile->expires<maps[i]->expires) {
+        maps[i]->expires = tile->expires;
+      }
     }
-    maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
-                         &maps[i]->extent, maps[i]->width, maps[i]->height,
-                         nmaptiles[i], maptiles[i],
-                         mode);
+    if(hasdata) {
+      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
+                           &maps[i]->extent, maps[i]->width, maps[i]->height,
+                           nmaptiles[i], maptiles[i],
+                           mode);
+    } else {
+      maps[i]->nodata = 1;
+    }
   }
 }
 
@@ -346,7 +369,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 {
   mapcache_image_format *format = NULL;
   mapcache_http_response *response;
-  mapcache_map *basemap;
+  mapcache_map *basemap = NULL;
   int i;
   char *timestr;
 #ifdef DEBUG
@@ -364,15 +387,25 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   format = NULL;
   response = mapcache_http_response_create(ctx->pool);
-  basemap = req_map->maps[0];
 
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
     mapcache_fetch_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
     if(GC_HAS_ERROR(ctx)) return NULL;
-    for(i=1; i<req_map->nmaps; i++) {
+    for(i=0; i<req_map->nmaps; i++) {
+      if(req_map->maps[i]->nodata == 0) {
+        basemap = req_map->maps[i];
+        break;
+      }
+    }
+    if(!basemap) {
+      ctx->set_error(ctx,404,
+                     "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
+      return NULL;
+    }
+    for(i=i+1; i<req_map->nmaps; i++) {
       mapcache_map *overlaymap = req_map->maps[i];
-      if(GC_HAS_ERROR(ctx)) return NULL;
+      if(overlaymap->nodata) continue;
       mapcache_image_merge(ctx,basemap->raw_image,overlaymap->raw_image);
       if(GC_HAS_ERROR(ctx)) return NULL;
       if(overlaymap->mtime > basemap->mtime) basemap->mtime = overlaymap->mtime;
@@ -380,6 +413,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
     }
   } else if(!ctx->config->non_blocking && req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD) {
     int i;
+    basemap = req_map->maps[0];
     for(i=0; i<req_map->nmaps; i++) {
       if(!req_map->maps[i]->tileset->source) {
         ctx->set_error(ctx,404,"cannot forward request for tileset %s: no source configured",
