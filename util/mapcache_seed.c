@@ -794,7 +794,7 @@ int main(int argc, const char **argv) {
             case 'M':
                 if ( MAPCACHE_SUCCESS != mapcache_util_extract_int_list(&ctx, (char*)optarg, ",", &metasizes, &n) ||
                         n != 2 || metasizes[0] <= 0 || metasizes[1] <=0) {
-                    return usage(argv[0], "failed to parse metasize, expecting comma separated 2 positive ints (e.g. -m 8,8");
+                    return usage(argv[0], "failed to parse metasize, expecting comma separated 2 positive ints (e.g. -M 8,8");
                 } else {
                    metax = metasizes[0];
                    metay = metasizes[1];
