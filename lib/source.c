@@ -31,12 +31,13 @@
 
 
 
-void mapcache_source_init(mapcache_context *ctx, mapcache_source *source) {
-	source->data_extent[0] =
-			source->data_extent[1] =
-			source->data_extent[2] =
-			source->data_extent[3] = -1;
-	source->metadata = apr_table_make(ctx->pool,3);
+void mapcache_source_init(mapcache_context *ctx, mapcache_source *source)
+{
+  source->data_extent[0] =
+    source->data_extent[1] =
+      source->data_extent[2] =
+        source->data_extent[3] = -1;
+  source->metadata = apr_table_make(ctx->pool,3);
 }
 /* vim: ai ts=3 sts=3 et sw=3
 */

@@ -37,25 +37,28 @@
  * \private \memberof mapcache_source_dummy
  * \sa mapcache_source::render_map()
  */
-void _mapcache_source_dummy_render_map(mapcache_context *ctx, mapcache_map *map) {
-   map->raw_image = mapcache_image_create(ctx);
-   map->raw_image->w = map->width;
-   map->raw_image->h = map->height;
-   map->raw_image->stride = 4 * map->width;
-   map->raw_image->data = malloc(map->width*map->height*4);
-   memset(map->raw_image->data,255,map->width*map->height*4);
-   apr_pool_cleanup_register(ctx->pool, map->raw_image->data,(void*)free, apr_pool_cleanup_null);
+void _mapcache_source_dummy_render_map(mapcache_context *ctx, mapcache_map *map)
+{
+  map->raw_image = mapcache_image_create(ctx);
+  map->raw_image->w = map->width;
+  map->raw_image->h = map->height;
+  map->raw_image->stride = 4 * map->width;
+  map->raw_image->data = malloc(map->width*map->height*4);
+  memset(map->raw_image->data,255,map->width*map->height*4);
+  apr_pool_cleanup_register(ctx->pool, map->raw_image->data,(void*)free, apr_pool_cleanup_null);
 }
 
-void _mapcache_source_dummy_query(mapcache_context *ctx, mapcache_feature_info *fi) {
-   ctx->set_error(ctx,500,"dummy source does not support queries");
+void _mapcache_source_dummy_query(mapcache_context *ctx, mapcache_feature_info *fi)
+{
+  ctx->set_error(ctx,500,"dummy source does not support queries");
 }
 
 /**
  * \private \memberof mapcache_source_dummy
  * \sa mapcache_source::configuration_parse()
  */
-void _mapcache_source_dummy_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source *source) {
+void _mapcache_source_dummy_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source *source)
+{
 }
 
 /**
@@ -63,22 +66,24 @@ void _mapcache_source_dummy_configuration_parse_xml(mapcache_context *ctx, ezxml
  * \sa mapcache_source::configuration_check()
  */
 void _mapcache_source_dummy_configuration_check(mapcache_context *ctx, mapcache_cfg *cfg,
-      mapcache_source *source) {
+    mapcache_source *source)
+{
 }
 
-mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx) {
-   mapcache_source_dummy *source = apr_pcalloc(ctx->pool, sizeof(mapcache_source_dummy));
-   if(!source) {
-      ctx->set_error(ctx, 500, "failed to allocate dummy source");
-      return NULL;
-   }
-   mapcache_source_init(ctx, &(source->source));
-   source->source.type = MAPCACHE_SOURCE_DUMMY;
-   source->source.render_map = _mapcache_source_dummy_render_map;
-   source->source.configuration_check = _mapcache_source_dummy_configuration_check;
-   source->source.configuration_parse_xml = _mapcache_source_dummy_configuration_parse_xml;
-   source->source.query_info = _mapcache_source_dummy_query;
-   return (mapcache_source*)source;
+mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx)
+{
+  mapcache_source_dummy *source = apr_pcalloc(ctx->pool, sizeof(mapcache_source_dummy));
+  if(!source) {
+    ctx->set_error(ctx, 500, "failed to allocate dummy source");
+    return NULL;
+  }
+  mapcache_source_init(ctx, &(source->source));
+  source->source.type = MAPCACHE_SOURCE_DUMMY;
+  source->source.render_map = _mapcache_source_dummy_render_map;
+  source->source.configuration_check = _mapcache_source_dummy_configuration_check;
+  source->source.configuration_parse_xml = _mapcache_source_dummy_configuration_parse_xml;
+  source->source.query_info = _mapcache_source_dummy_query;
+  return (mapcache_source*)source;
 }
 
 

@@ -56,42 +56,42 @@
  * @return A deep copy of the table passed in
  */
 APR_DECLARE(apr_table_t *) apr_table_clone(apr_pool_t *p,
-                                           const apr_table_t *t);
+    const apr_table_t *t);
 
 
 #endif
 
 #if APR_MAJOR_VERSION < 1
-   #ifndef APR_FOPEN_READ
-      #define APR_FOPEN_READ APR_READ
-   #endif
-   #ifndef APR_FOPEN_BUFFERED
-      #define APR_FOPEN_BUFFERED APR_BUFFERED
-   #endif
+#ifndef APR_FOPEN_READ
+#define APR_FOPEN_READ APR_READ
+#endif
+#ifndef APR_FOPEN_BUFFERED
+#define APR_FOPEN_BUFFERED APR_BUFFERED
+#endif
 
-   #ifndef APR_FOPEN_BINARY
-      #define APR_FOPEN_BINARY APR_BINARY
-   #endif
-   
-   #ifndef APR_FOPEN_CREATE
-      #define APR_FOPEN_CREATE APR_CREATE
-   #endif
+#ifndef APR_FOPEN_BINARY
+#define APR_FOPEN_BINARY APR_BINARY
+#endif
+
+#ifndef APR_FOPEN_CREATE
+#define APR_FOPEN_CREATE APR_CREATE
+#endif
 
 
-   #ifndef APR_FOPEN_WRITE
-      #define APR_FOPEN_WRITE APR_WRITE
-   #endif
-   
-   #ifndef APR_FOPEN_SHARELOCK
-      #define APR_FOPEN_SHARELOCK APR_SHARELOCK
-   #endif
+#ifndef APR_FOPEN_WRITE
+#define APR_FOPEN_WRITE APR_WRITE
+#endif
+
+#ifndef APR_FOPEN_SHARELOCK
+#define APR_FOPEN_SHARELOCK APR_SHARELOCK
+#endif
 #endif
 
 
 #if defined(_WIN32)
 struct mctimeval {
-    long    tv_sec;         /* seconds */
-    long    tv_usec;        /* and microseconds */
+  long    tv_sec;         /* seconds */
+  long    tv_usec;        /* and microseconds */
 };
 void  mapcache_gettimeofday(struct mctimeval *t, void *__not_used_here__);
 #else

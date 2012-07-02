@@ -148,53 +148,53 @@ mapcache_image *mapcache_error_image(mapcache_context *ctx, int width, int heigh
  * \brief structure passed to most mapcache functions to abstract common functions
  */
 struct mapcache_context {
-    /**
-     * \brief indicate that an error has happened
-     * \memberof mapcache_context
-     * \param c
-     * \param code the error code
-     * \param message human readable message of what happened
-     */
-    void (*set_error)(mapcache_context *ctx, int code, char *message, ...);
-    
-    void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
+  /**
+   * \brief indicate that an error has happened
+   * \memberof mapcache_context
+   * \param c
+   * \param code the error code
+   * \param message human readable message of what happened
+   */
+  void (*set_error)(mapcache_context *ctx, int code, char *message, ...);
 
-    /**
-     * \brief query context to know if an error has occured
-     * \memberof mapcache_context
-     */
-    int (*get_error)(mapcache_context * ctx);
+  void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
 
-    /**
-     * \brief get human readable message for the error
-     * \memberof mapcache_context
-     */
-    char* (*get_error_message)(mapcache_context * ctx);
-    
-    /**
-     * \brief get human readable message for the error
-     * \memberof mapcache_context
-     */
-    void (*clear_errors)(mapcache_context * ctx);
+  /**
+   * \brief query context to know if an error has occured
+   * \memberof mapcache_context
+   */
+  int (*get_error)(mapcache_context * ctx);
+
+  /**
+   * \brief get human readable message for the error
+   * \memberof mapcache_context
+   */
+  char* (*get_error_message)(mapcache_context * ctx);
+
+  /**
+   * \brief get human readable message for the error
+   * \memberof mapcache_context
+   */
+  void (*clear_errors)(mapcache_context * ctx);
 
 
-    /**
-     * \brief log a message
-     * \memberof mapcache_context
-     */
-    void (*log)(mapcache_context *ctx, mapcache_log_level level, char *message, ...);
+  /**
+   * \brief log a message
+   * \memberof mapcache_context
+   */
+  void (*log)(mapcache_context *ctx, mapcache_log_level level, char *message, ...);
 
-    const char* (*get_instance_id)(mapcache_context * ctx);
-    mapcache_context* (*clone)(mapcache_context *ctx);
-    apr_pool_t *pool;
-    apr_pool_t *process_pool;
-    void *threadlock;
-    char *_contenttype;
-    char *_errmsg;
-    int _errcode;
-    mapcache_cfg *config;
-    mapcache_service *service;
-    apr_table_t *exceptions;
+  const char* (*get_instance_id)(mapcache_context * ctx);
+  mapcache_context* (*clone)(mapcache_context *ctx);
+  apr_pool_t *pool;
+  apr_pool_t *process_pool;
+  void *threadlock;
+  char *_contenttype;
+  char *_errmsg;
+  int _errcode;
+  mapcache_cfg *config;
+  mapcache_service *service;
+  apr_table_t *exceptions;
 };
 
 void mapcache_context_init(mapcache_context *ctx);
@@ -208,13 +208,13 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst);
  * \brief autoexpanding buffer that allocates memory from a pool
  * \sa mapcache_buffer_create()
  * \sa mapcache_buffer_append()
- * 
+ *
  */
 struct mapcache_buffer {
-    char* buf; /**< pointer to the actual data contained in buffer */
-    size_t size; /**< number of bytes actually used in the buffer */
-    size_t avail; /**< number of bytes allocated */
-    apr_pool_t* pool; /**< apache pool to allocate from */
+  char* buf; /**< pointer to the actual data contained in buffer */
+  size_t size; /**< number of bytes actually used in the buffer */
+  size_t avail; /**< number of bytes allocated */
+  apr_pool_t* pool; /**< apache pool to allocate from */
 };
 
 /* in buffer.c */
@@ -243,43 +243,43 @@ int mapcache_buffer_append(mapcache_buffer *buffer, size_t len, void *data);
 /** @{ */
 
 typedef enum {
-    MAPCACHE_SOURCE_WMS,
-    MAPCACHE_SOURCE_MAPSERVER,
-    MAPCACHE_SOURCE_DUMMY,
-    MAPCACHE_SOURCE_GDAL
+  MAPCACHE_SOURCE_WMS,
+  MAPCACHE_SOURCE_MAPSERVER,
+  MAPCACHE_SOURCE_DUMMY,
+  MAPCACHE_SOURCE_GDAL
 } mapcache_source_type;
 
 /**\interface mapcache_source
  * \brief a source of data that can return image data
  */
 struct mapcache_source {
-    char *name; /**< the key this source can be referenced by */
-    double data_extent[4]; /**< extent in which this source can produce data */
-    mapcache_source_type type;
-    apr_table_t *metadata;
+  char *name; /**< the key this source can be referenced by */
+  double data_extent[4]; /**< extent in which this source can produce data */
+  mapcache_source_type type;
+  apr_table_t *metadata;
 
-    apr_array_header_t *info_formats;
-    /**
-     * \brief get the data for the metatile
-     *
-     * sets the mapcache_metatile::tile::data for the given tile
-     */
-    void (*render_map)(mapcache_context *ctx, mapcache_map *map);
+  apr_array_header_t *info_formats;
+  /**
+   * \brief get the data for the metatile
+   *
+   * sets the mapcache_metatile::tile::data for the given tile
+   */
+  void (*render_map)(mapcache_context *ctx, mapcache_map *map);
 
-    void (*query_info)(mapcache_context *ctx, mapcache_feature_info *fi);
+  void (*query_info)(mapcache_context *ctx, mapcache_feature_info *fi);
 
-    void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_source * source);
-    void (*configuration_check)(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_source * source);
+  void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_source * source);
+  void (*configuration_check)(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_source * source);
 };
 
 mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx,ezxml_t node);
 mapcache_http* mapcache_http_clone(mapcache_context *ctx, mapcache_http *orig);
 
 struct mapcache_http {
-   char *url; /**< the base url to request */
-   apr_table_t *headers; /**< additional headers to add to the http request, eg, Referer */
-   int connection_timeout;
-   /* TODO: authentication */
+  char *url; /**< the base url to request */
+  apr_table_t *headers; /**< additional headers to add to the http request, eg, Referer */
+  int connection_timeout;
+  /* TODO: authentication */
 };
 
 /**\class mapcache_source_wms
@@ -287,11 +287,11 @@ struct mapcache_http {
  * \implements mapcache_source
  */
 struct mapcache_source_wms {
-    mapcache_source source;
-    apr_table_t *wms_default_params; /**< default WMS parameters (SERVICE,REQUEST,STYLES,VERSION) */
-    apr_table_t *getmap_params; /**< WMS parameters specified in configuration */
-    apr_table_t *getfeatureinfo_params; /**< WMS parameters specified in configuration */
-    mapcache_http *http;
+  mapcache_source source;
+  apr_table_t *wms_default_params; /**< default WMS parameters (SERVICE,REQUEST,STYLES,VERSION) */
+  apr_table_t *getmap_params; /**< WMS parameters specified in configuration */
+  apr_table_t *getfeatureinfo_params; /**< WMS parameters specified in configuration */
+  mapcache_http *http;
 };
 
 #ifdef USE_MAPSERVER
@@ -301,16 +301,16 @@ struct mapcache_source_wms {
  */
 typedef struct mapcache_source_mapserver mapcache_source_mapserver;
 struct mapcache_source_mapserver {
-    mapcache_source source;
-    char *mapfile;
+  mapcache_source source;
+  char *mapfile;
 };
 #endif
 
 typedef struct mapcache_source_dummy mapcache_source_dummy;
 struct mapcache_source_dummy {
-    mapcache_source source;
-    char *mapfile;
-    void *mapobj;
+  mapcache_source source;
+  char *mapfile;
+  void *mapobj;
 };
 #if 0
 #ifdef USE_GDAL
@@ -319,10 +319,10 @@ struct mapcache_source_dummy {
  * \implements mapcache_source
  */
 struct mapcache_source_gdal {
-    mapcache_source source;
-    char *datastr; /**< the gdal source string*/
-    apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
-    GDALDatasetH *poDataset;
+  mapcache_source source;
+  char *datastr; /**< the gdal source string*/
+  apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
+  GDALDatasetH *poDataset;
 };
 #endif
 /** @} */
@@ -333,21 +333,21 @@ struct mapcache_source_gdal {
 
 /** @{ */
 typedef enum {
-    MAPCACHE_CACHE_DISK
+  MAPCACHE_CACHE_DISK
 #ifdef USE_MEMCACHE
-       ,MAPCACHE_CACHE_MEMCACHE
+  ,MAPCACHE_CACHE_MEMCACHE
 #endif
 #ifdef USE_SQLITE
-       ,MAPCACHE_CACHE_SQLITE
+  ,MAPCACHE_CACHE_SQLITE
 #endif
 #ifdef USE_BDB
-       ,MAPCACHE_CACHE_BDB
+  ,MAPCACHE_CACHE_BDB
 #endif
 #ifdef USE_TC
-       ,MAPCACHE_CACHE_TC
+  ,MAPCACHE_CACHE_TC
 #endif
 #ifdef USE_TIFF
-       ,MAPCACHE_CACHE_TIFF
+  ,MAPCACHE_CACHE_TIFF
 #endif
 } mapcache_cache_type;
 
@@ -355,37 +355,37 @@ typedef enum {
  * \brief a place to cache a mapcache_tile
  */
 struct mapcache_cache {
-    char *name; /**< key this cache is referenced by */
-    mapcache_cache_type type;
-    apr_table_t *metadata;
-    
-    /**
-     * get tile content from cache
-     * \returns MAPCACHE_SUCCESS if the data was correctly loaded from the disk
-     * \returns MAPCACHE_FAILURE if the file exists but contains no data
-     * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
-     * \memberof mapcache_cache
-     */
-    int (*tile_get)(mapcache_context *ctx, mapcache_tile * tile);
-    
-    /**
-     * delete tile from cache
-     * 
-     * \memberof mapcache_cache
-     */
-    void (*tile_delete)(mapcache_context *ctx, mapcache_tile * tile);
+  char *name; /**< key this cache is referenced by */
+  mapcache_cache_type type;
+  apr_table_t *metadata;
 
-    int (*tile_exists)(mapcache_context *ctx, mapcache_tile * tile);
+  /**
+   * get tile content from cache
+   * \returns MAPCACHE_SUCCESS if the data was correctly loaded from the disk
+   * \returns MAPCACHE_FAILURE if the file exists but contains no data
+   * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
+   * \memberof mapcache_cache
+   */
+  int (*tile_get)(mapcache_context *ctx, mapcache_tile * tile);
 
-    /**
-     * set tile content to cache
-     * \memberof mapcache_cache
-     */
-    void (*tile_set)(mapcache_context *ctx, mapcache_tile * tile);
-    void (*tile_multi_set)(mapcache_context *ctx, mapcache_tile *tiles, int ntiles);
+  /**
+   * delete tile from cache
+   *
+   * \memberof mapcache_cache
+   */
+  void (*tile_delete)(mapcache_context *ctx, mapcache_tile * tile);
 
-    void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
-    void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
+  int (*tile_exists)(mapcache_context *ctx, mapcache_tile * tile);
+
+  /**
+   * set tile content to cache
+   * \memberof mapcache_cache
+   */
+  void (*tile_set)(mapcache_context *ctx, mapcache_tile * tile);
+  void (*tile_multi_set)(mapcache_context *ctx, mapcache_tile *tiles, int ntiles);
+
+  void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
+  void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
 };
 
 /**\class mapcache_cache_disk
@@ -393,27 +393,27 @@ struct mapcache_cache {
  * \implements mapcache_cache
  */
 struct mapcache_cache_disk {
-    mapcache_cache cache;
-    char *base_directory;
-    char *filename_template;
-    int symlink_blank;
-    int creation_retry;
+  mapcache_cache cache;
+  char *base_directory;
+  char *filename_template;
+  int symlink_blank;
+  int creation_retry;
 
-    /**
-     * Set filename for a given tile
-     * \memberof mapcache_cache_disk
-     */
-    void (*tile_key)(mapcache_context *ctx, mapcache_tile *tile, char **path);
+  /**
+   * Set filename for a given tile
+   * \memberof mapcache_cache_disk
+   */
+  void (*tile_key)(mapcache_context *ctx, mapcache_tile *tile, char **path);
 };
 
 #ifdef USE_TIFF
 struct mapcache_cache_tiff {
-    mapcache_cache cache;
-    char *filename_template;
-    char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
-    int count_x;
-    int count_y;
-    mapcache_image_format_jpeg *format;
+  mapcache_cache cache;
+  char *filename_template;
+  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+  int count_x;
+  int count_y;
+  mapcache_image_format_jpeg *format;
 };
 #endif
 
@@ -426,20 +426,20 @@ typedef struct mapcache_cache_sqlite mapcache_cache_sqlite;
 typedef struct mapcache_cache_sqlite_stmt mapcache_cache_sqlite_stmt;
 
 struct mapcache_cache_sqlite_stmt {
-   char *sql;
+  char *sql;
 };
 
 struct mapcache_cache_sqlite {
-   mapcache_cache cache;
-   char *dbfile;
-   mapcache_cache_sqlite_stmt create_stmt;
-   mapcache_cache_sqlite_stmt exists_stmt;
-   mapcache_cache_sqlite_stmt get_stmt;
-   mapcache_cache_sqlite_stmt set_stmt;
-   mapcache_cache_sqlite_stmt delete_stmt;
-   apr_table_t *pragmas;
-   void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
-   int n_prepared_statements;
+  mapcache_cache cache;
+  char *dbfile;
+  mapcache_cache_sqlite_stmt create_stmt;
+  mapcache_cache_sqlite_stmt exists_stmt;
+  mapcache_cache_sqlite_stmt get_stmt;
+  mapcache_cache_sqlite_stmt set_stmt;
+  mapcache_cache_sqlite_stmt delete_stmt;
+  apr_table_t *pragmas;
+  void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
+  int n_prepared_statements;
 };
 
 /**
@@ -452,9 +452,9 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 #ifdef USE_BDB
 typedef struct mapcache_cache_bdb mapcache_cache_bdb;
 struct mapcache_cache_bdb {
-   mapcache_cache cache;
-   char *basedir;
-   char *key_template;
+  mapcache_cache cache;
+  char *basedir;
+  char *key_template;
 };
 mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
 #endif
@@ -462,10 +462,10 @@ mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
 #ifdef USE_TC
 typedef struct mapcache_cache_tc mapcache_cache_tc;
 struct mapcache_cache_tc {
-   mapcache_cache cache;
-   char *basedir;
-   char *key_template;
-   mapcache_context *ctx;
+  mapcache_cache cache;
+  char *basedir;
+  char *key_template;
+  mapcache_context *ctx;
 };
 mapcache_cache *mapcache_cache_tc_create(mapcache_context *ctx);
 #endif
@@ -477,8 +477,8 @@ typedef struct mapcache_cache_memcache mapcache_cache_memcache;
  * \implements mapcache_cache
  */
 struct mapcache_cache_memcache {
-    mapcache_cache cache;
-    apr_memcache_t *memcache;
+  mapcache_cache cache;
+  apr_memcache_t *memcache;
 };
 
 /**
@@ -491,23 +491,23 @@ mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx);
 
 
 typedef enum {
-   MAPCACHE_REQUEST_UNKNOWN,
-   MAPCACHE_REQUEST_GET_TILE,
-   MAPCACHE_REQUEST_GET_MAP,
-   MAPCACHE_REQUEST_GET_CAPABILITIES,
-   MAPCACHE_REQUEST_GET_FEATUREINFO,
-   MAPCACHE_REQUEST_PROXY
+  MAPCACHE_REQUEST_UNKNOWN,
+  MAPCACHE_REQUEST_GET_TILE,
+  MAPCACHE_REQUEST_GET_MAP,
+  MAPCACHE_REQUEST_GET_CAPABILITIES,
+  MAPCACHE_REQUEST_GET_FEATUREINFO,
+  MAPCACHE_REQUEST_PROXY
 } mapcache_request_type;
 
 typedef enum {
-   MAPCACHE_GETMAP_ERROR,
-   MAPCACHE_GETMAP_ASSEMBLE,
-   MAPCACHE_GETMAP_FORWARD
+  MAPCACHE_GETMAP_ERROR,
+  MAPCACHE_GETMAP_ASSEMBLE,
+  MAPCACHE_GETMAP_FORWARD
 } mapcache_getmap_strategy;
 
 typedef enum {
-   MAPCACHE_RESAMPLE_NEAREST,
-   MAPCACHE_RESAMPLE_BILINEAR
+  MAPCACHE_RESAMPLE_NEAREST,
+  MAPCACHE_RESAMPLE_BILINEAR
 } mapcache_resample_mode;
 
 /**
@@ -515,103 +515,103 @@ typedef enum {
  */
 
 struct mapcache_request {
-   mapcache_request_type type;
-   mapcache_service *service;
+  mapcache_request_type type;
+  mapcache_service *service;
 };
 
 struct mapcache_request_get_tile {
-   mapcache_request request;
+  mapcache_request request;
 
-   /**
-    * a list of tiles requested by the client
-    */
-   mapcache_tile **tiles;
+  /**
+   * a list of tiles requested by the client
+   */
+  mapcache_tile **tiles;
 
-   /**
-    * the number of tiles requested by the client.
-    * If more than one, and merging is enabled,
-    * the supplied tiles will be merged together
-    * before being returned to the client
-    */
-   int ntiles;
-   mapcache_image_format *format;
-   
+  /**
+   * the number of tiles requested by the client.
+   * If more than one, and merging is enabled,
+   * the supplied tiles will be merged together
+   * before being returned to the client
+   */
+  int ntiles;
+  mapcache_image_format *format;
+
 };
 
 struct mapcache_http_response {
-   mapcache_buffer *data;
-   apr_table_t *headers;
-   long code;
-   apr_time_t mtime;
+  mapcache_buffer *data;
+  apr_table_t *headers;
+  long code;
+  apr_time_t mtime;
 };
 
 struct mapcache_map {
-   mapcache_tileset *tileset;
-   mapcache_grid_link *grid_link;
-   apr_table_t *dimensions;
-   mapcache_buffer *encoded_data;
-   mapcache_image *raw_image;
-   int width, height;
-   double extent[4];
-   apr_time_t mtime; /**< last modification time */
-   int expires; /**< time in seconds after which the tile should be rechecked for validity */
+  mapcache_tileset *tileset;
+  mapcache_grid_link *grid_link;
+  apr_table_t *dimensions;
+  mapcache_buffer *encoded_data;
+  mapcache_image *raw_image;
+  int width, height;
+  double extent[4];
+  apr_time_t mtime; /**< last modification time */
+  int expires; /**< time in seconds after which the tile should be rechecked for validity */
 };
 
 struct mapcache_feature_info {
-   mapcache_map map;
-   int i,j;
-   char *format;
-   mapcache_buffer *data;
+  mapcache_map map;
+  int i,j;
+  char *format;
+  mapcache_buffer *data;
 };
 
 struct mapcache_request_get_feature_info {
-   mapcache_request request;
-   mapcache_feature_info *fi;
+  mapcache_request request;
+  mapcache_feature_info *fi;
 };
 
 struct mapcache_request_get_map {
-   mapcache_request request;
-   mapcache_map **maps;
-   int nmaps;
-   mapcache_getmap_strategy getmap_strategy;
-   mapcache_resample_mode resample_mode;
-   mapcache_image_format *getmap_format;
+  mapcache_request request;
+  mapcache_map **maps;
+  int nmaps;
+  mapcache_getmap_strategy getmap_strategy;
+  mapcache_resample_mode resample_mode;
+  mapcache_image_format *getmap_format;
 };
 
 struct mapcache_request_get_capabilities {
-   mapcache_request request;
+  mapcache_request request;
 
-   /**
-    * the body of the capabilities
-    */
-   char *capabilities;
+  /**
+   * the body of the capabilities
+   */
+  char *capabilities;
 
-   /**
-    * the mime type
-    */
-   char *mime_type;
+  /**
+   * the mime type
+   */
+  char *mime_type;
 };
 
 struct mapcache_request_get_capabilities_tms {
-   mapcache_request_get_capabilities request;
-   mapcache_tileset *tileset;
-   mapcache_grid_link *grid_link;
-   char *version;
+  mapcache_request_get_capabilities request;
+  mapcache_tileset *tileset;
+  mapcache_grid_link *grid_link;
+  char *version;
 };
 
 struct mapcache_request_get_capabilities_kml {
-   mapcache_request_get_capabilities request;
-   mapcache_tile *tile;
-   mapcache_tileset *tileset;
-   mapcache_grid_link *grid;
+  mapcache_request_get_capabilities request;
+  mapcache_tile *tile;
+  mapcache_tileset *tileset;
+  mapcache_grid_link *grid;
 };
 
 struct mapcache_request_get_capabilities_wms {
-   mapcache_request_get_capabilities request;
+  mapcache_request_get_capabilities request;
 };
 
 struct mapcache_request_get_capabilities_wmts {
-   mapcache_request_get_capabilities request;
+  mapcache_request_get_capabilities request;
 };
 
 /**
@@ -619,22 +619,22 @@ struct mapcache_request_get_capabilities_wmts {
  * demo pages specific to a given service
  */
 struct mapcache_request_get_capabilities_demo {
-   mapcache_request_get_capabilities request;
-   mapcache_service *service;
+  mapcache_request_get_capabilities request;
+  mapcache_service *service;
 };
 
 struct mapcache_request_proxy {
-   mapcache_request request;
-   mapcache_http *http;
-   apr_table_t *params;
-   const char *pathinfo;
+  mapcache_request request;
+  mapcache_http *http;
+  apr_table_t *params;
+  const char *pathinfo;
 };
 
 struct mapcache_forwarding_rule {
-   char *name;
-   mapcache_http *http;
-   apr_array_header_t *match_params;  /* actually those are mapcache_dimensions */
-   int append_pathinfo;
+  char *name;
+  mapcache_http *http;
+  apr_array_header_t *match_params;  /* actually those are mapcache_dimensions */
+  int append_pathinfo;
 };
 
 
@@ -646,14 +646,14 @@ struct mapcache_forwarding_rule {
 #define MAPCACHE_SERVICES_COUNT 7
 
 typedef enum {
-    MAPCACHE_SERVICE_TMS=0, MAPCACHE_SERVICE_WMTS,
-    MAPCACHE_SERVICE_DEMO, MAPCACHE_SERVICE_GMAPS, MAPCACHE_SERVICE_KML,
-    MAPCACHE_SERVICE_VE, MAPCACHE_SERVICE_WMS
+  MAPCACHE_SERVICE_TMS=0, MAPCACHE_SERVICE_WMTS,
+  MAPCACHE_SERVICE_DEMO, MAPCACHE_SERVICE_GMAPS, MAPCACHE_SERVICE_KML,
+  MAPCACHE_SERVICE_VE, MAPCACHE_SERVICE_WMS
 } mapcache_service_type;
 
 #define MAPCACHE_UNITS_COUNT 3
 typedef enum {
-    MAPCACHE_UNIT_METERS=0, MAPCACHE_UNIT_DEGREES, MAPCACHE_UNIT_FEET
+  MAPCACHE_UNIT_METERS=0, MAPCACHE_UNIT_DEGREES, MAPCACHE_UNIT_FEET
 } mapcache_unit;
 
 /* defined in util.c*/
@@ -663,34 +663,34 @@ extern const double mapcache_meters_per_unit[MAPCACHE_UNITS_COUNT];
  * \brief a standard service (eg WMS, TMS)
  */
 struct mapcache_service {
-    char *name;
-    mapcache_service_type type;
-    
-    /**
-     * the pathinfo prefix of the url that routes to this service
-     * eg, for accessing a wms service on http://host/mapcache/mywmsservice? ,
-     * url_prefix would take the value "mywmsservice"
-     */
-    char *url_prefix;
-    
-    /**
-     * \brief allocates and populates a mapcache_request corresponding to the parameters received
-     */
-    void (*parse_request)(mapcache_context *ctx, mapcache_service *service, mapcache_request **request, const char *path_info, apr_table_t *params, mapcache_cfg * config);
+  char *name;
+  mapcache_service_type type;
 
-    /**
-     * \param request the received request (should be of type MAPCACHE_REQUEST_CAPABILITIES
-     * \param url the full url at which the service is available
-     */
-    void (*create_capabilities_response)(mapcache_context *ctx, mapcache_request_get_capabilities *request, char *url, char *path_info, mapcache_cfg *config);
-    
-    /**
-     * parse advanced configuration options for the selected service
-     */
-    void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_service * service, mapcache_cfg *config);
-    
-    void (*format_error)(mapcache_context *ctx, mapcache_service * service, char *err_msg,
-          char **err_body, apr_table_t *headers);
+  /**
+   * the pathinfo prefix of the url that routes to this service
+   * eg, for accessing a wms service on http://host/mapcache/mywmsservice? ,
+   * url_prefix would take the value "mywmsservice"
+   */
+  char *url_prefix;
+
+  /**
+   * \brief allocates and populates a mapcache_request corresponding to the parameters received
+   */
+  void (*parse_request)(mapcache_context *ctx, mapcache_service *service, mapcache_request **request, const char *path_info, apr_table_t *params, mapcache_cfg * config);
+
+  /**
+   * \param request the received request (should be of type MAPCACHE_REQUEST_CAPABILITIES
+   * \param url the full url at which the service is available
+   */
+  void (*create_capabilities_response)(mapcache_context *ctx, mapcache_request_get_capabilities *request, char *url, char *path_info, mapcache_cfg *config);
+
+  /**
+   * parse advanced configuration options for the selected service
+   */
+  void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_service * service, mapcache_cfg *config);
+
+  void (*format_error)(mapcache_context *ctx, mapcache_service * service, char *err_msg,
+                       char **err_body, apr_table_t *headers);
 };
 
 /**\class mapcache_service_wms
@@ -698,12 +698,12 @@ struct mapcache_service {
  * \implements mapcache_service
  */
 struct mapcache_service_wms {
-    mapcache_service service;
-    int maxsize;
-    apr_array_header_t *forwarding_rules;
-    mapcache_getmap_strategy getmap_strategy;
-    mapcache_resample_mode resample_mode;
-    mapcache_image_format *getmap_format;
+  mapcache_service service;
+  int maxsize;
+  apr_array_header_t *forwarding_rules;
+  mapcache_getmap_strategy getmap_strategy;
+  mapcache_resample_mode resample_mode;
+  mapcache_image_format *getmap_format;
 };
 
 /**\class mapcache_service_kml
@@ -711,7 +711,7 @@ struct mapcache_service_wms {
  * \implements mapcache_service
  */
 struct mapcache_service_kml {
-    mapcache_service service;
+  mapcache_service service;
 };
 
 /**\class mapcache_service_tms
@@ -719,8 +719,8 @@ struct mapcache_service_kml {
  * \implements mapcache_service
  */
 struct mapcache_service_tms {
-    mapcache_service service;
-    int reverse_y;
+  mapcache_service service;
+  int reverse_y;
 };
 
 /**\class mapcache_service_wmts
@@ -728,7 +728,7 @@ struct mapcache_service_tms {
  * \implements mapcache_service
  */
 struct mapcache_service_wmts {
-    mapcache_service service;
+  mapcache_service service;
 };
 
 /**\class mapcache_service_demo
@@ -736,7 +736,7 @@ struct mapcache_service_wmts {
  * \implements mapcache_service
  */
 struct mapcache_service_demo {
-    mapcache_service service;
+  mapcache_service service;
 
 };
 
@@ -745,7 +745,7 @@ struct mapcache_service_demo {
  * \implements mapcache_service
  */
 struct mapcache_service_ve {
-    mapcache_service service;
+  mapcache_service service;
 };
 
 /**
@@ -794,10 +794,10 @@ mapcache_service* mapcache_service_demo_create(mapcache_context *ctx);
  * \brief return the request that corresponds to the given url
  */
 void mapcache_service_dispatch_request(mapcache_context *ctx,
-      mapcache_request **request,
-      char *pathinfo,
-      apr_table_t *params,
-      mapcache_cfg *config);
+                                       mapcache_request **request,
+                                       char *pathinfo,
+                                       apr_table_t *params,
+                                       mapcache_cfg *config);
 
 
 /** @} */
@@ -807,30 +807,30 @@ void mapcache_service_dispatch_request(mapcache_context *ctx,
 /** @{ */
 
 typedef enum {
-    GC_UNKNOWN, GC_PNG, GC_JPEG
+  GC_UNKNOWN, GC_PNG, GC_JPEG
 } mapcache_image_format_type;
 
 typedef enum {
-    MC_EMPTY_UNKNOWN, MC_EMPTY_YES, MC_EMPTY_NO
+  MC_EMPTY_UNKNOWN, MC_EMPTY_YES, MC_EMPTY_NO
 } mapcache_image_blank_type;
 
 typedef enum {
-    MC_ALPHA_UNKNOWN, MC_ALPHA_YES, MC_ALPHA_NO
+  MC_ALPHA_UNKNOWN, MC_ALPHA_YES, MC_ALPHA_NO
 } mapcache_image_alpha_type;
 
 
 /**\class mapcache_image
  * \brief representation of an RGBA image
- * 
+ *
  * to access a pixel at position x,y, you should use the #GET_IMG_PIXEL macro
  */
 struct mapcache_image {
-    unsigned char *data; /**< pointer to the beginning of image data, stored in rgba order */
-    size_t w; /**< width of the image */
-    size_t h; /**< height of the image */
-    size_t stride; /**< stride of an image row */
-    mapcache_image_blank_type is_blank;
-    mapcache_image_alpha_type has_alpha;
+  unsigned char *data; /**< pointer to the beginning of image data, stored in rgba order */
+  size_t w; /**< width of the image */
+  size_t h; /**< height of the image */
+  size_t stride; /**< stride of an image row */
+  mapcache_image_blank_type is_blank;
+  mapcache_image_alpha_type has_alpha;
 
 };
 
@@ -850,9 +850,9 @@ struct mapcache_image {
 mapcache_image* mapcache_image_create(mapcache_context *ctx);
 
 void mapcache_image_copy_resampled_nearest(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
-      double off_x, double off_y, double scale_x, double scale_y);
+    double off_x, double off_y, double scale_x, double scale_y);
 void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
-      double off_x, double off_y, double scale_x, double scale_y);
+    double off_x, double off_y, double scale_x, double scale_y);
 
 
 /**
@@ -865,8 +865,8 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
 void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_image *overlay);
 
 void mapcache_image_copy_resampled(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
-      int srcX, int srcY, int srcW, int srcH,
-      int dstX, int dstY, int dstW, int dstH);
+                                   int srcX, int srcY, int srcW, int srcH,
+                                   int dstX, int dstY, int dstW, int dstH);
 
 /**
  * \brief split the given metatile into tiles
@@ -896,7 +896,7 @@ int mapcache_image_has_alpha(mapcache_image *img);
 /** @{ */
 void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcache_buffer *data, apr_table_t *headers, long *http_code);
 void mapcache_http_do_request_with_params(mapcache_context *ctx, mapcache_http *req, apr_table_t *params,
-      mapcache_buffer *data, apr_table_t *headers, long *http_code);
+    mapcache_buffer *data, apr_table_t *headers, long *http_code);
 char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params);
 apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args);
 /** @} */
@@ -906,105 +906,105 @@ apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args)
 /** @{ */
 
 struct mapcache_server_cfg {
-   apr_hash_t *aliases; /**< list of mapcache configurations aliased to a server uri */
+  apr_hash_t *aliases; /**< list of mapcache configurations aliased to a server uri */
 };
 
 
 
 typedef enum {
-   MAPCACHE_MODE_NORMAL,
-   MAPCACHE_MODE_MIRROR_COMBINED,
-   MAPCACHE_MODE_MIRROR_SPLIT
+  MAPCACHE_MODE_NORMAL,
+  MAPCACHE_MODE_MIRROR_COMBINED,
+  MAPCACHE_MODE_MIRROR_SPLIT
 } mapcache_mode;
 
 /**
  * a configuration that will be served
  */
 struct mapcache_cfg {
-    char *configFile; /**< the filename from which this configuration was loaded */
+  char *configFile; /**< the filename from which this configuration was loaded */
 
-    /**
-     * a list of services that will be responded to
-     */
-    mapcache_service * services[MAPCACHE_SERVICES_COUNT];
+  /**
+   * a list of services that will be responded to
+   */
+  mapcache_service * services[MAPCACHE_SERVICES_COUNT];
 
-    /**
-     * hashtable containing configured mapcache_source%s
-     */
-    apr_hash_t *sources;
+  /**
+   * hashtable containing configured mapcache_source%s
+   */
+  apr_hash_t *sources;
 
-    /**
-     * hashtable containing configured mapcache_cache%s
-     */
-    apr_hash_t *caches;
+  /**
+   * hashtable containing configured mapcache_cache%s
+   */
+  apr_hash_t *caches;
 
-    /**
-     * hashtable containing configured mapcache_tileset%s
-     */
-    apr_hash_t *tilesets;
+  /**
+   * hashtable containing configured mapcache_tileset%s
+   */
+  apr_hash_t *tilesets;
 
-    /**
-     * hashtable containing configured mapcache_image_format%s
-     */
-    apr_hash_t *image_formats;
+  /**
+   * hashtable containing configured mapcache_image_format%s
+   */
+  apr_hash_t *image_formats;
 
-    /**
-     * hashtable containing (pre)defined grids
-     */
-    apr_hash_t *grids;
+  /**
+   * hashtable containing (pre)defined grids
+   */
+  apr_hash_t *grids;
 
-    /**
-     * the format to use for some miscelaneaous operations:
-     *  - creating an empty image
-     *  - creating an error image
-     *  - as a fallback when merging multiple tiles
-     */
-    mapcache_image_format *default_image_format;
+  /**
+   * the format to use for some miscelaneaous operations:
+   *  - creating an empty image
+   *  - creating an error image
+   *  - as a fallback when merging multiple tiles
+   */
+  mapcache_image_format *default_image_format;
 
-    /**
-     * how should error messages be reported to the user
-     */
-    mapcache_error_reporting reporting;
+  /**
+   * how should error messages be reported to the user
+   */
+  mapcache_error_reporting reporting;
 
-    /**
-     * encoded empty (tranpsarent) image that will be returned to clients if cofigured
-     * to return blank images upon error
-     */
-    mapcache_buffer *empty_image;
+  /**
+   * encoded empty (tranpsarent) image that will be returned to clients if cofigured
+   * to return blank images upon error
+   */
+  mapcache_buffer *empty_image;
 
-    apr_table_t *metadata;
+  apr_table_t *metadata;
 
-    /**
-     * directory where lock files will be placed.
-     * Must be readable and writable by the apache user.
-     * Must be placed on a network mounted shared directory if multiple mapcache instances
-     * need to be synchronized
-     */
-    const char *lockdir;
-    
-    /**
-     * time in nanoseconds to wait before rechecking for lockfile presence
-     */
-    apr_interval_time_t lock_retry_interval; /* time in nanoseconds to wait before rechecking for lockfile presence */
+  /**
+   * directory where lock files will be placed.
+   * Must be readable and writable by the apache user.
+   * Must be placed on a network mounted shared directory if multiple mapcache instances
+   * need to be synchronized
+   */
+  const char *lockdir;
 
-    int threaded_fetching;
-    
-    /**
-     * the uri where the base of the service is mapped
-     */
-    const char *endpoint;
+  /**
+   * time in nanoseconds to wait before rechecking for lockfile presence
+   */
+  apr_interval_time_t lock_retry_interval; /* time in nanoseconds to wait before rechecking for lockfile presence */
 
-    /* for fastcgi only */
-    int autoreload; /* should the modification time of the config file be recorded
+  int threaded_fetching;
+
+  /**
+   * the uri where the base of the service is mapped
+   */
+  const char *endpoint;
+
+  /* for fastcgi only */
+  int autoreload; /* should the modification time of the config file be recorded
                        and the file be reparsed if it is modified. */
-    mapcache_log_level loglevel; /* logging verbosity. Ignored for the apache module
+  mapcache_log_level loglevel; /* logging verbosity. Ignored for the apache module
                                     as in that case the apache LogLevel directive is
                                     used. */
-    mapcache_mode mode;
+  mapcache_mode mode;
 
-    /* return 404 on potentially blocking operations (proxying, source getmaps,
-     locks on metatile waiting, ... Used for nginx module */
-    int non_blocking;
+  /* return 404 on potentially blocking operations (proxying, source getmaps,
+   locks on metatile waiting, ... Used for nginx module */
+  int non_blocking;
 };
 
 /**
@@ -1076,23 +1076,23 @@ mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx);
  * \sa mapcache_tileset::metasize_x mapcache_tileset::metasize_x mapcache_tileset::metabuffer
  */
 struct mapcache_tile {
-    mapcache_tileset *tileset; /**< the mapcache_tileset that corresponds to the tile*/
-    mapcache_grid_link *grid_link;
-    int x; /**< tile x index */
-    int y; /**< tile y index */
-    int z; /**< tile z index (zoom level) */
-    /**
-     * encoded image data for the tile.
-     * \sa mapcache_cache::tile_get()
-     * \sa mapcache_source::render_map()
-     * \sa mapcache_image_format
-     */
-    mapcache_buffer *encoded_data;
-    mapcache_image *raw_image;
-    apr_time_t mtime; /**< last modification time */
-    int expires; /**< time in seconds after which the tile should be rechecked for validity */
-    
-    apr_table_t *dimensions;
+  mapcache_tileset *tileset; /**< the mapcache_tileset that corresponds to the tile*/
+  mapcache_grid_link *grid_link;
+  int x; /**< tile x index */
+  int y; /**< tile y index */
+  int z; /**< tile z index (zoom level) */
+  /**
+   * encoded image data for the tile.
+   * \sa mapcache_cache::tile_get()
+   * \sa mapcache_source::render_map()
+   * \sa mapcache_image_format
+   */
+  mapcache_buffer *encoded_data;
+  mapcache_image *raw_image;
+  apr_time_t mtime; /**< last modification time */
+  int expires; /**< time in seconds after which the tile should be rechecked for validity */
+
+  apr_table_t *dimensions;
 };
 
 /**
@@ -1100,42 +1100,42 @@ struct mapcache_tile {
  * \extends mapcache_tile
  */
 struct mapcache_metatile {
-   mapcache_map map;
-   int x,y,z;
-   int metasize_x, metasize_y;
-   int ntiles; /**< the number of mapcache_metatile::tiles contained in this metatile */
-   mapcache_tile *tiles; /**< the list of mapcache_tile s contained in this metatile */
+  mapcache_map map;
+  int x,y,z;
+  int metasize_x, metasize_y;
+  int ntiles; /**< the number of mapcache_metatile::tiles contained in this metatile */
+  mapcache_tile *tiles; /**< the list of mapcache_tile s contained in this metatile */
 };
 
 
 struct mapcache_grid_level {
-   double resolution;
-   unsigned int maxx, maxy;
+  double resolution;
+  unsigned int maxx, maxy;
 };
 
 struct mapcache_grid {
-   char *name;
-   int nlevels;
-   char *srs;
-   apr_array_header_t *srs_aliases;
-   double extent[4];
-   mapcache_unit unit;
-   int tile_sx, tile_sy; /**<width and height of a tile in pixels */
-   mapcache_grid_level **levels;
-   apr_table_t *metadata;
+  char *name;
+  int nlevels;
+  char *srs;
+  apr_array_header_t *srs_aliases;
+  double extent[4];
+  mapcache_unit unit;
+  int tile_sx, tile_sy; /**<width and height of a tile in pixels */
+  mapcache_grid_level **levels;
+  apr_table_t *metadata;
 };
 
 
 struct mapcache_grid_link {
-   mapcache_grid *grid;
-   /**
-    * precalculated limits for available each level: [minTileX, minTileY, maxTileX, maxTileY].
-    *
-    * a request is valid if x is in [minTileX, maxTileX[ and y in [minTileY,maxTileY]
-    */
-   double *restricted_extent;
-   int **grid_limits;
-   int minz,maxz;
+  mapcache_grid *grid;
+  /**
+   * precalculated limits for available each level: [minTileX, minTileY, maxTileX, maxTileY].
+   *
+   * a request is valid if x is in [minTileX, maxTileX[ and y in [minTileY,maxTileY]
+   */
+  double *restricted_extent;
+  int **grid_limits;
+  int minz,maxz;
 };
 
 /**\class mapcache_tileset
@@ -1143,95 +1143,95 @@ struct mapcache_grid_link {
  *        stored by a mapcache_cache in a mapcache_format
  */
 struct mapcache_tileset {
-    /**
-     * the name this tileset will be referenced by.
-     * this is the key that is passed by clients e.g. in a WMS LAYERS= parameter
-     */
-    char *name;
+  /**
+   * the name this tileset will be referenced by.
+   * this is the key that is passed by clients e.g. in a WMS LAYERS= parameter
+   */
+  char *name;
 
-    /**
-     * the extent of the tileset in lonlat
-     */
-    double wgs84bbox[4];
+  /**
+   * the extent of the tileset in lonlat
+   */
+  double wgs84bbox[4];
 
-    /**
-     * list of grids that will be cached
-     */
-    apr_array_header_t *grid_links;
+  /**
+   * list of grids that will be cached
+   */
+  apr_array_header_t *grid_links;
 
-    /**
-     * size of the metatile that should be requested to the mapcache_tileset::source
-     */
-    int metasize_x, metasize_y;
+  /**
+   * size of the metatile that should be requested to the mapcache_tileset::source
+   */
+  int metasize_x, metasize_y;
 
-    /**
-     * size of the gutter around the metatile that should be requested to the mapcache_tileset::source
-     */
-    int metabuffer;
+  /**
+   * size of the gutter around the metatile that should be requested to the mapcache_tileset::source
+   */
+  int metabuffer;
 
-    /**
-     * number of seconds that should be returned to the client in an Expires: header
-     *
-     * \sa auto_expire
-     */
-    int expires;
-    
-    /**
-     * number of seconds after which a tile will be regenerated from the source
-     * 
-     * will take precedence over the #expires parameter.
-     * \sa expires
-     */
-    int auto_expire;
+  /**
+   * number of seconds that should be returned to the client in an Expires: header
+   *
+   * \sa auto_expire
+   */
+  int expires;
 
-    /**
-     * the cache in which the tiles should be stored
-     */
-    mapcache_cache *cache;
+  /**
+   * number of seconds after which a tile will be regenerated from the source
+   *
+   * will take precedence over the #expires parameter.
+   * \sa expires
+   */
+  int auto_expire;
 
-    /**
-     * the source from which tiles should be requested
-     */
-    mapcache_source *source;
+  /**
+   * the cache in which the tiles should be stored
+   */
+  mapcache_cache *cache;
 
-    /**
-     * the format to use when storing tiles coming from a metatile
-     */
-    mapcache_image_format *format;
+  /**
+   * the source from which tiles should be requested
+   */
+  mapcache_source *source;
 
-    /**
-     * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
-     */
-    apr_array_header_t *dimensions;
-    
-    /**
-     * image to be used as a watermark
-     */
-    mapcache_image *watermark;
+  /**
+   * the format to use when storing tiles coming from a metatile
+   */
+  mapcache_image_format *format;
 
-    /**
-     * handle to the configuration this tileset belongs to
-     */
-    mapcache_cfg *config;
-   
-    apr_table_t *metadata;
+  /**
+   * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
+   */
+  apr_array_header_t *dimensions;
+
+  /**
+   * image to be used as a watermark
+   */
+  mapcache_image *watermark;
+
+  /**
+   * handle to the configuration this tileset belongs to
+   */
+  mapcache_cfg *config;
+
+  apr_table_t *metadata;
 };
 
 
 mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset *tileset);
 
 void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
-      mapcache_grid_link *grid_link,
-      double *bbox, int width, int height,
-      int *ntiles,
-      mapcache_tile ***tiles);
+                                    mapcache_grid_link *grid_link,
+                                    double *bbox, int width, int height,
+                                    int *ntiles,
+                                    mapcache_tile ***tiles);
 
 mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
-      mapcache_grid_link *grid_link,
-      double *bbox, int width, int height,
-      int ntiles,
-      mapcache_tile **tiles,
-      mapcache_resample_mode mode);
+    mapcache_grid_link *grid_link,
+    double *bbox, int width, int height,
+    int ntiles,
+    mapcache_tile **tiles,
+    mapcache_resample_mode mode);
 
 /**
  * compute x,y,z value given a bbox.
@@ -1239,7 +1239,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
  * if the bbox does not correspond to the tileset's configuration
  */
 int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, double *bbox,
-      int *x, int *y, int *z);
+                           int *x, int *y, int *z);
 
 /**
  * \brief verify the created tile respects configured constraints
@@ -1251,11 +1251,11 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * compute level for a given resolution
- * 
+ *
  * computes the integer level for the given resolution. the input resolution will be set to the exact
  * value configured for the tileset, to compensate for rounding errors that could creep in if using
  * the resolution calculated from input parameters
- * 
+ *
  * \returns MAPCACHE_TILESET_WRONG_RESOLUTION if the given resolution is't configured
  * \returns MAPCACHE_SUCCESS if the level was found
  */
@@ -1295,7 +1295,7 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
  * \brief create and initialize a feature_info for the given tileset and grid_link
  */
 mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, mapcache_tileset *tileset,
-      mapcache_grid_link *grid_link);
+    mapcache_grid_link *grid_link);
 
 /**
  * \brief create and initalize a tileset
@@ -1338,7 +1338,7 @@ const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid);
 const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid);
 
 void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
-      int x, int y, int z, double *bbox);
+                              int x, int y, int z, double *bbox);
 /**
  * \brief compute x y value for given lon/lat (dx/dy) and given zoomlevel
  * @param ctx
@@ -1365,7 +1365,7 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
 
 /**
  * \brief precompute min/max x/y values for the given extent
- * \param grid 
+ * \param grid
  * \param extent
  * \param tolerance the number of tiles around the given extent that can be requested without returning an error.
  */
@@ -1373,11 +1373,11 @@ void mapcache_grid_compute_limits(const mapcache_grid *grid, const double *exten
 
 /* in util.c */
 int mapcache_util_extract_int_list(mapcache_context *ctx, const char* args, const char *sep, int **numbers,
-        int *numbers_count);
+                                   int *numbers_count);
 int mapcache_util_extract_double_list(mapcache_context *ctx, const char* args, const char *sep, double **numbers,
-        int *numbers_count);
+                                      int *numbers_count);
 char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
-      const char *replacement );
+                                const char *replacement );
 
 /**
  * \brief replace dangerous characters in string
@@ -1392,7 +1392,7 @@ char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
 
 char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *template,
-        char* sanitized_chars, char *sanitize_to);
+                                 char* sanitized_chars, char *sanitize_to);
 
 /**\defgroup imageio Image IO */
 /** @{ */
@@ -1401,17 +1401,17 @@ char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, cha
  * compression strategy to apply
  */
 typedef enum {
-    MAPCACHE_COMPRESSION_BEST, /**< best but slowest compression*/
-    MAPCACHE_COMPRESSION_FAST, /**< fast compression*/
-    MAPCACHE_COMPRESSION_DEFAULT /**< default compression*/
+  MAPCACHE_COMPRESSION_BEST, /**< best but slowest compression*/
+  MAPCACHE_COMPRESSION_FAST, /**< fast compression*/
+  MAPCACHE_COMPRESSION_DEFAULT /**< default compression*/
 } mapcache_compression_type;
 
 /**
  * photometric interpretation for jpeg bands
  */
 typedef enum {
-    MAPCACHE_PHOTOMETRIC_RGB,
-    MAPCACHE_PHOTOMETRIC_YCBCR
+  MAPCACHE_PHOTOMETRIC_RGB,
+  MAPCACHE_PHOTOMETRIC_YCBCR
 } mapcache_photometric;
 
 /**\interface mapcache_image_format
@@ -1420,18 +1420,18 @@ typedef enum {
  * \sa mapcache_image_format_png
  */
 struct mapcache_image_format {
-    char *name; /**< the key by which this format will be referenced */
-    char *extension; /**< the extension to use when saving a file with this format */
-    char *mime_type;
-    mapcache_buffer * (*write)(mapcache_context *ctx, mapcache_image *image, mapcache_image_format * format);
-    /**< pointer to a function that returns a mapcache_buffer containing the given image encoded
-     * in the specified format
-     */
+  char *name; /**< the key by which this format will be referenced */
+  char *extension; /**< the extension to use when saving a file with this format */
+  char *mime_type;
+  mapcache_buffer * (*write)(mapcache_context *ctx, mapcache_image *image, mapcache_image_format * format);
+  /**< pointer to a function that returns a mapcache_buffer containing the given image encoded
+   * in the specified format
+   */
 
-    mapcache_buffer* (*create_empty_image)(mapcache_context *ctx, mapcache_image_format *format,
-          size_t width, size_t height, unsigned int color);
-    apr_table_t *metadata;
-    mapcache_image_format_type type;
+  mapcache_buffer* (*create_empty_image)(mapcache_context *ctx, mapcache_image_format *format,
+                                         size_t width, size_t height, unsigned int color);
+  apr_table_t *metadata;
+  mapcache_image_format_type type;
 };
 
 /**\defgroup imageio_png PNG Image IO
@@ -1444,27 +1444,27 @@ struct mapcache_image_format {
  * \sa mapcache_image_format_png_q
  */
 struct mapcache_image_format_png {
-    mapcache_image_format format;
-    mapcache_compression_type compression_level; /**< PNG compression level to apply */
+  mapcache_image_format format;
+  mapcache_compression_type compression_level; /**< PNG compression level to apply */
 };
 
 struct mapcache_image_format_mixed {
-   mapcache_image_format format;
-   mapcache_image_format *transparent;
-   mapcache_image_format *opaque;
+  mapcache_image_format format;
+  mapcache_image_format *transparent;
+  mapcache_image_format *opaque;
 };
 
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
-      char *name, mapcache_image_format *transparent, mapcache_image_format *opaque);
+    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque);
 
 /**\class mapcache_image_format_png_q
  * \brief Quantized PNG format
  * \extends mapcache_image_format_png
  */
 struct mapcache_image_format_png_q {
-    mapcache_image_format_png format;
-    int ncolors; /**< number of colors used in quantization, 2-256 */
+  mapcache_image_format_png format;
+  int ncolors; /**< number of colors used in quantization, 2-256 */
 };
 
 /**
@@ -1481,7 +1481,7 @@ void mapcache_image_create_empty(mapcache_context *ctx, mapcache_cfg *cfg);
  * @return
  */
 void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffer *buffer,
-      mapcache_image *image);
+    mapcache_image *image);
 
 
 /**
@@ -1516,13 +1516,13 @@ mapcache_image_format* mapcache_imageio_create_png_q_format(apr_pool_t *pool, ch
  * \extends mapcache_image_format
  */
 struct mapcache_image_format_jpeg {
-    mapcache_image_format format;
-    int quality; /**< JPEG quality, 1-100 */
-    mapcache_photometric photometric;
+  mapcache_image_format format;
+  int quality; /**< JPEG quality, 1-100 */
+  mapcache_photometric photometric;
 };
 
 mapcache_image_format* mapcache_imageio_create_jpeg_format(apr_pool_t *pool, char *name, int quality,
-      mapcache_photometric photometric);
+    mapcache_photometric photometric);
 
 /**
  * @param r
@@ -1537,7 +1537,7 @@ mapcache_image* _mapcache_imageio_jpeg_decode(mapcache_context *ctx, mapcache_bu
  * @return
  */
 void _mapcache_imageio_jpeg_decode_to_image(mapcache_context *ctx, mapcache_buffer *buffer,
-      mapcache_image *image);
+    mapcache_image *image);
 
 /** @} */
 
@@ -1566,75 +1566,75 @@ void mapcache_imageio_decode_to_image(mapcache_context *ctx, mapcache_buffer *bu
 /** @} */
 
 typedef struct {
-   double start;
-   double end;
-   double resolution;
+  double start;
+  double end;
+  double resolution;
 } mapcache_interval;
 
 typedef enum {
-   MAPCACHE_DIMENSION_VALUES,
-   MAPCACHE_DIMENSION_REGEX,
-   MAPCACHE_DIMENSION_INTERVALS,
-   MAPCACHE_DIMENSION_TIME
+  MAPCACHE_DIMENSION_VALUES,
+  MAPCACHE_DIMENSION_REGEX,
+  MAPCACHE_DIMENSION_INTERVALS,
+  MAPCACHE_DIMENSION_TIME
 } mapcache_dimension_type;
 
 struct mapcache_dimension {
-   mapcache_dimension_type type;
-   char *name;
-   char *unit;
-   apr_table_t *metadata;
-   char *default_value;
-   
-   /**
-    * \brief validate the given value
-    * 
-    * \param value is updated in case the given value is correct but has to be represented otherwise,
-    * e.g. to round off a value
-    * \returns MAPCACHE_SUCCESS if the given value is correct for the current dimension
-    * \returns MAPCACHE_FAILURE if not
-    */
-   int (*validate)(mapcache_context *context, mapcache_dimension *dimension, char **value);
-   
-   /**
-    * \brief returns a list of values that are authorized for this dimension
-    *
-    * \returns a list of character strings that will be included in the capabilities <dimension> element
-    */
-   const char** (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
-   
-   /**
-    * \brief parse the value given in the configuration
-    */
-   void (*configuration_parse_xml)(mapcache_context *context, mapcache_dimension *dim, ezxml_t node);
+  mapcache_dimension_type type;
+  char *name;
+  char *unit;
+  apr_table_t *metadata;
+  char *default_value;
+
+  /**
+   * \brief validate the given value
+   *
+   * \param value is updated in case the given value is correct but has to be represented otherwise,
+   * e.g. to round off a value
+   * \returns MAPCACHE_SUCCESS if the given value is correct for the current dimension
+   * \returns MAPCACHE_FAILURE if not
+   */
+  int (*validate)(mapcache_context *context, mapcache_dimension *dimension, char **value);
+
+  /**
+   * \brief returns a list of values that are authorized for this dimension
+   *
+   * \returns a list of character strings that will be included in the capabilities <dimension> element
+   */
+  const char** (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
+
+  /**
+   * \brief parse the value given in the configuration
+   */
+  void (*configuration_parse_xml)(mapcache_context *context, mapcache_dimension *dim, ezxml_t node);
 };
 
 struct mapcache_dimension_values {
-   mapcache_dimension dimension;
-   int nvalues;
-   char **values;
-   int case_sensitive;
+  mapcache_dimension dimension;
+  int nvalues;
+  char **values;
+  int case_sensitive;
 };
 
 struct mapcache_dimension_regex {
-   mapcache_dimension dimension;
-   char *regex_string;
+  mapcache_dimension dimension;
+  char *regex_string;
 #ifdef USE_PCRE
-   pcre *pcregex;
+  pcre *pcregex;
 #else
-   regex_t *regex;
+  regex_t *regex;
 #endif
 };
 
 struct mapcache_dimension_intervals {
-   mapcache_dimension dimension;
-   int nintervals;
-   mapcache_interval *intervals;
+  mapcache_dimension dimension;
+  int nintervals;
+  mapcache_interval *intervals;
 };
 
 struct mapcache_dimension_time {
-   mapcache_dimension dimension;
-   int nintervals;
-   mapcache_interval *intervals;
+  mapcache_dimension dimension;
+  int nintervals;
+  mapcache_interval *intervals;
 };
 
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);

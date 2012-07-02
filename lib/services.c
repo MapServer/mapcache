@@ -35,38 +35,39 @@
 /** @{ */
 
 
-void mapcache_service_dispatch_request(mapcache_context *ctx, mapcache_request **request, char *pathinfo, apr_table_t *params, mapcache_cfg *config) {
-   int i;
-   
-   /* skip empty pathinfo */
-   if(!pathinfo) {
-      ctx->set_error(ctx,404,"missing a service");
-      return;
-   }
-   
-   /*skip leading /'s */
-   while((*pathinfo) == '/')
-      ++pathinfo;
-   
-   for(i=0;i<MAPCACHE_SERVICES_COUNT;i++) {
-      /* loop through the services that have been configured */
-      int prefixlen;
-      mapcache_service *service = NULL;
-      service = config->services[i];
-      if(!service) continue; /* skip an unconfigured service */
-      prefixlen = strlen(service->url_prefix);
-      if(strncmp(service->url_prefix,pathinfo, prefixlen)) continue; /*skip a service who's prefix does not correspond */
-      ctx->service = service;
-      //if(*(pathinfo+prefixlen)!='/' && *(pathinfo+prefixlen)!='\0') continue; /*we matched the prefix but there are trailing characters*/
-      pathinfo += prefixlen; /* advance pathinfo to after the service prefix */
-      service->parse_request(ctx,service,request,pathinfo,params,config);
-      if(*request)
-         (*request)->service = service;
-      
-      /* stop looping on services */
-      return;
-   }
-   ctx->set_error(ctx,404,"unknown service %s",pathinfo);
+void mapcache_service_dispatch_request(mapcache_context *ctx, mapcache_request **request, char *pathinfo, apr_table_t *params, mapcache_cfg *config)
+{
+  int i;
+
+  /* skip empty pathinfo */
+  if(!pathinfo) {
+    ctx->set_error(ctx,404,"missing a service");
+    return;
+  }
+
+  /*skip leading /'s */
+  while((*pathinfo) == '/')
+    ++pathinfo;
+
+  for(i=0; i<MAPCACHE_SERVICES_COUNT; i++) {
+    /* loop through the services that have been configured */
+    int prefixlen;
+    mapcache_service *service = NULL;
+    service = config->services[i];
+    if(!service) continue; /* skip an unconfigured service */
+    prefixlen = strlen(service->url_prefix);
+    if(strncmp(service->url_prefix,pathinfo, prefixlen)) continue; /*skip a service who's prefix does not correspond */
+    ctx->service = service;
+    //if(*(pathinfo+prefixlen)!='/' && *(pathinfo+prefixlen)!='\0') continue; /*we matched the prefix but there are trailing characters*/
+    pathinfo += prefixlen; /* advance pathinfo to after the service prefix */
+    service->parse_request(ctx,service,request,pathinfo,params,config);
+    if(*request)
+      (*request)->service = service;
+
+    /* stop looping on services */
+    return;
+  }
+  ctx->set_error(ctx,404,"unknown service %s",pathinfo);
 }
 
 /** @} */
