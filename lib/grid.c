@@ -39,6 +39,7 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool)
   grid->metadata = apr_table_make(pool,3);
   grid->srs_aliases = apr_array_make(pool,0,sizeof(char*));
   grid->unit = MAPCACHE_UNIT_METERS;
+  grid->origin = MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT;
   return grid;
 }
 
@@ -48,13 +49,26 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool)
  * \returns \extent the tile's extent
  */
 void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
-                              int x, int y, int z, double *bbox)
+                              int x, int y, int z, mapcache_extent *bbox)
 {
   double res  = grid->levels[z]->resolution;
-  bbox[0] = grid->extent[0] + (res * x * grid->tile_sx);
-  bbox[1] = grid->extent[1] + (res * y * grid->tile_sy);
-  bbox[2] = grid->extent[0] + (res * (x + 1) * grid->tile_sx);
-  bbox[3] = grid->extent[1] + (res * (y + 1) * grid->tile_sy);
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      bbox->minx = grid->extent.minx + (res * x * grid->tile_sx);
+      bbox->miny = grid->extent.miny + (res * y * grid->tile_sy);
+      bbox->maxx = grid->extent.minx + (res * (x + 1) * grid->tile_sx);
+      bbox->maxy = grid->extent.miny + (res * (y + 1) * grid->tile_sy);
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      bbox->minx = grid->extent.minx + (res * x * grid->tile_sx);
+      bbox->miny = grid->extent.maxy - (res * (y+1) * grid->tile_sy);
+      bbox->maxx = grid->extent.minx + (res * (x + 1) * grid->tile_sx);
+      bbox->maxy = grid->extent.maxy - (res * y * grid->tile_sy);
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      ctx->set_error(ctx,500,"grid origin not implemented");
+  }
 }
 
 const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid)
@@ -77,7 +91,7 @@ const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid)
   return (const char*)grid->srs;
 }
 
-void mapcache_grid_compute_limits(const mapcache_grid *grid, const double *extent, int **limits, int tolerance)
+void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance)
 {
   int i;
   double epsilon = 0.0000001;
@@ -86,21 +100,35 @@ void mapcache_grid_compute_limits(const mapcache_grid *grid, const double *exten
     double unitheight = grid->tile_sy * level->resolution;
     double unitwidth = grid->tile_sx * level->resolution;
 
-
-    limits[i][0] = floor((extent[0] - grid->extent[0]) / unitwidth + epsilon) - tolerance;
-    limits[i][2] = ceil((extent[2] - grid->extent[0]) / unitwidth - epsilon) + tolerance;
-    limits[i][1] = floor((extent[1] - grid->extent[1]) / unitheight + epsilon) - tolerance;
-    limits[i][3] = ceil((extent[3] - grid->extent[1]) / unitheight - epsilon) + tolerance;
+    switch(grid->origin) {
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+        limits[i].miny = floor((extent->miny - grid->extent.miny) / unitheight + epsilon) - tolerance;
+        limits[i].maxy = ceil((extent->maxy - grid->extent.miny) / unitheight - epsilon) + tolerance;
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+        limits[i].miny = floor((grid->extent.maxy - extent->maxy) / unitheight + epsilon) - tolerance;
+        //limits[i].maxy = level->maxy - floor((extent->miny - grid->extent.miny) / unitheight + epsilon) + tolerance;
+        limits[i].maxy = ceil((grid->extent.maxy - extent->miny) / unitheight - epsilon) + tolerance;
+        //printf("%d: %d %d %d %d\n",i,limits[i].minx,limits[i].miny,limits[i].maxx,limits[i].maxy);
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+        break; /* not implemented */
+    }
     // to avoid requesting out-of-range tiles
-    if (limits[i][0] < 0) limits[i][0] = 0;
-    if (limits[i][2] > level->maxx) limits[i][2] = level->maxx;
-    if (limits[i][1] < 0) limits[i][1] = 0;
-    if (limits[i][3] > level->maxy) limits[i][3] = level->maxy;
+    if (limits[i].minx < 0) limits[i].minx = 0;
+    if (limits[i].maxx > level->maxx) limits[i].maxx = level->maxx;
+    if (limits[i].miny < 0) limits[i].miny = 0;
+    if (limits[i].maxy > level->maxy) limits[i].maxy = level->maxy;
 
   }
 }
 
-double mapcache_grid_get_resolution(double *bbox, int sx, int sy)
+double mapcache_grid_get_resolution(mapcache_extent *bbox, int sx, int sy)
 {
   double rx =  mapcache_grid_get_horizontal_resolution(bbox,sx);
   double ry =  mapcache_grid_get_vertical_resolution(bbox,sy);
@@ -108,14 +136,14 @@ double mapcache_grid_get_resolution(double *bbox, int sx, int sy)
 }
 
 
-double mapcache_grid_get_horizontal_resolution(double *bbox, int width)
+double mapcache_grid_get_horizontal_resolution(mapcache_extent *bbox, int width)
 {
-  return (bbox[2] - bbox[0]) / (double)width;
+  return (bbox->maxx - bbox->minx) / (double)width;
 }
 
-double mapcache_grid_get_vertical_resolution(double *bbox, int height)
+double mapcache_grid_get_vertical_resolution(mapcache_extent *bbox, int height)
 {
-  return (bbox[3] - bbox[1]) / (double)height;
+  return (bbox->maxy - bbox->miny) / (double)height;
 }
 
 int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *resolution, int *level)
@@ -152,19 +180,35 @@ void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid *grid,
  * will return MAPCACHE_TILESET_WRONG_RESOLUTION or MAPCACHE_TILESET_WRONG_EXTENT
  * if the bbox does not correspond to the tileset's configuration
  */
-int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, double *bbox,
+int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, mapcache_extent *bbox,
                            int *x, int *y, int *z)
 {
   double res = mapcache_grid_get_resolution(bbox,grid->tile_sx,grid->tile_sy);
   if(MAPCACHE_SUCCESS != mapcache_grid_get_level(ctx, grid, &res, z))
     return MAPCACHE_FAILURE;
 
-  *x = (int)(((bbox[0] - grid->extent[0]) / (res * grid->tile_sx)) + 0.5);
-  *y = (int)(((bbox[1] - grid->extent[1]) / (res * grid->tile_sy)) + 0.5);
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      *x = (int)(((bbox->minx - grid->extent.minx) / (res * grid->tile_sx)) + 0.5);
+      *y = (int)(((bbox->miny - grid->extent.miny) / (res * grid->tile_sy)) + 0.5);
 
-  if((fabs(bbox[0] - (*x * res * grid->tile_sx) - grid->extent[0] ) / res > 1) ||
-      (fabs(bbox[1] - (*y * res * grid->tile_sy) - grid->extent[1] ) / res > 1)) {
-    return MAPCACHE_FAILURE;
+      if((fabs(bbox->minx - (*x * res * grid->tile_sx) - grid->extent.minx ) / res > 1) ||
+          (fabs(bbox->miny - (*y * res * grid->tile_sy) - grid->extent.miny ) / res > 1)) {
+        return MAPCACHE_FAILURE;
+      }
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      *x = (int)(((bbox->minx - grid->extent.minx) / (res * grid->tile_sx)) + 0.5);
+      *y = (int)(((grid->extent.maxy - bbox->maxy) / (res * grid->tile_sy)) + 0.5);
+
+      if((fabs(bbox->minx - (*x * res * grid->tile_sx) - grid->extent.minx ) / res > 1) ||
+          (fabs(bbox->maxy - (grid->extent.maxy - (*y * res * grid->tile_sy)) ) / res > 1)) {
+        return MAPCACHE_FAILURE;
+      }
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      return MAPCACHE_FAILURE;
   }
   return MAPCACHE_SUCCESS;
 }
@@ -181,8 +225,20 @@ void mapcache_grid_get_xy(mapcache_context *ctx, mapcache_grid *grid, double dx,
   }
 #endif
   res = grid->levels[z]->resolution;
-  *x = (int)((dx - grid->extent[0]) / (res * grid->tile_sx));
-  *y = (int)((dy - grid->extent[1]) / (res * grid->tile_sy));
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      *x = (int)((dx - grid->extent.minx) / (res * grid->tile_sx));
+      *y = (int)((dy - grid->extent.miny) / (res * grid->tile_sy));
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      *x = (int)((dx - grid->extent.minx) / (res * grid->tile_sx));
+      *y = (int)((grid->extent.maxy - dy) / (res * grid->tile_sy));
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      ctx->set_error(ctx,500,"####BUG##### origin not implemented");
+      return;
+  }
 }
 /* vim: ts=2 sts=2 et sw=2
 */

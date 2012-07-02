@@ -151,8 +151,8 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
 
 
 
-  double wgs84_extent[4]= {-180,-90,180,90};
-  double google_extent[4]= {-20037508.3427892480,-20037508.3427892480,20037508.3427892480,20037508.3427892480};
+  mapcache_extent wgs84_extent= {-180,-90,180,90};
+  mapcache_extent google_extent= {-20037508.3427892480,-20037508.3427892480,20037508.3427892480,20037508.3427892480};
   double unitwidth,unitheight;
 
   mapcache_cfg *cfg = (mapcache_cfg*)apr_pcalloc(pool, sizeof(mapcache_cfg));
@@ -184,10 +184,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   grid->unit = MAPCACHE_UNIT_DEGREES;
   grid->tile_sx = grid->tile_sy = 256;
   grid->nlevels = 18;
-  grid->extent[0] = wgs84_extent[0];
-  grid->extent[1] = wgs84_extent[1];
-  grid->extent[2] = wgs84_extent[2];
-  grid->extent[3] = wgs84_extent[3];
+  grid->extent = wgs84_extent;
   grid->levels = (mapcache_grid_level**)apr_pcalloc(pool,
                  grid->nlevels*sizeof(mapcache_grid_level*));
   for(i=0; i<grid->nlevels; i++) {
@@ -196,8 +193,8 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
     unitheight = grid->tile_sy * level->resolution;
     unitwidth = grid->tile_sx * level->resolution;
 
-    level->maxy = ceil((grid->extent[3]-grid->extent[1] - 0.01* unitheight)/unitheight);
-    level->maxx = ceil((grid->extent[2]-grid->extent[0] - 0.01* unitwidth)/unitwidth);
+    level->maxy = ceil((grid->extent.maxy-grid->extent.miny - 0.01* unitheight)/unitheight);
+    level->maxx = ceil((grid->extent.maxx-grid->extent.minx - 0.01* unitwidth)/unitwidth);
     grid->levels[i] = level;
   }
   mapcache_configuration_add_grid(cfg,grid,"WGS84");
@@ -212,10 +209,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   grid->tile_sx = grid->tile_sy = 256;
   grid->nlevels = 19;
   grid->unit = MAPCACHE_UNIT_METERS;
-  grid->extent[0] = google_extent[0];
-  grid->extent[1] = google_extent[1];
-  grid->extent[2] = google_extent[2];
-  grid->extent[3] = google_extent[3];
+  grid->extent = google_extent;
   grid->levels = (mapcache_grid_level**)apr_pcalloc(pool,
                  grid->nlevels*sizeof(mapcache_grid_level*));
   for(i=0; i<grid->nlevels; i++) {
@@ -224,8 +218,8 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
     unitheight = grid->tile_sy * level->resolution;
     unitwidth = grid->tile_sx * level->resolution;
 
-    level->maxy = ceil((grid->extent[3]-grid->extent[1] - 0.01* unitheight)/unitheight);
-    level->maxx = ceil((grid->extent[2]-grid->extent[0] - 0.01* unitwidth)/unitwidth);
+    level->maxy = ceil((grid->extent.maxy-grid->extent.miny - 0.01* unitheight)/unitheight);
+    level->maxx = ceil((grid->extent.maxx-grid->extent.minx - 0.01* unitwidth)/unitwidth);
     grid->levels[i] = level;
   }
   mapcache_configuration_add_grid(cfg,grid,"GoogleMapsCompatible");
@@ -240,10 +234,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   grid->tile_sx = grid->tile_sy = 256;
   grid->nlevels = 19;
   grid->unit = MAPCACHE_UNIT_METERS;
-  grid->extent[0] = google_extent[0];
-  grid->extent[1] = google_extent[1];
-  grid->extent[2] = google_extent[2];
-  grid->extent[3] = google_extent[3];
+  grid->extent = google_extent;
   grid->levels = (mapcache_grid_level**)apr_pcalloc(pool,
                  grid->nlevels*sizeof(mapcache_grid_level*));
   for(i=0; i<grid->nlevels; i++) {
@@ -252,8 +243,8 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
     unitheight = grid->tile_sy * level->resolution;
     unitwidth = grid->tile_sx * level->resolution;
 
-    level->maxy = ceil((grid->extent[3]-grid->extent[1] - 0.01* unitheight)/unitheight);
-    level->maxx = ceil((grid->extent[2]-grid->extent[0] - 0.01* unitwidth)/unitwidth);
+    level->maxy = ceil((grid->extent.maxy-grid->extent.miny - 0.01* unitheight)/unitheight);
+    level->maxx = ceil((grid->extent.maxx-grid->extent.minx - 0.01* unitwidth)/unitwidth);
     grid->levels[i] = level;
   }
   mapcache_configuration_add_grid(cfg,grid,"g");

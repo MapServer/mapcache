@@ -173,13 +173,13 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   ** in by half a pixel.
   */
   double dx, dy;
-  dx = (map->extent[2] - map->extent[0]) / (map->width*2);
-  dy = (map->extent[3] - map->extent[1]) / (map->height*2);
+  dx = (map->extent.maxx - map->extent.minx) / (map->width*2);
+  dy = (map->extent.maxy - map->extent.miny) / (map->height*2);
 
-  mcmap->map->extent.minx = map->extent[0] + dx;
-  mcmap->map->extent.miny = map->extent[1] + dy;
-  mcmap->map->extent.maxx = map->extent[2] - dx;
-  mcmap->map->extent.maxy = map->extent[3] - dy;
+  mcmap->map->extent.minx = map->extent.minx + dx;
+  mcmap->map->extent.miny = map->extent.miny + dy;
+  mcmap->map->extent.maxx = map->extent.maxx - dx;
+  mcmap->map->extent.maxy = map->extent.maxy - dy;
   msMapSetSize(mcmap->map, map->width, map->height);
 
   imageObj *image = msDrawMap(mcmap->map, MS_FALSE);

@@ -252,17 +252,16 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_metatile *mt = mapcache_tileset_metatile_get(ctx,tile);
   GEOSCoordSequence *mtbboxls = GEOSCoordSeq_create(5,2);
-  double *e = mt->map.extent;
-  GEOSCoordSeq_setX(mtbboxls,0,e[0]);
-  GEOSCoordSeq_setY(mtbboxls,0,e[1]);
-  GEOSCoordSeq_setX(mtbboxls,1,e[2]);
-  GEOSCoordSeq_setY(mtbboxls,1,e[1]);
-  GEOSCoordSeq_setX(mtbboxls,2,e[2]);
-  GEOSCoordSeq_setY(mtbboxls,2,e[3]);
-  GEOSCoordSeq_setX(mtbboxls,3,e[0]);
-  GEOSCoordSeq_setY(mtbboxls,3,e[3]);
-  GEOSCoordSeq_setX(mtbboxls,4,e[0]);
-  GEOSCoordSeq_setY(mtbboxls,4,e[1]);
+  GEOSCoordSeq_setX(mtbboxls,0,mt->map.extent.minx);
+  GEOSCoordSeq_setY(mtbboxls,0,mt->map.extent.miny);
+  GEOSCoordSeq_setX(mtbboxls,1,mt->map.extent.maxx);
+  GEOSCoordSeq_setY(mtbboxls,1,mt->map.extent.miny);
+  GEOSCoordSeq_setX(mtbboxls,2,mt->map.extent.maxx);
+  GEOSCoordSeq_setY(mtbboxls,2,mt->map.extent.maxy);
+  GEOSCoordSeq_setX(mtbboxls,3,mt->map.extent.minx);
+  GEOSCoordSeq_setY(mtbboxls,3,mt->map.extent.maxy);
+  GEOSCoordSeq_setX(mtbboxls,4,mt->map.extent.minx);
+  GEOSCoordSeq_setY(mtbboxls,4,mt->map.extent.miny);
   GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
   GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
   int i;
@@ -313,10 +312,11 @@ void progresslog(int x, int y, int z)
     totalduration = ((now_t.tv_sec-starttime.tv_sec)*1000000+(now_t.tv_usec-starttime.tv_usec))/1000000.0;
     if(duration>=5) {
       int Nx, Ny, Ntot, Ncur, ntilessincelast;
-      Nx = (grid_link->grid_limits[z][2]-grid_link->grid_limits[z][0])/tileset->metasize_x;
-      Ny = (grid_link->grid_limits[z][3]-grid_link->grid_limits[z][1])/tileset->metasize_y;
+      Nx = (grid_link->grid_limits[z].maxx-grid_link->grid_limits[z].minx)/tileset->metasize_x;
+      Ny = (grid_link->grid_limits[z].maxy-grid_link->grid_limits[z].miny)/tileset->metasize_y;
       Ntot = Nx*Ny;
-      Ncur = (y-grid_link->grid_limits[z][1])/tileset->metasize_y*Nx+(x-grid_link->grid_limits[z][0]+1)/tileset->metasize_x;
+      Ncur = ((y-grid_link->grid_limits[z].miny)/tileset->metasize_y ) * Nx +
+          (x-grid_link->grid_limits[z].minx+1)/tileset->metasize_x;
       ntilessincelast = seededtilestot-seededtiles;
       sprintf(msg,"seeding level %d [%d/%d]: %f metatiles/sec (avg since start: %f)",z,Ncur,Ntot,ntilessincelast/duration,
               seededtilestot/totalduration);
@@ -433,8 +433,9 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
 {
   cmd action;
   int curx, cury, curz;
+  int blchildx,trchildx,blchildy,trchildy;
   int minchildx,maxchildx,minchildy,maxchildy;
-  double bboxbl[4],bboxtr[4];
+  mapcache_extent bboxbl,bboxtr;
   double epsilon;
 
   apr_pool_clear(cmd_ctx->pool);
@@ -479,28 +480,28 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
 
 
   mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
-                           curx, cury, curz, bboxbl);
+                           curx, cury, curz, &bboxbl);
   mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
-                           curx+tileset->metasize_x-1, cury+tileset->metasize_y-1, curz, bboxtr);
-  epsilon = (bboxbl[2]-bboxbl[0])*0.01;
+                           curx+tileset->metasize_x-1, cury+tileset->metasize_y-1, curz, &bboxtr);
+  epsilon = (bboxbl.maxx-bboxbl.minx)*0.01;
   mapcache_grid_get_xy(cmd_ctx,grid_link->grid,
-                       bboxbl[0] + epsilon,
-                       bboxbl[1] + epsilon,
-                       tile->z,&minchildx,&minchildy);
+                       bboxbl.minx + epsilon,
+                       bboxbl.miny + epsilon,
+                       tile->z,&blchildx,&blchildy);
   mapcache_grid_get_xy(cmd_ctx,grid_link->grid,
-                       bboxtr[2] - epsilon,
-                       bboxtr[3] - epsilon,
-                       tile->z,&maxchildx,&maxchildy);
+                       bboxtr.maxx - epsilon,
+                       bboxtr.maxy - epsilon,
+                       tile->z,&trchildx,&trchildy);
 
-  minchildx = (minchildx / tileset->metasize_x)*tileset->metasize_x;
-  minchildy = (minchildy / tileset->metasize_y)*tileset->metasize_y;
-  maxchildx = (maxchildx / tileset->metasize_x + 1)*tileset->metasize_x;
-  maxchildy = (maxchildy / tileset->metasize_y + 1)*tileset->metasize_y;
+  minchildx = (MAPCACHE_MIN(blchildx,trchildx) / tileset->metasize_x)*tileset->metasize_x;
+  minchildy = (MAPCACHE_MIN(blchildy,trchildy) / tileset->metasize_y)*tileset->metasize_y;
+  maxchildx = (MAPCACHE_MAX(blchildx,trchildx) / tileset->metasize_x + 1)*tileset->metasize_x;
+  maxchildy = (MAPCACHE_MAX(blchildy,trchildy) / tileset->metasize_y + 1)*tileset->metasize_y;
 
   for(tile->x = minchildx; tile->x < maxchildx; tile->x +=  tileset->metasize_x) {
-    if(tile->x >= grid_link->grid_limits[tile->z][0] && tile->x < grid_link->grid_limits[tile->z][2]) {
+    if(tile->x >= grid_link->grid_limits[tile->z].minx && tile->x < grid_link->grid_limits[tile->z].maxx) {
       for(tile->y = minchildy; tile->y < maxchildy; tile->y += tileset->metasize_y) {
-        if(tile->y >= grid_link->grid_limits[tile->z][1] && tile->y < grid_link->grid_limits[tile->z][3]) {
+        if(tile->y >= grid_link->grid_limits[tile->z].miny && tile->y < grid_link->grid_limits[tile->z].maxy) {
           cmd_recurse(cmd_ctx,tile);
         }
       }
@@ -517,8 +518,8 @@ void cmd_worker()
   int n;
   mapcache_tile *tile;
   int z = minzoom;
-  int x = grid_link->grid_limits[z][0];
-  int y = grid_link->grid_limits[z][1];
+  int x = grid_link->grid_limits[z].minx;
+  int y = grid_link->grid_limits[z].miny;
   mapcache_context cmd_ctx = ctx;
   int nworkers = nthreads;
   if(nprocesses >= 1) nworkers = nprocesses;
@@ -532,16 +533,16 @@ void cmd_worker()
       tile->z = z;
       cmd_recurse(&cmd_ctx,tile);
       x += tileset->metasize_x;
-      if( x >= grid_link->grid_limits[z][2] ) {
+      if( x >= grid_link->grid_limits[z].maxx ) {
         y += tileset->metasize_y;
-        if( y < grid_link->grid_limits[z][3]) {
-          x = grid_link->grid_limits[z][0];
+        if( y < grid_link->grid_limits[z].maxy) {
+          x = grid_link->grid_limits[z].minx;
         }
       }
     } while (
-      x < grid_link->grid_limits[z][2]
+      x < grid_link->grid_limits[z].maxx
       &&
-      y < grid_link->grid_limits[z][3]
+      y < grid_link->grid_limits[z].maxy
     );
   } else {
     while(1) {
@@ -574,16 +575,16 @@ void cmd_worker()
 
       //compute next x,y,z
       x += tileset->metasize_x;
-      if(x >= grid_link->grid_limits[z][2]) {
+      if(x >= grid_link->grid_limits[z].maxx) {
         //x is too big, increment y
         y += tileset->metasize_y;
-        if(y >= grid_link->grid_limits[z][3]) {
+        if(y >= grid_link->grid_limits[z].maxy) {
           //y is too big, increment z
           z += 1;
           if(z > maxzoom) break; //we've finished seeding
-          y = grid_link->grid_limits[z][1]; //set y to the smallest value for current z
+          y = grid_link->grid_limits[z].miny; //set y to the smallest value for current z
         }
-        x = grid_link->grid_limits[z][0]; //set x to smallest value for current z
+        x = grid_link->grid_limits[z].minx; //set x to smallest value for current z
       }
     }
   }
@@ -722,7 +723,7 @@ int main(int argc, const char **argv)
   const char *tileset_transfer_name=NULL;
   const char *grid_name = NULL;
   int *zooms = NULL;//[2];
-  double *extent = NULL;//[4];
+  mapcache_extent *extent = NULL;//[4];
   int optch;
   int rv,n;
   const char *old = NULL;
@@ -732,6 +733,7 @@ int main(int argc, const char **argv)
   int keyidx;
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
+  double *extent_array = NULL;
 
 #ifdef USE_CLIPPERS
   const char *ogr_where = NULL;
@@ -809,10 +811,15 @@ int main(int argc, const char **argv)
         return usage(argv[0], "multi process seeding not available on this platform");
 #endif
       case 'e':
-        if ( MAPCACHE_SUCCESS != mapcache_util_extract_double_list(&ctx, (char*)optarg, ",", &extent, &n) ||
-             n != 4 || extent[0] >= extent[2] || extent[1] >= extent[3] ) {
+        if ( MAPCACHE_SUCCESS != mapcache_util_extract_double_list(&ctx, (char*)optarg, ",", &extent_array, &n) ||
+             n != 4 || extent_array[0] >= extent_array[2] || extent_array[1] >= extent_array[3] ) {
           return usage(argv[0], "failed to parse extent, expecting comma separated 4 doubles");
         }
+        extent = apr_palloc(ctx.pool,sizeof(mapcache_extent));
+        extent->minx = extent_array[0];
+        extent->miny = extent_array[1];
+        extent->maxx = extent_array[2];
+        extent->maxy = extent_array[3];
         break;
       case 'z':
         if ( MAPCACHE_SUCCESS != mapcache_util_extract_int_list(&ctx, (char*)optarg, ",", &zooms, &n) ||
@@ -942,7 +949,7 @@ int main(int argc, const char **argv)
     OGRFeatureH hFeature;
     GEOSWKTReader *geoswktreader = GEOSWKTReader_create();
     OGR_L_ResetReading(layer);
-    extent = apr_pcalloc(ctx.pool,4*sizeof(double));
+    extent = apr_palloc(ctx.pool,4*sizeof(mapcache_extent));
     int f=0;
     while( (hFeature = OGR_L_GetNextFeature(layer)) != NULL ) {
       OGRGeometryH geom = OGR_F_GetGeometryRef(hFeature);
@@ -956,15 +963,15 @@ int main(int argc, const char **argv)
       OGREnvelope ogr_extent;
       OGR_G_GetEnvelope  (geom, &ogr_extent);
       if(f == 0) {
-        extent[0] = ogr_extent.MinX;
-        extent[1] = ogr_extent.MinY;
-        extent[2] = ogr_extent.MaxX;
-        extent[3] = ogr_extent.MaxY;
+        extent->minx = ogr_extent.MinX;
+        extent->miny = ogr_extent.MinY;
+        extent->maxx = ogr_extent.MaxX;
+        extent->maxy = ogr_extent.MaxY;
       } else {
-        extent[0] = MAPCACHE_MIN(ogr_extent.MinX, extent[0]);
-        extent[1] = MAPCACHE_MIN(ogr_extent.MinY, extent[1]);
-        extent[2] = MAPCACHE_MAX(ogr_extent.MaxX, extent[2]);
-        extent[3] = MAPCACHE_MAX(ogr_extent.MaxY, extent[3]);
+        extent->minx = MAPCACHE_MIN(ogr_extent.MinX, extent->minx);
+        extent->miny = MAPCACHE_MIN(ogr_extent.MinY, extent->miny);
+        extent->maxx = MAPCACHE_MAX(ogr_extent.MaxX, extent->maxx);
+        extent->maxy = MAPCACHE_MAX(ogr_extent.MaxY, extent->maxy);
       }
 
       OGR_F_Destroy( hFeature );
@@ -1057,16 +1064,16 @@ int main(int argc, const char **argv)
    * goes from one metatile to the next*/
   for(n=0; n<grid_link->grid->nlevels; n++) {
     if(tileset->metasize_x > 1) {
-      grid_link->grid_limits[n][0] = (grid_link->grid_limits[n][0]/tileset->metasize_x)*tileset->metasize_x;
-      grid_link->grid_limits[n][2] = (grid_link->grid_limits[n][2]/tileset->metasize_x+1)*tileset->metasize_x;
-      if( grid_link->grid_limits[n][2] > grid_link->grid->levels[n]->maxx)
-        grid_link->grid_limits[n][2] = grid_link->grid->levels[n]->maxx;
+      grid_link->grid_limits[n].minx = (grid_link->grid_limits[n].minx/tileset->metasize_x)*tileset->metasize_x;
+      grid_link->grid_limits[n].maxx = (grid_link->grid_limits[n].maxx/tileset->metasize_x+1)*tileset->metasize_x;
+      if( grid_link->grid_limits[n].maxx > grid_link->grid->levels[n]->maxx)
+        grid_link->grid_limits[n].maxx = grid_link->grid->levels[n]->maxx;
     }
     if(tileset->metasize_y > 1) {
-      grid_link->grid_limits[n][1] = (grid_link->grid_limits[n][1]/tileset->metasize_y)*tileset->metasize_y;
-      grid_link->grid_limits[n][3] = (grid_link->grid_limits[n][3]/tileset->metasize_y+1)*tileset->metasize_y;
-      if( grid_link->grid_limits[n][3] > grid_link->grid->levels[n]->maxy)
-        grid_link->grid_limits[n][3] = grid_link->grid->levels[n]->maxy;
+      grid_link->grid_limits[n].miny = (grid_link->grid_limits[n].miny/tileset->metasize_y)*tileset->metasize_y;
+      grid_link->grid_limits[n].maxy = (grid_link->grid_limits[n].maxy/tileset->metasize_y+1)*tileset->metasize_y;
+      if( grid_link->grid_limits[n].maxy > grid_link->grid->levels[n]->maxy)
+        grid_link->grid_limits[n].maxy = grid_link->grid->levels[n]->maxy;
     }
   }
 

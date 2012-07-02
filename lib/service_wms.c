@@ -218,12 +218,12 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_set_txt(ezxml_add_child(layerxml,"Abstract",0),abstract);
     }
 
-    if(tileset->wgs84bbox[0] != tileset->wgs84bbox[2]) {
+    if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
       ezxml_t wgsxml = ezxml_add_child(layerxml,"LatLonBoundingBox",0);
-      ezxml_set_attr(wgsxml,"minx",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox[0]));
-      ezxml_set_attr(wgsxml,"miny",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox[1]));
-      ezxml_set_attr(wgsxml,"maxx",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox[2]));
-      ezxml_set_attr(wgsxml,"maxy",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox[3]));
+      ezxml_set_attr(wgsxml,"minx",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.minx));
+      ezxml_set_attr(wgsxml,"miny",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.miny));
+      ezxml_set_attr(wgsxml,"maxx",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.maxx));
+      ezxml_set_attr(wgsxml,"maxy",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.maxy));
     }
 
     if(tileset->dimensions) {
@@ -255,15 +255,15 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_t bboxxml;
       mapcache_grid_link *gridlink = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
       mapcache_grid *grid = gridlink->grid;
-      double *extent = grid->extent;
+      mapcache_extent *extent = &(grid->extent);
       if(gridlink->restricted_extent)
         extent = gridlink->restricted_extent;
       bboxxml = ezxml_add_child(layerxml,"BoundingBox",0);
       ezxml_set_attr(bboxxml,"SRS", grid->srs);
-      ezxml_set_attr(bboxxml,"minx",apr_psprintf(ctx->pool,"%f",extent[0]));
-      ezxml_set_attr(bboxxml,"miny",apr_psprintf(ctx->pool,"%f",extent[1]));
-      ezxml_set_attr(bboxxml,"maxx",apr_psprintf(ctx->pool,"%f",extent[2]));
-      ezxml_set_attr(bboxxml,"maxy",apr_psprintf(ctx->pool,"%f",extent[3]));
+      ezxml_set_attr(bboxxml,"minx",apr_psprintf(ctx->pool,"%f",extent->minx));
+      ezxml_set_attr(bboxxml,"miny",apr_psprintf(ctx->pool,"%f",extent->miny));
+      ezxml_set_attr(bboxxml,"maxx",apr_psprintf(ctx->pool,"%f",extent->maxx));
+      ezxml_set_attr(bboxxml,"maxy",apr_psprintf(ctx->pool,"%f",extent->maxy));
       ezxml_set_txt(ezxml_add_child(layerxml,"SRS",0),grid->srs);
 
       for(j=0; j<gridlink->grid->srs_aliases->nelts; j++) {
@@ -278,10 +278,10 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         ezxml_set_txt(ezxml_add_child(tsxml,"SRS",0),grid->srs);
         tmpxml = ezxml_add_child(tsxml,"BoundingBox",0);
         ezxml_set_attr(tmpxml,"SRS",grid->srs);
-        ezxml_set_attr(tmpxml,"minx",apr_psprintf(ctx->pool,"%f",grid->extent[0]));
-        ezxml_set_attr(tmpxml,"miny",apr_psprintf(ctx->pool,"%f",grid->extent[1]));
-        ezxml_set_attr(tmpxml,"maxx",apr_psprintf(ctx->pool,"%f",grid->extent[2]));
-        ezxml_set_attr(tmpxml,"maxy",apr_psprintf(ctx->pool,"%f",grid->extent[3]));
+        ezxml_set_attr(tmpxml,"minx",apr_psprintf(ctx->pool,"%f",grid->extent.minx));
+        ezxml_set_attr(tmpxml,"miny",apr_psprintf(ctx->pool,"%f",grid->extent.miny));
+        ezxml_set_attr(tmpxml,"maxx",apr_psprintf(ctx->pool,"%f",grid->extent.maxx));
+        ezxml_set_attr(tmpxml,"maxy",apr_psprintf(ctx->pool,"%f",grid->extent.maxy));
 
         resolutions="";
 
@@ -328,7 +328,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
   const char *str = NULL;
   const char *srs=NULL;
   int width=0, height=0;
-  double *bbox;
+  double *tmpbbox;
+  mapcache_extent extent;
   int isGetMap=0,iswms130=0;
   int errcode = 200;
   char *errmsg = NULL;
@@ -388,12 +389,16 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
     goto proxies;
   } else {
     int nextents;
-    if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, str,",",&bbox,&nextents) ||
+    if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, str,",",&tmpbbox,&nextents) ||
         nextents != 4) {
       errcode = 400;
       errmsg = "received wms request with invalid bbox";
       goto proxies;
     }
+    extent.minx = tmpbbox[0];
+    extent.miny = tmpbbox[1];
+    extent.maxx = tmpbbox[2];
+    extent.maxy = tmpbbox[3];
   }
 
   str = apr_table_get(params,"WIDTH");
@@ -451,12 +456,12 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
     /*check if we should flip the axis order*/
     if(mapcache_is_axis_inverted(srs)) {
       double swap;
-      swap = bbox[0];
-      bbox[0] = bbox[1];
-      bbox[1] = swap;
-      swap = bbox[2];
-      bbox[2] = bbox[3];
-      bbox[3] = swap;
+      swap = extent.minx;
+      extent.minx = extent.miny;
+      extent.miny = swap;
+      swap = extent.maxx;
+      extent.maxx = extent.maxy;
+      extent.maxy = swap;
     }
   }
 
@@ -534,7 +539,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
 
       /* verify we align on the tileset's grid */
       if(main_grid_link->grid->tile_sx != width || main_grid_link->grid->tile_sy != height ||
-          mapcache_grid_get_cell(ctx, main_grid_link->grid, bbox, &x,&y,&z) != MAPCACHE_SUCCESS) {
+          mapcache_grid_get_cell(ctx, main_grid_link->grid, &extent, &x,&y,&z) != MAPCACHE_SUCCESS) {
         /* we have the correct srs, but the request does not align on the grid */
         type = MAPCACHE_REQUEST_GET_MAP;
       }
@@ -619,10 +624,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           mapcache_map *map = mapcache_tileset_map_create(ctx->pool,tileset,grid_link);
           map->width = width;
           map->height = height;
-          map->extent[0] = bbox[0];
-          map->extent[1] = bbox[1];
-          map->extent[2] = bbox[2];
-          map->extent[3] = bbox[3];
+          map->extent = extent;
           map_req->maps[map_req->nmaps++] = map;
           dimtable = map->dimensions;
         }
@@ -759,10 +761,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
       }
       fi->map.width = width;
       fi->map.height = height;
-      fi->map.extent[0] = bbox[0];
-      fi->map.extent[1] = bbox[1];
-      fi->map.extent[2] = bbox[2];
-      fi->map.extent[3] = bbox[3];
+      fi->map.extent = extent;
       req_fi = apr_pcalloc(ctx->pool, sizeof(mapcache_request_get_feature_info));
       req_fi->request.type = MAPCACHE_REQUEST_GET_FEATUREINFO;
       req_fi->fi = fi;

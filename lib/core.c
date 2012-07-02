@@ -307,7 +307,7 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
   nmaptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(int));
   for(i=0; i<nmaps; i++) {
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
-                                   maps[i]->extent, maps[i]->width, maps[i]->height,
+                                   &maps[i]->extent, maps[i]->width, maps[i]->height,
                                    &(nmaptiles[i]), &(maptiles[i]));
     ntiles += nmaptiles[i];
   }
@@ -336,7 +336,7 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
       if(!maps[i]->expires || maptiles[i][j]->expires<maps[i]->expires) maps[i]->expires =maptiles[i][j]->expires;
     }
     maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
-                         maps[i]->extent, maps[i]->width, maps[i]->height,
+                         &maps[i]->extent, maps[i]->width, maps[i]->height,
                          nmaptiles[i], maptiles[i],
                          mode);
   }

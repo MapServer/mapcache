@@ -85,15 +85,18 @@ void _create_capabilities_tms(mapcache_context *ctx, mapcache_request_get_capabi
           ezxml_t tilemap;
           char *href;
           mapcache_grid *grid = APR_ARRAY_IDX(tileset->grid_links,j,mapcache_grid_link*)->grid;
-          const char *profile = apr_table_get(grid->metadata,"profile");
-          if(!profile) profile = "none";
-          tilemap = ezxml_add_child(tilemaps,"TileMap",0);
-          ezxml_set_attr(tilemap,"title",title);
-          ezxml_set_attr(tilemap,"srs",grid->srs);
-          if(profile)
-            ezxml_set_attr(tilemap,"profile",profile);
-          href = apr_pstrcat(ctx->pool,onlineresource,"tms/1.0.0/",tileset->name,"@",grid->name,NULL);
-          ezxml_set_attr(tilemap,"href",href);
+          /* TMS only supports tilesets with bottom-left origin*/
+          if(grid->origin == MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT) {
+            const char *profile = apr_table_get(grid->metadata,"profile");
+            if(!profile) profile = "none";
+            tilemap = ezxml_add_child(tilemaps,"TileMap",0);
+            ezxml_set_attr(tilemap,"title",title);
+            ezxml_set_attr(tilemap,"srs",grid->srs);
+            if(profile)
+              ezxml_set_attr(tilemap,"profile",profile);
+            href = apr_pstrcat(ctx->pool,onlineresource,"tms/1.0.0/",tileset->name,"@",grid->name,NULL);
+            ezxml_set_attr(tilemap,"href",href);
+          }
         }
         tileindex_index = apr_hash_next(tileindex_index);
       }
@@ -108,7 +111,7 @@ void _create_capabilities_tms(mapcache_context *ctx, mapcache_request_get_capabi
       mapcache_grid_link *grid_link = request->grid_link;
       mapcache_grid *grid = grid_link->grid;
       int i;
-      double *extent = (request->grid_link->restricted_extent)?request->grid_link->restricted_extent:request->grid_link->grid->extent;
+      mapcache_extent *extent = (request->grid_link->restricted_extent)?request->grid_link->restricted_extent:&request->grid_link->grid->extent;
       title = apr_table_get(tileset->metadata,"title");
       if(!title) {
         title = "no title set, add some in metadata";
@@ -127,14 +130,14 @@ void _create_capabilities_tms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_set_txt(ezxml_add_child(caps,"SRS",0),grid->srs);
 
       bbox = ezxml_add_child(caps,"BoundingBox",0);
-      ezxml_set_attr(bbox,"minx",apr_psprintf(ctx->pool,"%f",extent[0]));
-      ezxml_set_attr(bbox,"miny",apr_psprintf(ctx->pool,"%f",extent[1]));
-      ezxml_set_attr(bbox,"maxx",apr_psprintf(ctx->pool,"%f",extent[2]));
-      ezxml_set_attr(bbox,"maxy",apr_psprintf(ctx->pool,"%f",extent[3]));
+      ezxml_set_attr(bbox,"minx",apr_psprintf(ctx->pool,"%f",extent->minx));
+      ezxml_set_attr(bbox,"miny",apr_psprintf(ctx->pool,"%f",extent->miny));
+      ezxml_set_attr(bbox,"maxx",apr_psprintf(ctx->pool,"%f",extent->maxx));
+      ezxml_set_attr(bbox,"maxy",apr_psprintf(ctx->pool,"%f",extent->maxy));
 
       origin = ezxml_add_child(caps,"Origin",0);
-      ezxml_set_attr(origin,"x",apr_psprintf(ctx->pool,"%f",grid->extent[0]));
-      ezxml_set_attr(origin,"y",apr_psprintf(ctx->pool,"%f",grid->extent[1]));
+      ezxml_set_attr(origin,"x",apr_psprintf(ctx->pool,"%f",grid->extent.minx));
+      ezxml_set_attr(origin,"y",apr_psprintf(ctx->pool,"%f",grid->extent.miny));
 
       tileformat = ezxml_add_child(caps,"TileFormat",0);
       ezxml_set_attr(tileformat,"width",apr_psprintf(ctx->pool,"%d",grid->tile_sx));
@@ -298,12 +301,27 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
           return;
         }
       }
-      req->tiles[req->ntiles] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-      req->tiles[req->ntiles]->x = x;
       if(((mapcache_service_tms*)this)->reverse_y) {
-        req->tiles[req->ntiles]->y = grid_link->grid->levels[z]->maxy - y - 1;
-      } else {
-        req->tiles[req->ntiles]->y = y;
+        y = grid_link->grid->levels[z]->maxy - y - 1;
+      }
+      req->tiles[req->ntiles] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
+      switch(grid_link->grid->origin) {
+        case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+          req->tiles[req->ntiles]->x = x;
+          req->tiles[req->ntiles]->y = y;
+          break;
+        case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+          req->tiles[req->ntiles]->x = x;
+          req->tiles[req->ntiles]->y = grid_link->grid->levels[z]->maxy - y - 1;
+          break;
+        case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+          req->tiles[req->ntiles]->x = grid_link->grid->levels[z]->maxx - x - 1;
+          req->tiles[req->ntiles]->y = y;
+          break;
+        case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+          req->tiles[req->ntiles]->x = grid_link->grid->levels[z]->maxx - x - 1;
+          req->tiles[req->ntiles]->y = grid_link->grid->levels[z]->maxy - y - 1;
+          break;
       }
       req->tiles[req->ntiles]->z = z;
       mapcache_tileset_tile_validate(ctx,req->tiles[req->ntiles]);

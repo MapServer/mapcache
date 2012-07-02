@@ -33,10 +33,8 @@
 
 void mapcache_source_init(mapcache_context *ctx, mapcache_source *source)
 {
-  source->data_extent[0] =
-    source->data_extent[1] =
-      source->data_extent[2] =
-        source->data_extent[3] = -1;
+  mapcache_extent tmp_extent = {-1,-1,-1,-1};
+  source->data_extent = tmp_extent;
   source->metadata = apr_table_make(ctx->pool,3);
 }
 /* vim: ts=2 sts=2 et sw=2

@@ -50,7 +50,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
 
   /* if we have no specific tile, create a kml document referencing all the tiles of the first level in the grid*/
   if(!request->tile) {
-    double *extent = request->grid->restricted_extent?request->grid->restricted_extent:request->grid->grid->extent;
+    mapcache_extent extent = request->grid->restricted_extent?*(request->grid->restricted_extent):request->grid->grid->extent;
     caps = apr_psprintf(ctx->pool, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                         "<kml xmlns=\"http://earth.google.com/kml/2.1\">\n"
                         "  <Document>\n"
@@ -63,17 +63,17 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
                         "        <east>%f</east><west>%f</west>\n"
                         "      </LatLonAltBox>\n"
                         "    </Region>\n",
-                        extent[3],extent[1],extent[2],extent[0]);
-    for(i=request->grid->grid_limits[0][0]; i<request->grid->grid_limits[0][2]; i++) {
-      for(j=request->grid->grid_limits[0][1]; j<request->grid->grid_limits[0][3]; j++) {
+                        extent.maxy,extent.miny,extent.maxx,extent.minx);
+    for(i=request->grid->grid_limits[0].minx; i<request->grid->grid_limits[0].maxx; i++) {
+      for(j=request->grid->grid_limits[0].miny; j<request->grid->grid_limits[0].maxy; j++) {
 
         mapcache_tile *t = mapcache_tileset_tile_create(ctx->pool, request->tileset, request->grid);
-        double bb[4];
+        mapcache_extent bb;
         t->x = i;
         t->y = j;
         t->z = 0;
         mapcache_grid_get_extent(ctx, t->grid_link->grid,
-                                 t->x, t->y, t->z, bb);
+                                 t->x, t->y, t->z, &bb);
 
         caps = apr_psprintf(ctx->pool, "%s"
                             "    <NetworkLink>\n"
@@ -93,17 +93,17 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
                             "      </Link>\n"
                             "    </NetworkLink>\n",
                             caps, t->x, t->y, t->z,
-                            bb[3], bb[1], bb[2], bb[0],
+                            bb.maxy, bb.miny, bb.maxx, bb.minx,
                             onlineresource, request->tileset->name, request->grid->grid->name,
                             t->z, t->x, t->y);
       }
     }
     caps = apr_pstrcat(ctx->pool, caps, "  </Document>\n</kml>\n", NULL);
   } else {
-    double bbox[4];
+    mapcache_extent bbox;
 
     mapcache_grid_get_extent(ctx, request->tile->grid_link->grid,
-                             request->tile->x, request->tile->y, request->tile->z, bbox);
+                             request->tile->x, request->tile->y, request->tile->z, &bbox);
 
 
     caps = apr_psprintf(ctx->pool, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -129,22 +129,23 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
                         "      </LatLonBox>\n"
                         "    </GroundOverlay>\n",
                         (request->tile->z == request->tile->grid_link->grid->nlevels - 1) ? -1 : 512,
-                        bbox[3], bbox[1], bbox[2], bbox[0],
+                        bbox.maxy, bbox.miny, bbox.maxx, bbox.miny,
                         onlineresource, request->tile->tileset->name, request->tile->grid_link->grid->name,
                         request->tile->z, request->tile->x, request->tile->y,
                         (request->tile->tileset->format) ? request->tile->tileset->format->extension : "png",
-                        bbox[3], bbox[1], bbox[2], bbox[0]);
+                        bbox.maxy, bbox.miny, bbox.maxx, bbox.minx);
 
     if (request->tile->z < request->tile->grid_link->grid->nlevels - 1) {
       for (i = 0; i <= 1; i++) {
         for (j = 0; j <= 1; j++) {
+          /* compute the addresses of the child tiles */
           mapcache_tile *t = mapcache_tileset_tile_create(ctx->pool, request->tile->tileset, request->tile->grid_link);
-          double bb[4];
+          mapcache_extent bb;
           t->x = (request->tile->x << 1) + i;
           t->y = (request->tile->y << 1) + j;
           t->z = request->tile->z + 1;
           mapcache_grid_get_extent(ctx, t->grid_link->grid,
-                                   t->x, t->y, t->z, bb);
+                                   t->x, t->y, t->z, &bb);
 
           caps = apr_psprintf(ctx->pool, "%s"
                               "    <NetworkLink>\n"
@@ -164,7 +165,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
                               "      </Link>\n"
                               "    </NetworkLink>\n",
                               caps, t->x, t->y, t->z,
-                              bb[3], bb[1], bb[2], bb[0],
+                              bb.maxy, bb.miny, bb.maxx, bb.minx,
                               onlineresource, request->tile->tileset->name, request->tile->grid_link->grid->name,
                               t->z, t->x, t->y);
         }

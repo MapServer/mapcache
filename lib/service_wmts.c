@@ -218,12 +218,12 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
                                ((tileset->format)?tileset->format->extension:"xxx"),NULL));
 
 
-    if(tileset->wgs84bbox[0] != tileset->wgs84bbox[2]) {
+    if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
       ezxml_t bbox = ezxml_add_child(layer,"ows:WGS84BoundingBox",0);
       ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),
-                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox[0], tileset->wgs84bbox[1]));
+                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.minx, tileset->wgs84bbox.miny));
       ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),
-                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox[2], tileset->wgs84bbox[3]));
+                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.maxx, tileset->wgs84bbox.maxy));
     }
 
     for(i=0; i<tileset->grid_links->nelts; i++) {
@@ -239,13 +239,13 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
           ezxml_set_txt(ezxml_add_child(matrixlimits,"TileMatrix",0),
                         apr_psprintf(ctx->pool,"%s:%d",grid_link->grid->name,j));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j][0]));
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].minx));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j][2]-1));
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxx-1));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileCol",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j][1]));
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].miny));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileCol",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j][3]-1));
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxy-1));
         }
       }
 
@@ -292,9 +292,9 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     bbox = ezxml_add_child(tmset,"ows:BoundingBox",0);
 
     ezxml_set_txt(ezxml_add_child(bbox,"LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent[0], grid->extent[1]));
+                  grid->extent.minx, grid->extent.miny));
     ezxml_set_txt(ezxml_add_child(bbox,"UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent[2], grid->extent[3]));
+                  grid->extent.maxx, grid->extent.maxy));
     ezxml_set_attr(bbox,"crs",mapcache_grid_get_crs(ctx,grid));
 
     if(WellKnownScaleSet) {
@@ -302,20 +302,32 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     }
 
     for(level=0; level<grid->nlevels; level++) {
-      double scaledenom;
+      double scaledenom,tlx,tly;
       mapcache_grid_level *glevel = grid->levels[level];
       ezxml_t tm = ezxml_add_child(tmset,"TileMatrix",0);
       ezxml_set_txt(ezxml_add_child(tm,"ows:Identifier",0),apr_psprintf(ctx->pool,"%d",level));
       scaledenom = glevel->resolution * mapcache_meters_per_unit[grid->unit] / 0.00028;
       ezxml_set_txt(ezxml_add_child(tm,"ScaleDenominator",0),apr_psprintf(ctx->pool,"%.20f",scaledenom));
+      switch(grid->origin) {
+        case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+          tlx = grid->extent.minx;
+          tly = grid->extent.maxy;
+          break;
+        case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+          tlx = grid->extent.minx;
+          tly = grid->extent.miny + glevel->maxy * glevel->resolution * grid->tile_sy;
+          break;
+        case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+        case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+          ctx->set_error(ctx,500,"origin not implemented");
+          return;
+      }
       if(mapcache_is_axis_inverted(grid->srs)) {
         ezxml_set_txt(ezxml_add_child(tm,"TopLeftCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                      grid->extent[1] + glevel->maxy * glevel->resolution * grid->tile_sy,
-                      grid->extent[0]));
+            tly,tlx));
       } else {
         ezxml_set_txt(ezxml_add_child(tm,"TopLeftCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                      grid->extent[0],
-                      grid->extent[1] + glevel->maxy * glevel->resolution * grid->tile_sy));
+            tlx,tly));
       }
       ezxml_set_txt(ezxml_add_child(tm,"TileWidth",0),apr_psprintf(ctx->pool,"%d",grid->tile_sx));
       ezxml_set_txt(ezxml_add_child(tm,"TileHeight",0),apr_psprintf(ctx->pool,"%d",grid->tile_sy));
@@ -680,9 +692,25 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       }
     }
 
-    req->tiles[0]->x = col;
-    req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
     req->tiles[0]->z = level;
+    switch(grid_link->grid->origin) {
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+        req->tiles[0]->x = col;
+        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+        req->tiles[0]->x = col;
+        req->tiles[0]->y = row;
+        break;
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
+        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
+        req->tiles[0]->y = row;
+        break;
+    }
 
     mapcache_tileset_tile_validate(ctx,req->tiles[0]);
     if(GC_HAS_ERROR(ctx)) {
@@ -738,11 +766,36 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
     fi->map.width = grid_link->grid->tile_sx;
     fi->map.height = grid_link->grid->tile_sy;
-    mapcache_grid_get_extent(ctx,grid_link->grid,
-                             col,
-                             grid_link->grid->levels[level]->maxy-row-1,
-                             level,
-                             fi->map.extent);
+    switch(grid_link->grid->origin) {
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+        mapcache_grid_get_extent(ctx,grid_link->grid,
+            col,
+            grid_link->grid->levels[level]->maxy-row-1,
+            level,
+            &fi->map.extent);
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+        mapcache_grid_get_extent(ctx,grid_link->grid,
+            col,
+            row,
+            level,
+            &fi->map.extent);
+        break;
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+        mapcache_grid_get_extent(ctx,grid_link->grid,
+            grid_link->grid->levels[level]->maxx-col-1,
+            grid_link->grid->levels[level]->maxy-row-1,
+            level,
+            &fi->map.extent);
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+        mapcache_grid_get_extent(ctx,grid_link->grid,
+            grid_link->grid->levels[level]->maxx-col-1,
+            row,
+            level,
+            &fi->map.extent);
+        break;
+    }
     *request = (mapcache_request*)req_fi;
   }
 }

@@ -281,8 +281,24 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
         tileimg->w = mt->map.grid_link->grid->tile_sx;
         tileimg->h = mt->map.grid_link->grid->tile_sy;
         tileimg->stride = metatile->stride;
-        sx = mt->map.tileset->metabuffer + i * tileimg->w;
-        sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->w);
+        switch(mt->map.grid_link->grid->origin) {
+          case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+            sx = mt->map.tileset->metabuffer + i * tileimg->w;
+            sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->h);
+            break;
+          case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+            sx = mt->map.tileset->metabuffer + i * tileimg->w;
+            sy = mt->map.tileset->metabuffer + j * tileimg->h;
+            break;
+          case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT: /* FIXME not implemented */
+            sx = mt->map.tileset->metabuffer + i * tileimg->w;
+            sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->h);
+            break;
+          case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:  /* FIXME not implemented */
+            sx = mt->map.tileset->metabuffer + i * tileimg->w;
+            sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->h);
+            break;
+        }
         tileimg->data = &(metatile->data[sy*metatile->stride + 4 * sx]);
         if(mt->map.tileset->watermark) {
           mapcache_image_merge(ctx,tileimg,mt->map.tileset->watermark);

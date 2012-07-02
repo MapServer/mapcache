@@ -135,9 +135,25 @@ typedef struct mapcache_dimension_time mapcache_dimension_time;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
+typedef struct mapcache_extent mapcache_extent;
+typedef struct mapcache_extent_i mapcache_extent_i;
 
 /** \defgroup utility Utility */
 /** @{ */
+
+struct mapcache_extent {
+  double minx;
+  double miny;
+  double maxx;
+  double maxy;
+};
+
+struct mapcache_extent_i {
+  int minx;
+  int miny;
+  int maxx;
+  int maxy;
+};
 
 
 
@@ -254,7 +270,7 @@ typedef enum {
  */
 struct mapcache_source {
   char *name; /**< the key this source can be referenced by */
-  double data_extent[4]; /**< extent in which this source can produce data */
+  mapcache_extent data_extent; /**< extent in which this source can produce data */
   mapcache_source_type type;
   apr_table_t *metadata;
 
@@ -552,7 +568,7 @@ struct mapcache_map {
   mapcache_buffer *encoded_data;
   mapcache_image *raw_image;
   int width, height;
-  double extent[4];
+  mapcache_extent extent;
   apr_time_t mtime; /**< last modification time */
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 };
@@ -1113,16 +1129,29 @@ struct mapcache_grid_level {
   unsigned int maxx, maxy;
 };
 
+/**
+ * \brief mapcache_grid_origin
+ * determines at which extent extrema the tiles will originate from. Only
+ * BOTTOM_LEFT and TOP_LEFT are implemented
+ */
+typedef enum {
+  MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT,
+  MAPCACHE_GRID_ORIGIN_TOP_LEFT,
+  MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT,
+  MAPCACHE_GRID_ORIGIN_TOP_RIGHT,
+} mapcache_grid_origin;
+
 struct mapcache_grid {
   char *name;
   int nlevels;
   char *srs;
   apr_array_header_t *srs_aliases;
-  double extent[4];
+  mapcache_extent extent;
   mapcache_unit unit;
   int tile_sx, tile_sy; /**<width and height of a tile in pixels */
   mapcache_grid_level **levels;
   apr_table_t *metadata;
+  mapcache_grid_origin origin;
 };
 
 
@@ -1133,8 +1162,8 @@ struct mapcache_grid_link {
    *
    * a request is valid if x is in [minTileX, maxTileX[ and y in [minTileY,maxTileY]
    */
-  double *restricted_extent;
-  int **grid_limits;
+  mapcache_extent *restricted_extent;
+  mapcache_extent_i *grid_limits;
   int minz,maxz;
 };
 
@@ -1152,7 +1181,7 @@ struct mapcache_tileset {
   /**
    * the extent of the tileset in lonlat
    */
-  double wgs84bbox[4];
+  mapcache_extent wgs84bbox;
 
   /**
    * list of grids that will be cached
@@ -1222,13 +1251,13 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
 
 void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
                                     mapcache_grid_link *grid_link,
-                                    double *bbox, int width, int height,
+                                    mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
                                     mapcache_tile ***tiles);
 
 mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
     mapcache_grid_link *grid_link,
-    double *bbox, int width, int height,
+    mapcache_extent *bbox, int width, int height,
     int ntiles,
     mapcache_tile **tiles,
     mapcache_resample_mode mode);
@@ -1238,7 +1267,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
  * will return MAPCACHE_FAILURE
  * if the bbox does not correspond to the tileset's configuration
  */
-int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, double *bbox,
+int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, mapcache_extent *bbox,
                            int *x, int *y, int *z);
 
 /**
@@ -1270,7 +1299,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
  */
 void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, int whole_metatile);
 
-int mapcache_grid_is_bbox_aligned(mapcache_context *ctx, mapcache_grid *grid, double *bbox);
+int mapcache_grid_is_bbox_aligned(mapcache_context *ctx, mapcache_grid *grid, mapcache_extent *bbox);
 
 /**
  * \brief create and initialize a tile for the given tileset and grid_link
@@ -1338,7 +1367,7 @@ const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid);
 const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid);
 
 void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
-                              int x, int y, int z, double *bbox);
+                              int x, int y, int z, mapcache_extent *bbox);
 /**
  * \brief compute x y value for given lon/lat (dx/dy) and given zoomlevel
  * @param ctx
@@ -1351,9 +1380,9 @@ void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
  */
 void mapcache_grid_get_xy(mapcache_context *ctx, mapcache_grid *grid, double dx, double dy, int z, int *x, int *y);
 
-double mapcache_grid_get_resolution(double *bbox, int sx, int sy);
-double mapcache_grid_get_horizontal_resolution(double *bbox, int width);
-double mapcache_grid_get_vertical_resolution(double *bbox, int height);
+double mapcache_grid_get_resolution(mapcache_extent *bbox, int sx, int sy);
+double mapcache_grid_get_horizontal_resolution(mapcache_extent *bbox, int width);
+double mapcache_grid_get_vertical_resolution(mapcache_extent *bbox, int height);
 
 /**
  * \brief compute grid level given a resolution
@@ -1369,7 +1398,7 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
  * \param extent
  * \param tolerance the number of tiles around the given extent that can be requested without returning an error.
  */
-void mapcache_grid_compute_limits(const mapcache_grid *grid, const double *extent, int **limits, int tolerance);
+void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance);
 
 /* in util.c */
 int mapcache_util_extract_int_list(mapcache_context *ctx, const char* args, const char *sep, int **numbers,

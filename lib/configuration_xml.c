@@ -112,7 +112,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 {
   char *name;
-  double extent[4] = {0,0,0,0};
+  mapcache_extent extent = {0,0,0,0};
   mapcache_grid *grid;
   ezxml_t cur_node;
   char *value;
@@ -144,10 +144,10 @@ void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      value,nvalues,values[0],values[1],values[2],values[3]);
       return;
     }
-    extent[0] = values[0];
-    extent[1] = values[1];
-    extent[2] = values[2];
-    extent[3] = values[3];
+    extent.minx = values[0];
+    extent.miny = values[1];
+    extent.maxx = values[2];
+    extent.maxy = values[3];
   }
 
   if ((cur_node = ezxml_child(node,"metadata")) != NULL) {
@@ -177,6 +177,26 @@ void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     APR_ARRAY_PUSH(grid->srs_aliases,char*) = value;
   }
 
+  if ((cur_node = ezxml_child(node,"origin")) != NULL) {
+    if(!strcasecmp(cur_node->txt,"top-left")) {
+      grid->origin = MAPCACHE_GRID_ORIGIN_TOP_LEFT;
+    } else if(!strcasecmp(cur_node->txt,"bottom-left")) {
+      grid->origin = MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT;
+    } else if(!strcasecmp(cur_node->txt,"top-right")) {
+      grid->origin = MAPCACHE_GRID_ORIGIN_TOP_RIGHT;
+    } else if(!strcasecmp(cur_node->txt,"bottom-right")) {
+      grid->origin = MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT;
+    } else {
+      ctx->set_error(ctx, 400,
+          "unknown origin %s for grid %s (valid values are \"top-left\", \"bottom-left\", \"top-right\" and \"bottom-right\"",
+          cur_node->txt, grid->name);
+      return;
+    }
+    if(grid->origin == MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT || grid->origin == MAPCACHE_GRID_ORIGIN_TOP_RIGHT) {
+      ctx->set_error(ctx,500,"grid origin %s not implemented",cur_node->txt);
+      return;
+    }
+  }
   if ((cur_node = ezxml_child(node,"size")) != NULL) {
     int *sizes, nsizes;
     value = apr_pstrdup(ctx->pool,cur_node->txt);
@@ -215,8 +235,8 @@ void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       level->resolution = values[nvalues];
       unitheight = grid->tile_sy * level->resolution;
       unitwidth = grid->tile_sx * level->resolution;
-      level->maxy = ceil((extent[3]-extent[1] - 0.01* unitheight)/unitheight);
-      level->maxx = ceil((extent[2]-extent[0] - 0.01* unitwidth)/unitwidth);
+      level->maxy = ceil((extent.maxy-extent.miny - 0.01* unitheight)/unitheight);
+      level->maxx = ceil((extent.maxx-extent.minx - 0.01* unitwidth)/unitwidth);
       grid->levels[nvalues] = level;
     }
   }
@@ -226,15 +246,12 @@ void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                    " You must add a <srs> tag.", grid->name);
     return;
   }
-  if(extent[0] >= extent[2] || extent[1] >= extent[3]) {
+  if(extent.minx >= extent.maxx || extent.miny >= extent.maxy) {
     ctx->set_error(ctx, 400, "grid \"%s\" has no (or invalid) extent configured"
                    " You must add/correct a <extent> tag.", grid->name);
     return;
   } else {
-    grid->extent[0] = extent[0];
-    grid->extent[1] = extent[1];
-    grid->extent[2] = extent[2];
-    grid->extent[3] = extent[3];
+    grid->extent = extent;
   }
   if(grid->tile_sx <= 0 || grid->tile_sy <= 0) {
     ctx->set_error(ctx, 400, "grid \"%s\" has no (or invalid) tile size configured"
@@ -540,19 +557,18 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      value,nvalues,values[0],values[1],values[2],values[3]);
       return;
     }
-    tileset->wgs84bbox[0] = values[0];
-    tileset->wgs84bbox[1] = values[1];
-    tileset->wgs84bbox[2] = values[2];
-    tileset->wgs84bbox[3] = values[3];
+    tileset->wgs84bbox.minx = values[0];
+    tileset->wgs84bbox.miny = values[1];
+    tileset->wgs84bbox.maxx = values[2];
+    tileset->wgs84bbox.maxy = values[3];
     havewgs84bbox = 1;
   }
 
   for(cur_node = ezxml_child(node,"grid"); cur_node; cur_node = cur_node->next) {
-    int i;
     mapcache_grid *grid;
     mapcache_grid_link *gridlink;
     char *restrictedExtent = NULL, *sTolerance = NULL;
-    double *extent;
+    mapcache_extent *extent;
     int tolerance;
 
     if (tileset->grid_links == NULL) {
@@ -568,16 +584,14 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->grid = grid;
     gridlink->minz = 0;
     gridlink->maxz = grid->nlevels;
-    gridlink->grid_limits = apr_pcalloc(ctx->pool,grid->nlevels*sizeof(int*));
-    for(i=0; i<grid->nlevels; i++) {
-      gridlink->grid_limits[i] = apr_pcalloc(ctx->pool,4*sizeof(int));
-    }
+    gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
       int nvalues;
+      double *values;
       restrictedExtent = apr_pstrdup(ctx->pool,restrictedExtent);
-      if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, restrictedExtent, NULL, &gridlink->restricted_extent, &nvalues) ||
+      if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, restrictedExtent, NULL, &values, &nvalues) ||
           nvalues != 4) {
         ctx->set_error(ctx, 400, "failed to parse extent array %s."
                        "(expecting 4 space separated numbers, "
@@ -585,9 +599,14 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                        restrictedExtent);
         return;
       }
+      gridlink->restricted_extent = (mapcache_extent*) apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+      gridlink->restricted_extent->minx = values[0];
+      gridlink->restricted_extent->miny = values[1];
+      gridlink->restricted_extent->maxx = values[2];
+      gridlink->restricted_extent->maxy = values[3];
       extent = gridlink->restricted_extent;
     } else {
-      extent = grid->extent;
+      extent = &grid->extent;
     }
 
     tolerance = 5;
@@ -638,10 +657,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 
     /* compute wgs84 bbox if it wasn't supplied already */
     if(!havewgs84bbox && !strcasecmp(grid->srs,"EPSG:4326")) {
-      tileset->wgs84bbox[0] = extent[0];
-      tileset->wgs84bbox[1] = extent[1];
-      tileset->wgs84bbox[2] = extent[2];
-      tileset->wgs84bbox[3] = extent[3];
+      tileset->wgs84bbox = *extent;
     }
     APR_ARRAY_PUSH(tileset->grid_links,mapcache_grid_link*) = gridlink;
   }

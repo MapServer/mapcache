@@ -42,7 +42,7 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
   mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
-                 map->extent[0],map->extent[1],map->extent[2],map->extent[3]));
+                 map->extent.minx,map->extent.miny,map->extent.maxx,map->extent.maxy));
   apr_table_setn(params,"WIDTH",apr_psprintf(ctx->pool,"%d",map->width));
   apr_table_setn(params,"HEIGHT",apr_psprintf(ctx->pool,"%d",map->height));
   apr_table_setn(params,"FORMAT","image/png");
@@ -86,7 +86,7 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_feature_info *fi
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_overlap(params,wms->getmap_params,0);
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
-                 map->extent[0],map->extent[1],map->extent[2],map->extent[3]));
+                 map->extent.minx,map->extent.miny,map->extent.maxx,map->extent.maxy));
   apr_table_setn(params,"REQUEST","GetFeatureInfo");
   apr_table_setn(params,"WIDTH",apr_psprintf(ctx->pool,"%d",map->width));
   apr_table_setn(params,"HEIGHT",apr_psprintf(ctx->pool,"%d",map->height));

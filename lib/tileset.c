@@ -153,20 +153,20 @@ void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *til
 
 void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile)
 {
-  int *limits;
+  mapcache_extent_i limits;
   if(tile->z < tile->grid_link->minz || tile->z >= tile->grid_link->maxz) {
     ctx->set_error(ctx,404,"invalid tile z level");
     return;
   }
   limits = tile->grid_link->grid_limits[tile->z];
-  if(tile->x<limits[0] || tile->x>=limits[2]) {
+  if(tile->x<limits.minx || tile->x>=limits.maxx) {
     ctx->set_error(ctx, 404, "tile x=%d not in [%d,%d[",
-                   tile->x,limits[0],limits[2]);
+                   tile->x,limits.minx,limits.maxx);
     return;
   }
-  if(tile->y<limits[1] || tile->y>=limits[3]) {
+  if(tile->y<limits.miny || tile->y>=limits.maxy) {
     ctx->set_error(ctx, 404, "tile y=%d not in [%d,%d[",
-                   tile->y,limits[1],limits[3]);
+                   tile->y,limits.miny,limits.maxy);
     return;
   }
 }
@@ -174,25 +174,26 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile)
 
 void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
                                     mapcache_grid_link *grid_link,
-                                    double *bbox, int width, int height,
+                                    mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
                                     mapcache_tile ***tiles)
 {
   double resolution;
   int level;
+  int bl_x,bl_y,tr_x,tr_y;
   int mx,my,Mx,My;
   int x,y;
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
   mapcache_grid_get_closest_level(ctx,grid_link->grid,resolution,&level);
 
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox[0],bbox[1],level,&mx,&my);
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox[2],bbox[3],level,&Mx,&My);
+  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
+  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
+  Mx = MAPCACHE_MAX(tr_x,bl_x);
+  My = MAPCACHE_MAX(tr_y,bl_y);
+  mx = MAPCACHE_MIN(tr_x,bl_x);
+  my = MAPCACHE_MIN(tr_y,bl_y);
   *ntiles = (Mx-mx+1)*(My-my+1);
-  if(*ntiles<=0) {
-    ctx->set_error(ctx,500,"BUG: negative number of tiles");
-    return;
-  }
   i=0;
   *tiles = (mapcache_tile**)apr_pcalloc(ctx->pool, *ntiles*sizeof(mapcache_tile*));
   for(x=mx; x<=Mx; x++) {
@@ -215,14 +216,14 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
 
 mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
     mapcache_grid_link *grid_link,
-    double *bbox, int width, int height,
+    mapcache_extent *bbox, int width, int height,
     int ntiles,
     mapcache_tile **tiles,
     mapcache_resample_mode mode)
 {
   double hresolution = mapcache_grid_get_horizontal_resolution(bbox, width);
   double vresolution = mapcache_grid_get_vertical_resolution(bbox, height);
-  double tilebbox[4];
+  mapcache_extent tilebbox;
   mapcache_tile *toplefttile=NULL;
   int mx=INT_MAX,my=INT_MAX,Mx=INT_MIN,My=INT_MIN;
   int i;
@@ -260,12 +261,37 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
     int ox,oy; /* the offset from the start of the src image to the start of the tile */
     mapcache_image fakeimg;
     mapcache_tile *tile = tiles[i];
-    if(tile->x == mx && tile->y == My) {
-      toplefttile = tile;
+    switch(grid_link->grid->origin) {
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+        if(tile->x == mx && tile->y == My) {
+          toplefttile = tile;
+        }
+        ox = (tile->x - mx) * tile->grid_link->grid->tile_sx;
+        oy = (My - tile->y) * tile->grid_link->grid->tile_sy;
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+        if(tile->x == mx && tile->y == my) {
+          toplefttile = tile;
+        }
+        ox = (tile->x - mx) * tile->grid_link->grid->tile_sx;
+        oy = (tile->y - my) * tile->grid_link->grid->tile_sy;
+        break;
+      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+        if(tile->x == Mx && tile->y == My) {
+          toplefttile = tile;
+        }
+        ox = (Mx - tile->x) * tile->grid_link->grid->tile_sx;
+        oy = (My - tile->y) * tile->grid_link->grid->tile_sy;
+        break;
+      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+        if(tile->x == Mx && tile->y == my) {
+          toplefttile = tile;
+        }
+        ox = (Mx - tile->x) * tile->grid_link->grid->tile_sx;
+        oy = (tile->y - my) * tile->grid_link->grid->tile_sy;
+        break;
     }
 
-    ox = (tile->x - mx) * tile->grid_link->grid->tile_sx;
-    oy = (My - tile->y) * tile->grid_link->grid->tile_sy;
 
     fakeimg.stride = srcimage->stride;
     fakeimg.data = &(srcimage->data[oy*srcimage->stride+ox*4]);
@@ -288,11 +314,11 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   /* copy/scale the srcimage onto the destination image */
   tileresolution = toplefttile->grid_link->grid->levels[toplefttile->z]->resolution;
   mapcache_grid_get_extent(ctx,toplefttile->grid_link->grid,
-                           toplefttile->x, toplefttile->y, toplefttile->z, tilebbox);
+                           toplefttile->x, toplefttile->y, toplefttile->z, &tilebbox);
 
   /*compute the pixel position of top left corner*/
-  dstminx = (tilebbox[0]-bbox[0])/hresolution;
-  dstminy = (bbox[3]-tilebbox[3])/vresolution;
+  dstminx = (tilebbox.minx-bbox->minx)/hresolution;
+  dstminy = (bbox->maxy-tilebbox.maxy)/vresolution;
   hf = tileresolution/hresolution;
   vf = tileresolution/vresolution;
   if(fabs(hf-1)<0.0001 && fabs(vf-1)<0.0001) {
@@ -354,16 +380,35 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   mt->map.height =  mt->metasize_y * grid->tile_sy + 2 * tileset->metabuffer;
   mt->map.dimensions = tile->dimensions;
 
-  //tilesize   = self.actualSize()
+  /* buffer in geographical units */
   gbuffer = res * tileset->metabuffer;
+
+  /* adjusted metatile size in geographical units */
   gwidth = res * mt->metasize_x * grid->tile_sx;
   gheight = res * mt->metasize_y * grid->tile_sy;
+
+  /* configured metatile size in geographical units */
   fullgwidth = res * tileset->metasize_x * grid->tile_sx;
   fullgheight = res * tileset->metasize_y * grid->tile_sy;
-  mt->map.extent[0] = grid->extent[0] + mt->x * fullgwidth - gbuffer;
-  mt->map.extent[1] = grid->extent[1] + mt->y * fullgheight - gbuffer;
-  mt->map.extent[2] = mt->map.extent[0] + gwidth + 2 * gbuffer;
-  mt->map.extent[3] = mt->map.extent[1] + gheight + 2 * gbuffer;
+  
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      mt->map.extent.minx = grid->extent.minx + mt->x * fullgwidth - gbuffer;
+      mt->map.extent.miny = grid->extent.miny + mt->y * fullgheight - gbuffer;
+      mt->map.extent.maxx = mt->map.extent.minx + gwidth + 2 * gbuffer;
+      mt->map.extent.maxy = mt->map.extent.miny + gheight + 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      mt->map.extent.minx = grid->extent.minx + mt->x * fullgwidth - gbuffer;
+      mt->map.extent.maxy = grid->extent.maxy - mt->y * fullgheight + gbuffer;
+      mt->map.extent.maxx = mt->map.extent.minx + gwidth + 2 * gbuffer;
+      mt->map.extent.miny = mt->map.extent.maxy - gheight - 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      ctx->set_error(ctx,500,"origin not implemented");
+      return NULL;
+  }
 
   for(i=0; i<mt->metasize_x; i++) {
     for(j=0; j<mt->metasize_y; j++) {
@@ -446,10 +491,7 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
   dst->cache = src->cache;
   dst->source = src->source;
   dst->watermark = src->watermark;
-  dst->wgs84bbox[0] = src->wgs84bbox[0];
-  dst->wgs84bbox[1] = src->wgs84bbox[1];
-  dst->wgs84bbox[2] = src->wgs84bbox[2];
-  dst->wgs84bbox[3] = src->wgs84bbox[3];
+  dst->wgs84bbox = src->wgs84bbox;
   dst->format = src->format;
   return dst;
 }
