@@ -298,7 +298,7 @@ char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, cha
 }
 
 
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */
 
 

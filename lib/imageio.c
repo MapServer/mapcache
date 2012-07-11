@@ -103,5 +103,5 @@ void mapcache_imageio_decode_to_image(mapcache_context *ctx, mapcache_buffer *bu
 
 /** @} */
 
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

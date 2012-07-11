@@ -83,5 +83,5 @@ void mapcache_unlock_resource(mapcache_context *ctx, char *resource)
   apr_file_remove(lockname,ctx->pool);
 }
 
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

@@ -294,5 +294,5 @@ mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool)
   dimension->dimension.print_ogc_formatted_values = _mapcache_dimension_regex_print;
   return (mapcache_dimension*)dimension;
 }
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

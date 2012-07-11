@@ -369,5 +369,5 @@ mapcache_service* mapcache_service_gmaps_create(mapcache_context *ctx)
 }
 
 /** @} */
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

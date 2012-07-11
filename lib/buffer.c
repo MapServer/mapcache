@@ -78,5 +78,5 @@ int mapcache_buffer_append(mapcache_buffer *buffer, size_t len, void *data)
   buffer->size += len;
   return len;
 }
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

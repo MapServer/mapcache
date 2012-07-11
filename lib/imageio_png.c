@@ -1285,5 +1285,5 @@ mapcache_image_format* mapcache_imageio_create_png_q_format(apr_pool_t *pool, ch
 
 /** @} */
 
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

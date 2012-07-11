@@ -184,5 +184,5 @@ void mapcache_grid_get_xy(mapcache_context *ctx, mapcache_grid *grid, double dx,
   *x = (int)((dx - grid->extent[0]) / (res * grid->tile_sx));
   *y = (int)((dy - grid->extent[1]) / (res * grid->tile_sy));
 }
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

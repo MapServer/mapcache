@@ -505,5 +505,5 @@ module AP_MODULE_DECLARE_DATA mapcache_module = {
   mod_mapcache_cmds,
   mod_mapcache_register_hooks
 };
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

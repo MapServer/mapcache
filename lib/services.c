@@ -76,5 +76,5 @@ void mapcache_service_dispatch_request(mapcache_context *ctx, mapcache_request *
 
 
 
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

@@ -102,5 +102,5 @@ void  mapcache_gettimeofday(struct mctimeval *t, void *__not_used_here__);
 
 
 #endif /* UTIL_H_ */
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */

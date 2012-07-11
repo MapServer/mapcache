@@ -1646,5 +1646,5 @@ mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
 int mapcache_is_axis_inverted(const char *srs);
 
 #endif /* MAPCACHE_H_ */
-/* vim: ai ts=3 sts=3 et sw=3
+/* vim: ts=2 sts=2 et sw=2
 */
