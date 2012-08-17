@@ -997,7 +997,7 @@ int main(int argc, const char **argv)
     /* ensure our metasize is a power of 2 in drill down mode */
     if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
       if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
-        return usage(argv[0],"metatile size is not set to a power of two, rerun with e.g -m 8,8");
+        return usage(argv[0],"metatile size is not set to a power of two, rerun with e.g -M 8,8");
       }
     }
 
