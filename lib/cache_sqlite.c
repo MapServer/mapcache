@@ -706,7 +706,10 @@ static void _mapcache_cache_mbtiles_set(mapcache_context *ctx, mapcache_tile *ti
   GC_CHECK_ERROR(ctx);
   if(!tile->raw_image) {
     tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
-    GC_CHECK_ERROR(ctx);
+    if(GC_HAS_ERROR(ctx)) {
+      _sqlite_release_conn(ctx, tile, conn);
+      return;
+    }
   }
   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
   _single_mbtile_set(ctx,tile,conn);
