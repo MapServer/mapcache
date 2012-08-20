@@ -201,7 +201,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
   { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
   { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
-  { "transfer", 'x', TRUE, "tileset to transfer" },
+  { "transfer", 'x', TRUE, "tileset where tiles should be transfered to" },
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
   { "ogr-layer", 'l', TRUE, "layer inside datasource"},
