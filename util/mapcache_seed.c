@@ -634,6 +634,7 @@ void seed_worker()
       for (i = 0; i < mt->ntiles; i++) {
         mapcache_tile *subtile = &mt->tiles[i];
         mapcache_tileset_tile_get(&seed_ctx, subtile);
+        if(GC_HAS_ERROR(&seed_ctx)) break;
         subtile->tileset = tileset_transfer;
         tileset_transfer->cache->tile_set(&seed_ctx, subtile);
       }
