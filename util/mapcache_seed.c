@@ -406,7 +406,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
     }
   } else {
     // the tile does not exist
-    if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
+    if(mode == MAPCACHE_CMD_SEED) {
 #ifdef USE_CLIPPERS
       /* check we are in the requested features before deleting the tile */
       if(nClippers > 0) {
@@ -629,14 +629,16 @@ void seed_worker()
         mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
-      int i;
+      int i,get_ret;
       mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
       for (i = 0; i < mt->ntiles; i++) {
         mapcache_tile *subtile = &mt->tiles[i];
-        mapcache_tileset_tile_get(&seed_ctx, subtile);
+        get_ret = subtile->tileset->cache->tile_get(&seed_ctx,subtile);
         if(GC_HAS_ERROR(&seed_ctx)) break;
-        subtile->tileset = tileset_transfer;
-        tileset_transfer->cache->tile_set(&seed_ctx, subtile);
+        if(get_ret == MAPCACHE_SUCCESS) {
+          subtile->tileset = tileset_transfer;
+          tileset_transfer->cache->tile_set(&seed_ctx, subtile);
+        }
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
