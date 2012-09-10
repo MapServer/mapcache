@@ -265,8 +265,14 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_tile *t
       tiff_offy = ntilesy - (tile->y % ntilesy) -1;
       tiff_off = tiff_offy * ntilesx + tiff_offx;
 
-      TIFFGetField( hTIFF, TIFFTAG_TILEOFFSETS, &offsets );
-      TIFFGetField( hTIFF, TIFFTAG_TILEBYTECOUNTS, &sizes );
+      if(1 != TIFFGetField( hTIFF, TIFFTAG_TILEOFFSETS, &offsets )) {
+        MyTIFFClose(hTIFF);
+        return MAPCACHE_FALSE;
+      }
+      if(1 != TIFFGetField( hTIFF, TIFFTAG_TILEBYTECOUNTS, &sizes )) {
+        MyTIFFClose(hTIFF);
+        return MAPCACHE_FALSE;
+      }
       MyTIFFClose(hTIFF);
       if( offsets[tiff_off] > 0 && sizes[tiff_off] > 0 ) {
         return MAPCACHE_TRUE;
