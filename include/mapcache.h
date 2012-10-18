@@ -1430,7 +1430,7 @@ char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* 
 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
 
-char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *template,
+char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *stemplate,
                                  char* sanitized_chars, char *sanitize_to);
 
 /**\defgroup imageio Image IO */
