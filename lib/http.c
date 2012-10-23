@@ -358,9 +358,10 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
 
 mapcache_http* mapcache_http_clone(mapcache_context *ctx, mapcache_http *orig)
 {
-  mapcache_http *ret = apr_pcalloc(ctx->pool, sizeof(mapcache_http*));
+  mapcache_http *ret = apr_pcalloc(ctx->pool, sizeof(mapcache_http));
   ret->headers = apr_table_clone(ctx->pool,orig->headers);
   ret->url = apr_pstrdup(ctx->pool, orig->url);
+  ret->connection_timeout = orig->connection_timeout;
   return ret;
 }
 
