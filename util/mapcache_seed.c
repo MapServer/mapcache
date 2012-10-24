@@ -606,9 +606,11 @@ void seed_worker()
 {
   mapcache_tile *tile;
   mapcache_context seed_ctx = ctx;
+  apr_pool_t *tpool;
   seed_ctx.log = seed_log;
   apr_pool_create(&seed_ctx.pool,ctx.pool);
-  tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
+  apr_pool_create(&tpool,ctx.pool);
+  tile = mapcache_tileset_tile_create(tpool, tileset, grid_link);
   tile->dimensions = dimensions;
   while(1) {
     struct seed_cmd cmd;
