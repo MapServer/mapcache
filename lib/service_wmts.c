@@ -100,6 +100,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
   apr_hash_index_t *layer_index;
   apr_hash_index_t *grid_index;
   char *tmpcaps;
+  apr_table_t *requiredGrids = apr_table_make(ctx->pool, apr_hash_count(cfg->grids));
 #ifdef DEBUG
   if(request->request.request.type != MAPCACHE_REQUEST_GET_CAPABILITIES) {
     ctx->set_error(ctx,500,"wrong wmts capabilities request");
@@ -231,6 +232,11 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       ezxml_t tmsetlnk = ezxml_add_child(layer,"TileMatrixSetLink",0);
       ezxml_set_txt(ezxml_add_child(tmsetlnk,"TileMatrixSet",0),grid_link->grid->name);
 
+      /*
+       * remember TileMatrixSetLinks
+       */
+      apr_table_setn(requiredGrids, grid_link->grid->name, "true");
+
       if(grid_link->restricted_extent) {
         ezxml_t limits = ezxml_add_child(tmsetlnk,"TileMatrixSetLimits",0);
         int j;
@@ -278,6 +284,14 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     const char *title;
     ezxml_t bbox;
     apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
+
+    /*
+     * Skip grids which are not configures at tileset level
+     */
+    if( !apr_table_get(requiredGrids, grid->name) ) {
+      grid_index = apr_hash_next(grid_index);
+      continue;
+    }
 
     WellKnownScaleSet = apr_table_get(grid->metadata,"WellKnownScaleSet");
 
