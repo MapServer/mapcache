@@ -37,26 +37,117 @@
 
 
 
-static ezxml_t _wmts_capabilities()
+static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  char *schemaLocation = "http://www.opengis.net/wmts/1.0 http://schemas.opengis.net/wmts/1.0/wmtsGetCapabilities_response.xsd";
+
   ezxml_t node = ezxml_new("Capabilities");
   ezxml_set_attr(node,"xmlns","http://www.opengis.net/wmts/1.0");
   ezxml_set_attr(node,"xmlns:ows","http://www.opengis.net/ows/1.1");
   ezxml_set_attr(node,"xmlns:xlink","http://www.w3.org/1999/xlink");
   ezxml_set_attr(node,"xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance");
   ezxml_set_attr(node,"xmlns:gml","http://www.opengis.net/gml");
-  ezxml_set_attr(node,"xsi:schemaLocation","http://www.opengis.net/wmts/1.0 http://schemas.opengis.net/wmts/1.0/wmtsGetCapabilities_response.xsd");
+
+  if( apr_table_get(cfg->metadata,"inspire_profile") ) {
+    ezxml_set_attr(node,"xmlns:inspire_common","http://inspire.ec.europa.eu/schemas/common/1.0");
+    ezxml_set_attr(node,"xmlns:inspire_vs","http://inspire.ec.europa.eu/schemas/inspire_vs/1.0");
+    schemaLocation = apr_pstrcat(ctx->pool,schemaLocation," http://inspire.ec.europa.eu/schemas/inspire_vs/1.0 http://inspire.ec.europa.eu/schemas/inspire_vs/1.0/inspire_vs.xsd",NULL);
+  }
+
+  ezxml_set_attr(node,"xsi:schemaLocation",schemaLocation);
   ezxml_set_attr(node,"version","1.0.0");
+
   return node;
 }
 
-static ezxml_t _wmts_service_identification(mapcache_context *ctx, const char *title)
+int _wmts_service_identification_keywords(void *in, const char *key, const char *value) {
+   ezxml_t node = (ezxml_t )in;
+   ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+
+   return 1;
+}
+
+static ezxml_t _wmts_service_identification(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  const char *value;
+
   ezxml_t node = ezxml_new("ows:ServiceIdentification");
-  ezxml_set_txt(ezxml_add_child(node,"ows:Title",0),title);
+
+  value = apr_table_get(cfg->metadata,"title");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Title",0),value);
+
+  value = apr_table_get(cfg->metadata,"abstract");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Abstract",0),value);
+
+  value = apr_table_get(cfg->metadata,"keyword");
+  if(value) {
+    ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+    /*
+     * @todo: cfg->metadata holds only one item named keyword,
+     *    adjust configuration_xml.c
+     */
+    apr_table_do(_wmts_service_identification_keywords, nodeKeywords, cfg->metadata, "keyword", NULL);
+    ezxml_insert(nodeKeywords, node, 0);
+  }
+
   ezxml_set_txt(ezxml_add_child(node,"ows:ServiceType",0),"OGC WMTS");
   ezxml_set_txt(ezxml_add_child(node,"ows:ServiceTypeVersion",0),"1.0.0");
+
+  value = apr_table_get(cfg->metadata,"fees");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Fees",0),value);
+
+  value = apr_table_get(cfg->metadata,"accessconstraints");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:AccessConstraints",0),value);
+
   return node;
+}
+
+int _wmts_inspire_metadata_responselanguages(void *in, const char *key, const char *value) {
+   ezxml_t node = (ezxml_t )in;
+   ezxml_set_txt(ezxml_add_child(node,"inspire_common:Language",0),value);
+
+   return 1;
+}
+
+static ezxml_t _wmts_inspire_metadata(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  ezxml_t extended = ezxml_new("inspire_vs:ExtendedCapabilities");
+  ezxml_t metadata;
+  ezxml_t metadataurl;
+  ezxml_t metadatatype;
+  ezxml_t langsupported;
+  ezxml_t langsupporteddefault;
+  ezxml_t langsupporteddefaultlang;
+  ezxml_t langresponse;
+  const char *value;
+
+  metadata = ezxml_add_child(extended,"inspire_common:MetadataUrl",0);
+  ezxml_set_attr(metadata,"xsi:type","inspire_common:resourceLocatorType");
+  metadataurl = ezxml_add_child(metadata, "inspire_common:URL", 0);
+
+  value = apr_table_get(cfg->metadata, "inspire_metadataurl");
+  if(value)
+    ezxml_set_txt(metadataurl, value);
+ 
+  metadatatype = ezxml_add_child(metadata, "inspire_common:MediaType", 0);
+  ezxml_set_txt(metadatatype, "application/vnd.iso.19139+xml");
+
+  langsupported = ezxml_add_child(extended, "inspire_common:SupportedLanguages", 0);
+  langsupporteddefault = ezxml_add_child(langsupported, "inspire_common:DefaultLanguage", 0);
+  langsupporteddefaultlang = ezxml_add_child(langsupporteddefault, "inspire_common:Language", 0);
+
+  value = apr_table_get(cfg->metadata, "defaultlanguage");
+  if(value)
+    ezxml_set_txt(langsupporteddefaultlang, apr_table_get(cfg->metadata, "defaultlanguage"));
+
+  langresponse = ezxml_add_child(extended, "inspire_common:ResponseLanguage", 0);
+  apr_table_do(_wmts_inspire_metadata_responselanguages, langresponse, cfg->metadata, "language", NULL);
+
+  return extended;
 }
 
 static ezxml_t _wmts_operations_metadata(mapcache_context *ctx, const char *onlineresource, const char *operationstr)
@@ -80,18 +171,116 @@ static ezxml_t _wmts_operations_metadata(mapcache_context *ctx, const char *onli
 
 }
 
-static ezxml_t _wmts_service_provider(mapcache_context *ctx, const char *onlineresource, const char *contact)
+static ezxml_t _wmts_service_contactinfo(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  const char *value;
+  int addNode = 0;
+
+  ezxml_t nodeInfo = ezxml_new("ows:ContactInfo");
+  ezxml_t nodePhone = ezxml_new("ows:Phone");
+
+  value = apr_table_get(cfg->metadata,"contactphone"); 
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodePhone,"ows:Voice",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactfacsimile"); 
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodePhone,"ows:Facsimile",0),value);
+  }
+
+  if( addNode == 1 )
+    ezxml_insert(nodePhone, nodeInfo, 0);
+
+
+  addNode = 0;
+  ezxml_t nodeAddress = ezxml_new("ows:Address");
+  
+  value = apr_table_get(cfg->metadata,"contactorganization");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:DeliveryPoint",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactcity");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:City",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactstateorprovince");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:AdministrativeArea",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactpostcode");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:PostalCode",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactcountry");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:Country",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactelectronicmailaddress");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:ElectronicMailAddress",0),value);
+  }
+
+  if( addNode == 1 )
+    ezxml_insert(nodeAddress, nodeInfo, 0);
+
+  return nodeInfo;
+}
+
+static ezxml_t _wmts_service_contact(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  const char *value;
+
+  ezxml_t node = ezxml_new("ows:ServiceContact");
+
+  value = apr_table_get(cfg->metadata,"contactname");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:IndividualName",0),value);
+
+  value = apr_table_get(cfg->metadata,"contactposition");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:PositionName",0),value);
+
+  ezxml_insert(_wmts_service_contactinfo(ctx,cfg),node,0);
+
+  return node;
+}
+
+static ezxml_t _wmts_service_provider(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  const char *value;
+
   ezxml_t node = ezxml_new("ows:ServiceProvider");
-  ezxml_set_txt(ezxml_add_child(node,"ows:ProviderName",0),contact);
-  ezxml_set_attr(ezxml_add_child(node,"ows:ProviderSite",0),"xlink:href",onlineresource);
+
+  value = apr_table_get(cfg->metadata,"providername");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:ProviderName",0),value);
+
+  value = apr_table_get(cfg->metadata,"providerurl");
+  if(value)
+    ezxml_set_attr(ezxml_add_child(node,"ows:ProviderSite",0),"xlink:href",value);
+
+  ezxml_insert(_wmts_service_contact(ctx,cfg),node,0);
+
   return node;
 }
 
 
 void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capabilities *req, char *url, char *path_info, mapcache_cfg *cfg)
 {
-  const char *title;
   const char *onlineresource;
   mapcache_request_get_capabilities_wmts *request = (mapcache_request_get_capabilities_wmts*)req;
   ezxml_t caps;
@@ -113,21 +302,20 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     onlineresource = url;
   }
 
-  title = apr_table_get(cfg->metadata,"title");
-  if(!title) {
-    title = "no title set, add some in metadata";
-  }
-
   request->request.mime_type = apr_pstrdup(ctx->pool,"application/xml");
 
-  caps = _wmts_capabilities();
-  ezxml_insert(_wmts_service_identification(ctx,title),caps,0);
-  ezxml_insert(_wmts_service_provider(ctx,onlineresource,"contact_todo"),caps,0);
+  caps = _wmts_capabilities(ctx,cfg);
+  ezxml_insert(_wmts_service_identification(ctx,cfg),caps,0);
+  ezxml_insert(_wmts_service_provider(ctx,cfg),caps,0);
 
   operations_metadata = ezxml_add_child(caps,"ows:OperationsMetadata",0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetCapabilities"),operations_metadata,0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetTile"),operations_metadata,0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetFeatureInfo"),operations_metadata,0);
+
+  /* @todo: support both, url and embed profile */
+  if( apr_table_get(cfg->metadata,"inspire_profile") )
+    ezxml_insert(_wmts_inspire_metadata(ctx,cfg),operations_metadata,0);
 
   contents = ezxml_add_child(caps,"Contents",0);
 
