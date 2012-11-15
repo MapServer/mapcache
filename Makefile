@@ -8,21 +8,21 @@ all: .header
 install: .header install-module install-lib install-util install-cgi
 
 install-util: .header install-lib
-	$(INSTALL) -d $(bindir)
-	cd util; $(MAKE) $(MFLAGS) install
+	$(INSTALL) -d $(DESTDIR)$(bindir)
+	cd util; $(MAKE) $(MFLAGS) install DESTDIR=$(DESTDIR)
 
 install-cgi: .header install-lib
-	cd cgi; $(MAKE) $(MFLAGS) install
+	cd cgi; $(MAKE) $(MFLAGS) install DESTDIR=$(DESTDIR)
 
 install-lib: .header
-	$(INSTALL) -d $(libdir)
-	cd lib; $(MAKE) $(MFLAGS) install
+	$(INSTALL) -d $(DESTDIR)$(libdir)
+	cd lib; $(MAKE) $(MFLAGS) install DESTDIR=$(DESTDIR)
 
 module: .header
 	cd apache; $(MAKE) $(MFLAGS)
 
 install-module: .header install-lib module
-	cd apache; $(MAKE) $(MFLAGS) install
+	cd apache; $(MAKE) $(MFLAGS) install DESTDIR=$(DESTDIR)
 
 # make clean and rerun if essential files have been modified
 .header: configure include/mapcache.h include/util.h include/errors.h Makefile Makefile.inc
