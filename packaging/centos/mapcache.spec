@@ -37,7 +37,7 @@ make DESTDIR=%{buildroot} \
 	install
 
 # apache module
-cd apache/mapcache
+cd apache
 make DESTDIR=%{buildroot} \
 	install
 
