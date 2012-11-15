@@ -7,7 +7,8 @@ mapcache_seed: mapcache_seed.c ../lib/libmapcache.la
 	$(LIBTOOL) --mode=link --tag CC $(CC) -rpath $(bindir) -o mapcache_seed $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) $(SEEDER_EXTRAINC) mapcache_seed.c ../lib/libmapcache.la $(LIBS) $(SEEDER_EXTRALIBS)
 
 install: mapcache_seed
-	$(LIBTOOL) --mode=install $(INSTALL) mapcache_seed $(bindir)
+	$(INSTALL) -d $(DESTDIR)$(bindir)
+	$(LIBTOOL) --mode=install $(INSTALL) mapcache_seed $(DESTDIR)$(bindir)
 
 clean:
 	rm -f *.o

@@ -1,15 +1,20 @@
 include ../Makefile.inc
 top_builddir = @top_builddir@
+module_dir=`$(APXS) -q LIBEXECDIR`
+httpd_inc_dir=-I`apxs -q INCLUDEDIR`
 
 all: mod_mapcache.la
 
 
 install: mod_mapcache.la
-	$(APXS) -i -a -n mapcache mod_mapcache.la
+	$(INSTALL) -d $(DESTDIR)$(module_dir)
+	$(LIBTOOL) --mode=install $(INSTALL) mod_mapcache.la $(DESTDIR)$(module_dir)
 
-mod_mapcache.la:  mod_mapcache.c
-	@if test ! -f $(libdir)/libmapcache.la; then echo "$(libdir)/libmapcache.la not found, please install before building the mapcache apache module"; exit 1; fi
-	$(APXS) -Wc,"$(ALL_ENABLED) $(CFLAGS) $(INCLUDES)" -Wl,"$(LIBS)" -c mod_mapcache.c $(libdir)/libmapcache.la
+mod_mapcache.lo:  mod_mapcache.c
+	$(LIBTOOL) --tag CC --mode=compile $(CC) $(ALL_ENABLED) $(CFLAGS) $(INCLUDES) $(httpd_inc_dir) -c mod_mapcache.c
+
+mod_mapcache.la: mod_mapcache.lo ../lib/libmapcache.la
+	$(LIBTOOL) --mode=link --tag CC $(CC) -module -rpath $(module_dir) mod_mapcache.lo $(LIBS) ../lib/libmapcache.la -o $@
 	
 clean:
 	rm -f *.o

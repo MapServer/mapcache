@@ -4,6 +4,7 @@ libdir=@libdir@
 bindir=@bindir@
 top_builddir = @top_builddir@
 SHELL = @SHELL@
+DESTDIR=
 
 TARGETS=mapcache mapcache_seed @MODULE_TARGET@
 APXS=@APXS@
