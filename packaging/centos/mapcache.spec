@@ -1,11 +1,11 @@
 Name:           mapcache
-Version:        0.1.0
-Release:        0.rc1%{?dist}
+Version:        1.0.0
+Release:        %{?dist}
 Summary:        Caching server for WMS layers
 Group:          Development/Tools
 License:        MIT
 URL:            http://www.mapserver.org/trunk/en/mapcache/
-Source:         https://github.com/mapserver/mapcache/mapcache-0.1.0-rc1.tar.gz
+Source:         http://download.osgeo.org/mapserver/mapcache-%{version}.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Requires:       httpd
 
@@ -21,7 +21,7 @@ The primary objectives are to be fast and easily deployable, while offering the
 essential features (and more!) expected from a tile caching solution.
 
 %prep
-%setup -q -n mapcache-0.1.0-rc1
+%setup -q -n mapcache-%{version}
 
 %build
 CFLAGS="${CFLAGS} -ldl" ; export CFLAGS
