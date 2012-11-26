@@ -30,6 +30,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
+#include <apr-1/apr_tables.h>
 #include "ezxml.h"
 
 /** \addtogroup services */
@@ -563,6 +564,8 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                      *matrix = NULL, *tilecol = NULL, *tilerow = NULL, *extension = NULL,
                       *infoformat = NULL, *fi_i = NULL, *fi_j = NULL;
   apr_table_t *dimtable = NULL;
+  char *timedim = NULL;
+  apr_array_header_t *timedim_selected; /* the individual time entries that corresponded to the input request */
   mapcache_tileset *tileset = NULL;
   int row,col,level;
   int kvp = 0;
@@ -622,9 +625,15 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           const char *value;
           if((value = apr_table_get(params,dimension->name)) != NULL) {
             apr_table_set(dimtable,dimension->name,value);
-          } else {
-            apr_table_set(dimtable,dimension->name,dimension->default_value);
           }
+        }
+      }
+      if(tileset->timedimension) {
+        const char* value;
+        if((value = apr_table_get(params,tileset->timedimension->key)) != NULL) {
+          timedim = apr_pstrdup(ctx->pool,value);
+        } else {
+          timedim = apr_pstrdup(ctx->pool,tileset->timedimension->default_value);
         }
       }
       if(!strcasecmp(str,"getfeatureinfo")) {
@@ -690,6 +699,10 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           apr_table_set(dimtable,dimension->name,key);
           continue;
         }
+      }
+      if(tileset->timedimension) {
+        timedim = key;
+        continue;
       }
       if(!matrixset) {
         matrixset = key;
@@ -767,24 +780,20 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       int ok;
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
       const char *value = apr_table_get(dimtable,dimension->name);
-      if(!value) {
-        ctx->set_error(ctx,404,"received request with no value for dimension \"%s\"",dimension->name);
-        if(kvp) ctx->set_exception(ctx,"MissingParameterValue","%s",dimension->name);
-        return;
-      }
-      tmpval = apr_pstrdup(ctx->pool,value);
-      ok = dimension->validate(ctx,dimension,&tmpval);
-      GC_CHECK_ERROR(ctx);
-      if(ok != MAPCACHE_SUCCESS) {
-        ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
-                       dimension->name, value);
-        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
-        return;
-      }
+      if(value) {
+        tmpval = apr_pstrdup(ctx->pool,value);
+        ok = dimension->validate(ctx,dimension,&tmpval);
+        GC_CHECK_ERROR(ctx);
+        if(ok != MAPCACHE_SUCCESS) {
+          ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
+                         dimension->name, value);
+          if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
+          return;
+        }
 
-      /* re-set the eventually modified value in the dimension table */
-      apr_table_set(dimtable,dimension->name,tmpval);
-
+        /* re-set the eventually modified value in the dimension table */
+        apr_table_set(dimtable,dimension->name,tmpval);
+      }
     }
   }
 
@@ -850,6 +859,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
   }
 
   if(!fi_j) { /*we have a getTile request*/
+    int i;
 
 #ifdef PEDANTIC_WMTS_FORMAT_CHECK
     if(tileset->format) {
@@ -874,54 +884,78 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
 
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(
                                        ctx->pool,sizeof(mapcache_request_get_tile));
-
+    
     req->request.type = MAPCACHE_REQUEST_GET_TILE;
-    req->ntiles = 1;
-    req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,sizeof(mapcache_tile*));
-
-
-    req->tiles[0] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-    if(!req->tiles[0]) {
-      ctx->set_error(ctx, 500, "failed to allocate tile");
-      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
-      return;
-    }
-
-    /*populate dimensions*/
-    if(tileset->dimensions) {
-      int i;
-      req->tiles[0]->dimensions = apr_table_make(ctx->pool,tileset->dimensions->nelts);
-      for(i=0; i<tileset->dimensions->nelts; i++) {
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-        const char *value = apr_table_get(dimtable,dimension->name);
-        apr_table_set(req->tiles[0]->dimensions,dimension->name,value);
+    if(timedim) {
+      timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
+              tileset->timedimension, tileset, timedim);
+      GC_CHECK_ERROR(ctx);
+      if(!timedim_selected || timedim_selected->nelts == 0) {
+        ctx->set_error(ctx, 404, "no matching entry for given TIME dimension");
+        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TIME");
+        return;
       }
+      req->ntiles = timedim_selected->nelts;
+    } else {
+      req->ntiles = 1;
     }
+    req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,req->ntiles * sizeof(mapcache_tile*));
 
-    req->tiles[0]->z = level;
-    switch(grid_link->grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        req->tiles[0]->x = col;
-        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        req->tiles[0]->x = col;
-        req->tiles[0]->y = row;
-        break;
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-        req->tiles[0]->y = row;
-        break;
-    }
+    for(i=0;i<req->ntiles;i++) {
+      req->tiles[i] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
+      if(!req->tiles[i]) {
+        ctx->set_error(ctx, 500, "failed to allocate tile");
+        if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
+        return;
+      }
 
-    mapcache_tileset_tile_validate(ctx,req->tiles[0]);
-    if(GC_HAS_ERROR(ctx)) {
-      if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
-      return;
+      /*populate dimensions*/
+      if(tileset->dimensions) {
+        int d;
+        for(d=0; d<tileset->dimensions->nelts; d++) {
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+          const char *value = apr_table_get(dimtable,dimension->name);
+          if(value) {
+            apr_table_set(req->tiles[i]->dimensions,dimension->name,value);
+          }
+        }
+      }
+      if(tileset->timedimension) {
+        apr_table_set(req->tiles[i]->dimensions,tileset->timedimension->key,
+                APR_ARRAY_IDX(timedim_selected,i,char*));
+      }
+
+      if(i==0) {
+        req->tiles[0]->z = level;
+        switch(grid_link->grid->origin) {
+          case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+            req->tiles[0]->x = col;
+            req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
+            break;
+          case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+            req->tiles[0]->x = col;
+            req->tiles[0]->y = row;
+            break;
+          case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+            req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
+            req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
+            break;
+          case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+            req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
+            req->tiles[0]->y = row;
+            break;
+        }
+
+        mapcache_tileset_tile_validate(ctx,req->tiles[0]);
+        if(GC_HAS_ERROR(ctx)) {
+          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
+          return;
+        }
+      } else {
+        req->tiles[i]->z = req->tiles[0]->z;
+        req->tiles[i]->x = req->tiles[0]->x;
+        req->tiles[i]->y = req->tiles[0]->y;
+      }
     }
 
     *request = (mapcache_request*)req;

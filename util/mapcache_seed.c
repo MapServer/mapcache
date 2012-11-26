@@ -68,7 +68,7 @@ mapcache_tileset *tileset;
 mapcache_tileset *tileset_transfer;
 mapcache_cfg *cfg;
 mapcache_context ctx;
-apr_table_t *dimensions;
+apr_table_t *dimensions=NULL;
 int minzoom=-1;
 int maxzoom=-1;
 mapcache_grid_link *grid_link;
@@ -696,11 +696,17 @@ log_and_exit(const char *fmt, ...)
 }
 
 
-int usage(const char *progname, char *msg)
+int usage(const char *progname, char *msg, ...)
 {
   int i=0;
-  if(msg)
-    printf("%s\nusage: %s options\n",msg,progname);
+  if(msg) {
+    va_list args;
+    va_start(args,msg);
+    printf("%s\n",progname);
+    vprintf(msg,args);
+    printf("\noptions:\n");
+    va_end(args);
+  }
   else
     printf("usage: %s options\n",progname);
 
@@ -1108,29 +1114,49 @@ int main(int argc, const char **argv)
   }
 
   /* validate the supplied dimensions */
-  if (!apr_is_empty_array(tileset->dimensions)) {
+  if (!apr_is_empty_array(tileset->dimensions) || tileset->timedimension) {
     int i;
+    const char *value;
     dimensions = apr_table_make(ctx.pool,3);
-
-    for(i=0; i<tileset->dimensions->nelts; i++) {
-      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      const char *value;
-      if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
-        char *tmpval = apr_pstrdup(ctx.pool,value);
-        int ok = dimension->validate(&ctx,dimension,&tmpval);
-        if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
-          return usage(argv[0],"failed to validate dimension");
-          return 1;
+    if (!apr_is_empty_array(tileset->dimensions)) {
+      for(i=0; i<tileset->dimensions->nelts; i++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+        if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
+          char *tmpval = apr_pstrdup(ctx.pool,value);
+          int ok = dimension->validate(&ctx,dimension,&tmpval);
+          if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
+            return usage(argv[0],"failed to validate dimension");
+            return 1;
+          } else {
+            /* validate may have changed the dimension value, so set that value into the dimensions table */
+            apr_table_setn(dimensions,dimension->name,tmpval);
+          }
         } else {
-          /* validate may have changed the dimension value, so set that value into the dimensions table */
-          apr_table_setn(dimensions,dimension->name,tmpval);
+          /* a dimension was not specified on the command line, add the default value */
+          apr_table_setn(dimensions, dimension->name, dimension->default_value);
         }
-      } else {
-        /* a dimension was not specified on the command line, add the default value */
-        apr_table_setn(dimensions, dimension->name, dimension->default_value);
       }
     }
-
+    if(tileset->timedimension) {
+      if((value = (char*)apr_table_get(argdimensions,tileset->timedimension->key)) != NULL) {
+        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, value);
+        if(GC_HAS_ERROR(&ctx) || !timedim_selected) {
+          return usage(argv[0],"failed to validate time dimension");
+        }
+        if(timedim_selected->nelts == 0) {
+          return usage(argv[0],"Time dimension %s=%s returns no configured entry",tileset->timedimension->key,
+                  value);
+        }
+        if(timedim_selected->nelts > 1) {
+          return usage(argv[0],"Time dimension %s=%s returns more than 1 configured entries",tileset->timedimension->key,
+                  value);
+        }
+        apr_table_set(dimensions,tileset->timedimension->key,APR_ARRAY_IDX(timedim_selected,0,char*));
+      } else {
+        return usage(argv[0],"tileset references a TIME dimension, but none supplied on commandline. (hint: -D %s=<timestamp>",tileset->timedimension->key);
+        
+      }
+    }
   }
 
   if(nthreads == 0 && nprocesses == 0) {
