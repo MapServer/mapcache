@@ -129,7 +129,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
                         "      </LatLonBox>\n"
                         "    </GroundOverlay>\n",
                         (request->tile->z == request->tile->grid_link->grid->nlevels - 1) ? -1 : 512,
-                        bbox.maxy, bbox.miny, bbox.maxx, bbox.miny,
+                        bbox.maxy, bbox.miny, bbox.maxx, bbox.minx,
                         onlineresource, request->tile->tileset->name, request->tile->grid_link->grid->name,
                         request->tile->z, request->tile->x, request->tile->y,
                         (request->tile->tileset->format) ? request->tile->tileset->format->extension : "png",
