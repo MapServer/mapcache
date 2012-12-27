@@ -925,6 +925,12 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
             new_service->configuration_parse_xml(ctx,service_node,new_service,config);
           }
           config->services[MAPCACHE_SERVICE_GMAPS] = new_service;
+        } else if (!strcasecmp(type,"mapguide")) {
+          mapcache_service *new_service = mapcache_service_mapguide_create(ctx);
+          if(new_service->configuration_parse_xml) {
+            new_service->configuration_parse_xml(ctx,service_node,new_service,config);
+          }
+          config->services[MAPCACHE_SERVICE_MAPGUIDE] = new_service;
         } else if (!strcasecmp(type,"ve")) {
           mapcache_service *new_service = mapcache_service_ve_create(ctx);
           if(new_service->configuration_parse_xml) {

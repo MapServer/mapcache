@@ -125,6 +125,7 @@ typedef struct mapcache_service_gmaps mapcache_service_gmaps;
 typedef struct mapcache_service_ve mapcache_service_ve;
 typedef struct mapcache_service_tms mapcache_service_tms;
 typedef struct mapcache_service_kml mapcache_service_kml;
+typedef struct mapcache_service_mapguide mapcache_service_mapguide;
 typedef struct mapcache_service_demo mapcache_service_demo;
 typedef struct mapcache_server_cfg mapcache_server_cfg;
 typedef struct mapcache_image mapcache_image;
@@ -663,12 +664,12 @@ struct mapcache_forwarding_rule {
 /** \defgroup services Services*/
 /** @{ */
 
-#define MAPCACHE_SERVICES_COUNT 7
+#define MAPCACHE_SERVICES_COUNT 8
 
 typedef enum {
   MAPCACHE_SERVICE_TMS=0, MAPCACHE_SERVICE_WMTS,
   MAPCACHE_SERVICE_DEMO, MAPCACHE_SERVICE_GMAPS, MAPCACHE_SERVICE_KML,
-  MAPCACHE_SERVICE_VE, MAPCACHE_SERVICE_WMS
+  MAPCACHE_SERVICE_VE, MAPCACHE_SERVICE_MAPGUIDE, MAPCACHE_SERVICE_WMS
 } mapcache_service_type;
 
 #define MAPCACHE_UNITS_COUNT 3
@@ -743,6 +744,12 @@ struct mapcache_service_tms {
   int reverse_y;
 };
 
+struct mapcache_service_mapguide {
+  mapcache_service service;
+  int rows_per_folder;
+  int cols_per_folder;
+};
+
 /**\class mapcache_service_wmts
  * \brief a WMTS service
  * \implements mapcache_service
@@ -779,6 +786,12 @@ mapcache_service* mapcache_service_wms_create(mapcache_context *ctx);
  * \memberof mapcache_service_ve
  */
 mapcache_service* mapcache_service_ve_create(mapcache_context *ctx);
+
+/**
+ * \brief create and initialize a mapcache_service_mapguide
+ * \memberof mapcache_service_mapguide
+ */
+mapcache_service* mapcache_service_mapguide_create(mapcache_context *ctx);
 
 /**
  * \brief create and initialize a mapcache_service_gmaps
