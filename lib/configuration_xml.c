@@ -539,6 +539,11 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   tileset = mapcache_tileset_create(ctx);
   tileset->name = name;
 
+  if ((cur_node = ezxml_child(node,"read-only")) != NULL) {
+    if(cur_node->txt && !strcmp(cur_node->txt,"true"))
+      tileset->read_only = 1;
+  }
+
   if ((cur_node = ezxml_child(node,"metadata")) != NULL) {
     parseMetadata(ctx, cur_node, tileset->metadata);
     GC_CHECK_ERROR(ctx);

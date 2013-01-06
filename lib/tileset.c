@@ -449,8 +449,8 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
 {
   int i;
 #ifdef DEBUG
-  if(!mt->map.tileset->source) {
-    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source");
+  if(!mt->map.tileset->source || mt->map.tileset->read_only) {
+    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
 #endif
@@ -480,6 +480,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->metabuffer = 0;
   tileset->expires = 300; /*set a reasonable default to 5 mins */
   tileset->auto_expire = 0;
+  tileset->read_only = 0;
   tileset->metadata = apr_table_make(ctx->pool,3);
   tileset->dimensions = NULL;
   tileset->format = NULL;
@@ -598,7 +599,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
   ret = tile->tileset->cache->tile_get(ctx, tile);
   GC_CHECK_ERROR(ctx);
 
-  if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source) {
+  if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
     /* the cache is in auto-expire mode, and can return the tile modification date,
      * and there is a source configured so we can possibly update it,
      * so we check to see if it is stale */
@@ -613,8 +614,8 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 
   if(ret == MAPCACHE_CACHE_MISS) {
 
-    /* bail out straight away if the tileset has no source */
-    if(!tile->tileset->source) {
+    /* bail out straight away if the tileset has no source or is read-only */
+    if(tile->tileset->read_only || !tile->tileset->source) {
       /* there is no source configured for this tile. not an error, let caller now*/
       /*
       ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",

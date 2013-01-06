@@ -27,6 +27,18 @@
          -->
       </metadata>
 
+      <!--
+           Set to "true" if no new tiles should be created when not in
+           the configured cache. If a requested tile is not present in
+           a read-only cache, it wil be returned as "nodata", i.e. fully
+           transparent in a vertical assembly case, or as a 404 in a
+           single-tile case.
+           Note that the read-only status of a tileset is overridden to
+           read-write by the seeder for the duration of the seeding
+           session
+      <read-only>true</read-only>
+      -->
+
       <!-- 
            the spatial reference this tileset is in. a WMS client will need this for
            getMap requests. This is the srs that will be sent to the WMS source during

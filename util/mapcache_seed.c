@@ -1008,6 +1008,10 @@ int main(int argc, const char **argv)
     if(!tileset) {
       return usage(argv[0], "tileset not found in configuration");
     }
+    if(tileset->read_only) {
+      printf("tileset %s is read-only, switching it to read-write for seeding\n",tileset_name);
+      tileset->read_only = 0;
+    }
     if( ! grid_name ) {
       grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
     } else {

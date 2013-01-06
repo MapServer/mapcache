@@ -1239,6 +1239,8 @@ struct mapcache_tileset {
    */
   int auto_expire;
 
+  int read_only;
+
   /**
    * the cache in which the tiles should be stored
    */

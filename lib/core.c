@@ -84,7 +84,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 #if !APR_HAS_THREADS
   int i;
   for(i=0; i<ntiles; i++) {
-    mapcache_tileset_tile_get(ctx, tiles[i], readonly);
+    mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
 #else
@@ -223,7 +223,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
   if(ntiles_with_data == 0) {
     ctx->set_error(ctx,404,
-                   "no tiles containing image data could be retrieved (not in cache, and/or no source configured)");
+                   "no tiles containing image data could be retrieved (not in cache, and read-only tileset or no source configured)");
     return NULL;
   }
   /* this loop retrieves the tiles from the caches, and eventually decodes and merges them together
