@@ -597,6 +597,7 @@ mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx)
     response->data->avail = response->data->size;
   } else if(ctx->config && ctx->config->reporting == MAPCACHE_REPORT_EMPTY_IMG) {
     response->data = ctx->config->empty_image;
+    response->code = 200;
     apr_table_set(response->headers, "Content-Type", ctx->config->default_image_format->mime_type);
     apr_table_set(response->headers, "X-Mapcache-Error", msg);
   } else if(ctx->config && ctx->config->reporting == MAPCACHE_REPORT_ERROR_IMG) {
