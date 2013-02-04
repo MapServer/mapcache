@@ -448,7 +448,8 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   }
 
   if(basemap->raw_image) {
-    format = req_map->getmap_format; /* always defined, defaults to JPEG */
+    //format = req_map->getmap_format; /* always defined, defaults to JPEG */
+    format = ctx->config->default_image_format; //default format from configuration file
     response->data = format->write(ctx,basemap->raw_image,format);
     if(GC_HAS_ERROR(ctx)) {
       return NULL;
