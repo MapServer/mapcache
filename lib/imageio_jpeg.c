@@ -194,17 +194,25 @@ mapcache_buffer* _mapcache_imageio_jpeg_encode(mapcache_context *ctx, mapcache_i
   for(row=0; row<img->h; row++) {
     JSAMPLE *pixptr = rowdata;
     int col;
-    unsigned char *r,*g,*b;
+    unsigned char *r,*g,*b,*alpha;
     r=&(img->data[2])+row*img->stride;
     g=&(img->data[1])+row*img->stride;
     b=&(img->data[0])+row*img->stride;
+    alpha= &(img->data[3])+row*img->stride;
     for(col=0; col<img->w; col++) {
-      *(pixptr++) = *r;
-      *(pixptr++) = *g;
-      *(pixptr++) = *b;
+      if (*alpha == 255) {
+        *(pixptr++) = *r;
+        *(pixptr++) = *g;
+        *(pixptr++) = *b;
+      } else {
+        *(pixptr++) = 255;
+        *(pixptr++) = 255;
+        *(pixptr++) = 255;
+      }
       r+=4;
       g+=4;
       b+=4;
+      alpha+=4;
     }
     (void) jpeg_write_scanlines(&cinfo, &rowdata, 1);
   }
