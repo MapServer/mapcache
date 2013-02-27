@@ -370,12 +370,13 @@ static void _bind_mbtiles_params(mapcache_context *ctx, void *vstmt, mapcache_ti
 
   paramidx = sqlite3_bind_parameter_index(stmt, ":color");
   if (paramidx) {
-    char *key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
+    char *key;
+    assert(tile->raw_image);    
+    key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
                              tile->raw_image->data[0],
                              tile->raw_image->data[1],
                              tile->raw_image->data[2],
                              tile->raw_image->data[3]);
-    assert(tile->raw_image);                             
     sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
   }
 
