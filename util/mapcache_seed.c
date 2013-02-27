@@ -283,8 +283,9 @@ int lastmsglen = 0;
 void progresslog(int x, int y, int z)
 {
   char msg[1024];
+  int nworkers;
   if(quiet) return;
-  int nworkers = nthreads;
+  nworkers = nthreads;
   if(nprocesses >= 1) nworkers = nprocesses;
 
   sprintf(msg,"seeding tile %d %d %d",x,y,z);

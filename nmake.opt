@@ -18,7 +18,7 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !IFNDEF MSVC_VER
 #assume msvc 7.1
-MSVC_VER=1310
+MSVC_VER=1500
 !ENDIF
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -30,7 +30,7 @@ MSVC_VER=1310
 
 # Set the following to point to the directory adjacent to the dependent libs.
 !IFNDEF MAPCACHE_BASE
-MAPCACHE_BASE =  c:/projects/mapserver-buildkit-2008/mapserver-trunk/mapcache
+MAPCACHE_BASE =  D:\build\mapserver-buildkit-2008\mapcache-git-master
 #MAPCACHE_BASE =  .
 !ENDIF
 
@@ -70,57 +70,79 @@ LDEBUG=/debug
 DEBUG=/DDEBUG
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# APR: Apacge Protable Runtime library
+# APR: Apache Protable Runtime library
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#APR_DIR = $(MAPCACHE_BASE)\..\..\apr-1.4.5
-APR_DIR = $(MAPCACHE_BASE)\..\..\apr-dist
+APR_DIR = $(MAPCACHE_BASE)\..\apr-1.4.5
+APR_ICONV_DIR = $(MAPCACHE_BASE)\..\apr-iconv-1.2.1
+APR_UTIL_DIR = $(MAPCACHE_BASE)\..\apr-util-1.4.1
 
 # APACHE HTTPD (Only required for apache module)
-APACHE_DIR=$(MAPCACHE_BASE)\..\httpd
+APACHE_DIR=$(MAPCACHE_BASE)\..\httpd-2.2.22
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # PNG support
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-PNG_DIR=$(MAPCACHE_BASE)\..\..\libpng-1.2.35
-ZLIB_DIR=$(MAPCACHE_BASE)\..\..\zlib-1.2.5
+PNG_DIR=$(MAPCACHE_BASE)\..\libpng-1.5.10
+ZLIB_DIR=$(MAPCACHE_BASE)\..\zlib-1.2.7
 ZLIB_INC=-I$(ZLIB_DIR)
 
 
 CURL=-DUSE_CURL
-CURL_DIR=$(MAPCACHE_BASE)\..\..\curl-7.21.3
-WINSOCK_LIB ="C:\Program Files\Microsoft SDKs\Windows\v6.0A\Lib\WS2_32.Lib"
+CURL_DIR=$(MAPCACHE_BASE)\..\curl-7.25.0
+WINSOCK_LIB ="C:\Program Files\Microsoft SDKs\Windows\v6.1\Lib\WS2_32.Lib"
 
 
-JPEG_DIR=$(MAPCACHE_BASE)\..\..\jpeg-8c
+JPEG_DIR=$(MAPCACHE_BASE)\..\jpeg-8d
 JPEG_INC = -I$(JPEG_DIR)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SQLite3 Support
 # ----------------------------------------------------------------------
 # Uncomment, and update accordingly.
-#SQLITE_DEF=-DUSE_SQLITE
-#SQLITE_DIR=$(MAPCACHE_BASE)\..\..\sqlite3
+SQLITE_DEF=-DUSE_SQLITE
+SQLITE_DIR=$(MAPCACHE_BASE)\..\libspatialite-amalgamation-2.3.1
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # TIFF Support
 # ----------------------------------------------------------------------
 # Uncomment, and update accordingly.
-#TIFF_DEF=-DUSE_TIFF -DUSE_TIFF_WRITE
-#TIFF_DIR=$(MAPCACHE_BASE)\..\..\libtiff
+TIFF_DEF=-DUSE_TIFF -DUSE_TIFF_WRITE
+TIFF_DIR=$(MAPCACHE_BASE)\..\libtiff-4.0.1
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # GEOTIFF Support
 # ----------------------------------------------------------------------
 # Uncomment, and update accordingly.
-#GEOTIFF_DEF=-DUSE_GEOTIFF
-#GEOTIFF_DIR=$(MAPCACHE_BASE)\..\..\libgeotiff
+GEOTIFF_DEF=-DUSE_GEOTIFF
+GEOTIFF_DIR=$(MAPCACHE_BASE)\..\libgeotiff-svn-05232012
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # FastCGI Support
 # ----------------------------------------------------------------------
 # Uncomment, and update accordingly.
 FCGI_DEF=-DUSE_FASTCGI
-FCGI_DIR=$(MAPCACHE_BASE)\..\..\fcgi-2.4.0
+FCGI_DIR=$(MAPCACHE_BASE)\..\fcgi-2.4.0
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GDAL/OGR Support
+# ----------------------------------------------------------------------
+# Uncomment, and update accordingly.
+#GDAL_DEF=-DUSE_GDAL
+#GDAL_DIR=$(MAPCACHE_BASE)\..\gdal-trunk
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GEOS Support
+# ----------------------------------------------------------------------
+# Uncomment, and update accordingly.
+#GEOS_DEF=-DUSE_GEOS
+#GEOS_DIR=$(MAPCACHE_BASE)\..\geos-3.3.7
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Berkeley DB Support
+# ----------------------------------------------------------------------
+# Uncomment, and update accordingly.
+BDB_DEF=-DUSE_BDB
+BDB_DIR=$(MAPCACHE_BASE)\..\berkeley-db-5.3.21
 
 ########################################################################
 # Section II: Mapserver Rendering Configuration
@@ -143,14 +165,14 @@ FCGI_DIR=$(MAPCACHE_BASE)\..\..\fcgi-2.4.0
 # In that case the PHP regex library will be used instead
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-REGEX_DIR=$(MAPCACHE_BASE)\..\..\regex-0.12
+REGEX_DIR=$(MAPCACHE_BASE)\..\regex-0.12
 
 
 
 # Set the png support libaries
 !IFDEF PNG_DIR
 !IFNDEF PNG_LIB
-PNG_LIB=$(PNG_DIR)\projects\visualc71\Win32_LIB_Release\libpng.lib $(ZLIB_DIR)/old/visualc6/Win32_DLL_Release/zlib1.lib
+PNG_LIB=$(PNG_DIR)\projects\visualc71\Win32_LIB_Release\libpng.lib $(ZLIB_DIR)/contrib/vstudio/vc9/x86/ZlibDllRelease/zlibwapi.lib
 !ENDIF
 PNG_INC=-I$(PNG_DIR)
 !ENDIF
@@ -163,22 +185,37 @@ JPEG_LIB=$(JPEG_DIR)/libjpeg.lib
 !ENDIF
 
 !IFDEF SQLITE_DIR
-SQLITE_LIB=$(SQLITE_DIR)\lib\sqlite3_i.lib
+SQLITE_LIB=$(SQLITE_DIR)\lib\spatialite_i.lib
 SQLITE_INC=-I$(SQLITE_DIR)\include
 !ENDIF
 
 !IFDEF TIFF_DIR
-TIFF_LIB=$(TIFF_DIR)\lib\libtiff_i.lib
-TIFF_INC=-I$(TIFF_DIR)\include
+TIFF_LIB=$(TIFF_DIR)\libtiff\libtiff_i.lib
+TIFF_INC=-I$(TIFF_DIR)\libtiff
 !ENDIF
 
 !IFDEF GEOTIFF_DIR
-GEOTIFF_LIB=$(GEOTIFF_DIR)\lib\geotiff.lib
-GEOTIFF_INC=-I$(GEOTIFF_DIR)\include
+GEOTIFF_LIB=$(GEOTIFF_DIR)\geotiff_i.lib
+GEOTIFF_INC=-I$(GEOTIFF_DIR) -I$(GEOTIFF_DIR)\libxtiff
 !ENDIF
 
 FCGI_LIB=$(FCGI_DIR)\libfcgi\Release\libfcgi.lib
 FCGI_INC=-I$(FCGI_DIR)\include
+
+!IFDEF GDAL_DIR
+GDAL_INC = -I$(GDAL_DIR)/gcore -I$(GDAL_DIR)/alg -I$(GDAL_DIR)/ogr -I$(GDAL_DIR)/port
+GDAL_LIB = $(GDAL_DIR)/gdal_i.lib
+!ENDIF
+
+!IFDEF GEOS_DIR
+GEOS_LIB=$(GEOS_DIR)/src/geos_c_i.lib
+GEOS_INC=-I$(GEOS_DIR)/include -I$(GEOS_DIR)/capi
+!ENDIF
+
+!IFDEF BDB_DIR
+BDB_LIB=$(BDB_DIR)/build_windows/Win32/Release/libdb53.lib
+BDB_INC=-I$(BDB_DIR)/build_windows
+!ENDIF
 
 
 ########################################################################
@@ -191,12 +228,14 @@ MAPCACHE_LIB =    mapcache.lib
 MAPCACHE_INC= -I$(MAPCACHE_BASE)\include
 
 #APR
-APR_INC=-I$(APR_DIR)\include
-APR_LIB=$(APR_DIR)/lib/apr-1.lib $(APR_DIR)/lib/aprutil-1.lib $(APR_DIR)/lib/libapr-1.lib $(APR_DIR)/lib/libaprutil-1.lib
+APR_INC=-I$(APR_DIR)\include -I$(APR_ICONV_DIR)\include -I$(APR_UTIL_DIR)\include
+#APR_LIB=$(APR_DIR)/lib/apr-1.lib $(APR_DIR)/lib/aprutil-1.lib $(APR_DIR)/lib/libapr-1.lib $(APR_DIR)/lib/libaprutil-1.lib
+#APR_LIB=$(APR_DIR)/LibR/apr-1.lib $(APR_DIR)/Release/libapr-1.lib $(APR_ICONV_DIR)/LibR/apriconv-1.lib $(APR_UTIL_DIR)/LibR/aprutil-1.lib $(APR_UTIL_DIR)/Release/libaprutil-1.lib
+APR_LIB=$(APR_DIR)/Release/libapr-1.lib $(APR_ICONV_DIR)/Release/libapriconv-1.lib $(APR_UTIL_DIR)/Release/libaprutil-1.lib
 
 #APACHE
 APACHE_INC=-I$(APACHE_DIR)\include
-APACHE_LIB=$(APACHE_DIR)\lib\libhttpd.lib
+APACHE_LIB=$(APACHE_DIR)\Release\libhttpd.lib
 
 # Setup REGEX object and includes
 REGEX_OBJ=$(REGEX_DIR)\regex.obj
@@ -214,17 +253,17 @@ REGEX_OPT=-DHAVE_STRING_H -DREGEX_MALLOC
 ########################################################################
 
 !IFNDEF EXTERNAL_LIBS
-EXTERNAL_LIBS= $(PNG_LIB) $(CURL_LIB) $(JPEG_LIB) $(APR_LIB) $(APACHE_LIB) $(FRIBIDI_LIB) $(SQLITE_LIB) $(TIFF_LIB) $(GEOTIFF_LIB) $(FCGI_LIB)
+EXTERNAL_LIBS= $(PNG_LIB) $(CURL_LIB) $(JPEG_LIB) $(APR_LIB) $(APACHE_LIB) $(FRIBIDI_LIB) $(SQLITE_LIB) $(TIFF_LIB) $(GEOTIFF_LIB) $(FCGI_LIB) $(GDAL_LIB) $(GEOS_LIB) $(BDB_LIB)
 !ENDIF
 
 LIBS=$(MAPCACHE_LIB) $(EXTERNAL_LIBS)
 
 !IFNDEF INCLUDES
-INCLUDES=$(MAPCACHE_INC) $(APR_INC) $(APACHE_INC) $(REGEX_INC) $(PNG_INC) $(ZLIB_INC) $(CURL_INC) $(JPEG_INC) $(SQLITE_INC) $(TIFF_INC) $(GEOTIFF_INC) $(FCGI_INC)
+INCLUDES=$(MAPCACHE_INC) $(APR_INC) $(APACHE_INC) $(REGEX_INC) $(PNG_INC) $(ZLIB_INC) $(CURL_INC) $(JPEG_INC) $(SQLITE_INC) $(TIFF_INC) $(GEOTIFF_INC) $(FCGI_INC) $(GDAL_INC) $(GEOS_INC) $(BDB_INC)
 !ENDIF
 
 
-MAPCACHE_DEFS =$(REGEX_OPT) $(SQLITE_DEF) $(TIFF_DEF) $(GEOTIFF_DEF) $(FCGI_DEF)
+MAPCACHE_DEFS =$(REGEX_OPT) $(SQLITE_DEF) $(TIFF_DEF) $(GEOTIFF_DEF) $(FCGI_DEF) $(GDAL_DEF) $(GEOS_DEF) $(BDB_DEF)
 
 
 

@@ -175,6 +175,7 @@ static ezxml_t _wmts_service_contactinfo(mapcache_context *ctx, mapcache_cfg *cf
 {
   const char *value;
   int addNode = 0;
+  ezxml_t nodeAddress;
 
   ezxml_t nodeInfo = ezxml_new("ows:ContactInfo");
   ezxml_t nodePhone = ezxml_new("ows:Phone");
@@ -196,7 +197,7 @@ static ezxml_t _wmts_service_contactinfo(mapcache_context *ctx, mapcache_cfg *cf
 
 
   addNode = 0;
-  ezxml_t nodeAddress = ezxml_new("ows:Address");
+  nodeAddress = ezxml_new("ows:Address");
   
   value = apr_table_get(cfg->metadata,"contactorganization");
   if(value) {

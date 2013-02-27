@@ -251,9 +251,9 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
+  int threaded;
   pchild = pool;
 #ifdef APR_HAS_THREADS
-  int threaded;
   ap_mpm_query(AP_MPMQ_IS_THREADED,&threaded);
   if(threaded) {
     apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);

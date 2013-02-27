@@ -43,6 +43,10 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+typedef unsigned char     uint8_t;
+typedef unsigned short    uint16_t;
+typedef unsigned int      uint32_t;
+typedef unsigned long int uint64_t;
 #endif
 
 #include <db.h>
@@ -63,6 +67,8 @@ struct bdb_env {
 static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
+  int env_flags;
+  int mode;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)params;
   char *dbfile = apr_pstrcat(pool,cache->basedir,"/",cache->cache.name,".db",NULL);
   struct bdb_env *benv = calloc(1,sizeof(struct bdb_env));
@@ -78,7 +84,7 @@ static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_
     benv->errmsg = apr_psprintf(pool, "bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
     return APR_EGENERAL;
   }
-  int env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
+  env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
   ret = benv->env->open(benv->env,cache->basedir,env_flags,0);
   if(ret) {
     benv->errmsg = apr_psprintf(pool,"bdb cache failure for env->open: %s", db_strerror(ret));
@@ -89,7 +95,7 @@ static apr_status_t _bdb_reslist_get_connection(void **conn_, void *params, apr_
     benv->errmsg = apr_psprintf(pool,"bdb cache failure for db_create: %s", db_strerror(ret));
     return APR_EGENERAL;
   }
-  int mode = DB_BTREE;
+  mode = DB_BTREE;
   ret = benv->db->set_pagesize(benv->db,PAGESIZE); /* set pagesize to maximum allowed, as tile data is usually pretty large */
   if(ret) {
     benv->errmsg = apr_psprintf(pool,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
@@ -328,6 +334,7 @@ static size_t trns_offset = 0x34;
 static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
 {
   DBT key,data;
+  int ret;
   struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
@@ -338,25 +345,28 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
   key.data = skey;
   key.size = strlen(skey)+1;
 
-  int ret = benv->db->get(benv->db, NULL, &key, &data, 0);
+  ret = benv->db->get(benv->db, NULL, &key, &data, 0);
 
 
   if(ret == 0) {
     if(((char*)(data.data))[0] == '#') {
+      int pltecrc;
+      unsigned char *dd;
       tile->encoded_data = mapcache_buffer_create(sizeof(empty_png)+4,ctx->pool);
-      unsigned char *dd = tile->encoded_data->buf;
+      dd = tile->encoded_data->buf;
       memcpy(dd,empty_png,sizeof(empty_png));
-      memcpy(dd+plte_offset+4,data.data+3,1); // r;
-      memcpy(dd+plte_offset+5,data.data+2,1); // g;
-      memcpy(dd+plte_offset+6,data.data+1,1); // b;
-      int pltecrc = crc(dd+plte_offset,7);
+      memcpy(dd+plte_offset+4,((char*)data.data)+3,1); // r;
+      memcpy(dd+plte_offset+5,((char*)data.data)+2,1); // g;
+      memcpy(dd+plte_offset+6,((char*)data.data)+1,1); // b;
+      pltecrc = crc(dd+plte_offset,7);
       dd[plte_offset+7] = (unsigned char)((pltecrc >> 24) & 0xff);
       dd[plte_offset+8] = (unsigned char)((pltecrc >> 16) & 0xff);
       dd[plte_offset+9] = (unsigned char)((pltecrc >> 8) & 0xff);
       dd[plte_offset+10] = (unsigned char)(pltecrc & 0xff);
-      if((unsigned char*)(data.data+4) != 255) {
-        memcpy(dd+trns_offset+4,data.data+4,1); // a;
-        int trnscrc = crc(dd+trns_offset,5);
+      if((unsigned char*)(((char*)data.data)+4) != 255) {
+        int trnscrc;
+        memcpy(dd+trns_offset+4,((char*)data.data)+4,1); // a;
+        trnscrc = crc(dd+trns_offset,5);
         dd[trns_offset+5] = (unsigned char)((trnscrc >> 24) & 0xff);
         dd[trns_offset+6] = (unsigned char)((trnscrc >> 16) & 0xff);
         dd[trns_offset+7] = (unsigned char)((trnscrc >> 8) & 0xff);
@@ -370,7 +380,7 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
       tile->encoded_data->avail = data.size;
       apr_pool_cleanup_register(ctx->pool, tile->encoded_data->buf,(void*)free, apr_pool_cleanup_null);
     }
-    tile->mtime = *((apr_time_t*)(data.data+data.size-sizeof(apr_time_t)));
+    tile->mtime = *((apr_time_t*)(((char*)data.data)+data.size-sizeof(apr_time_t)));
     ret = MAPCACHE_SUCCESS;
   } else if(ret == DB_NOTFOUND) {
     ret = MAPCACHE_CACHE_MISS;
@@ -387,11 +397,12 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile)
 {
   DBT key,data;
   int ret;
+  apr_time_t now;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   struct bdb_env *benv = _bdb_get_conn(ctx,tile,0);
   GC_CHECK_ERROR(ctx);
-  apr_time_t now = apr_time_now();
+  now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
   memset(&data, 0, sizeof(DBT));
 
@@ -406,8 +417,8 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile)
     data.size = 5+sizeof(apr_time_t);
     data.data = apr_palloc(ctx->pool,data.size);
     (((char*)data.data)[0])='#';
-    memcpy(data.data+1,tile->raw_image->data,4);
-    memcpy(data.data+5,&now,sizeof(apr_time_t));
+    memcpy(((char*)data.data)+1,tile->raw_image->data,4);
+    memcpy(((char*)data.data)+5,&now,sizeof(apr_time_t));
   } else {
     if(!tile->encoded_data) {
       tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
@@ -434,18 +445,20 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
 {
   DBT key,data;
   int ret,i;
+  apr_time_t now;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tiles[0].tileset->cache;
   struct bdb_env *benv = _bdb_get_conn(ctx,&tiles[0],0);
   GC_CHECK_ERROR(ctx);
-  apr_time_t now = apr_time_now();
+  now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
   memset(&data, 0, sizeof(DBT));
 
   for(i=0; i<ntiles; i++) {
+    char *skey;
+    mapcache_tile *tile;
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    char *skey;
-    mapcache_tile *tile = &tiles[i];
+    tile = &tiles[i];
     skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
     if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
@@ -455,8 +468,8 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
       data.size = 5+sizeof(apr_time_t);
       data.data = apr_palloc(ctx->pool,data.size);
       (((char*)data.data)[0])='#';
-      memcpy(data.data+1,tile->raw_image->data,4);
-      memcpy(data.data+5,&now,sizeof(apr_time_t));
+      memcpy(((char*)data.data)+1,tile->raw_image->data,4);
+      memcpy(((char*)data.data)+5,&now,sizeof(apr_time_t));
     } else {
       if(!tile->encoded_data) {
         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
