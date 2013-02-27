@@ -98,10 +98,10 @@ static int _sqlite_set_pragmas(apr_pool_t *pool, mapcache_cache_sqlite* cache, s
 static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
+  int flags;  
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) params;
   struct sqlite_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_conn));
   *conn_ = conn;
-  int flags;
   flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_CREATE;
   ret = sqlite3_open_v2(cache->dbfile, &conn->handle, flags, NULL);
   if (ret != SQLITE_OK) {
@@ -135,10 +135,10 @@ static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params
 static apr_status_t _sqlite_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
+  int flags;  
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) params;
   struct sqlite_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_conn));
   *conn_ = conn;
-  int flags;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   ret = sqlite3_open_v2(cache->dbfile, &conn->handle, flags, NULL);
   if (ret != SQLITE_OK) {
@@ -370,12 +370,12 @@ static void _bind_mbtiles_params(mapcache_context *ctx, void *vstmt, mapcache_ti
 
   paramidx = sqlite3_bind_parameter_index(stmt, ":color");
   if (paramidx) {
-    assert(tile->raw_image);
     char *key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
                              tile->raw_image->data[0],
                              tile->raw_image->data[1],
                              tile->raw_image->data[2],
                              tile->raw_image->data[3]);
+    assert(tile->raw_image);                             
     sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
   }
 
