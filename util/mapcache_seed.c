@@ -93,11 +93,12 @@ typedef enum {
 } cmd;
 
 typedef enum {
-  MAPCACHE_SEED_DEPTH_FIRST,
-  MAPCACHE_SEED_LEVEL_FIRST
-} mapcache_seed_mode;
+  MAPCACHE_ITERATION_UNSET,
+  MAPCACHE_ITERATION_DEPTH_FIRST,
+  MAPCACHE_ITERATION_LEVEL_FIRST
+} mapcache_iteration_mode;
 
-mapcache_seed_mode seed_mode = MAPCACHE_SEED_DEPTH_FIRST;
+mapcache_iteration_mode iteration_mode = MAPCACHE_ITERATION_UNSET;
 
 struct seed_cmd {
   cmd command;
@@ -112,8 +113,6 @@ struct msg_cmd {
   struct seed_cmd cmd;
 };
 #endif
-
-int depthfirst = 1;
 
 cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either seed or delete */
 
@@ -191,28 +190,35 @@ int trypop_queue(struct seed_cmd *cmd)
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
-  { "tileset", 't', TRUE, "tileset to seed" },
-  { "grid", 'g', TRUE, "grid to seed" },
-  { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
-  { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
-  { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
-  { "nthreads", 'n', TRUE, "number of parallel threads to use (incompatible with -p/--nprocesses)" },
-  { "nprocesses", 'p', TRUE, "number of parallel processes to use (incompatible with -n/--nthreads)" },
-  { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
-  { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
-  { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
-  { "transfer", 'x', TRUE, "tileset to transfer" },
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
+#endif
+  { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
+  { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
+  { "force", 'f', FALSE, "force tile recreation even if it already exists" },
+  { "grid", 'g', TRUE, "grid to seed" },
+  { "help", 'h', FALSE, "show help" },
+  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"level-by-level\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and level-by-level for others. Use this flag to override." },
+#ifdef USE_CLIPPERS
   { "ogr-layer", 'l', TRUE, "layer inside datasource"},
+#endif
+  { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
+  { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
+  { "nthreads", 'n', TRUE, "number of parallel threads to use (incompatible with -p/--nprocesses)" },
+  { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
+  { "nprocesses", 'p', TRUE, "number of parallel processes to use (incompatible with -n/--nthreads)" },
+  { "quiet", 'q', FALSE, "don't show progress info" },
+#ifdef USE_CLIPPERS
   { "ogr-sql", 's', TRUE, "sql to filter inside layer"},
+#endif
+  { "tileset", 't', TRUE, "tileset to seed" },
+  { "verbose", 'v', FALSE, "show debug log messages" },
+#ifdef USE_CLIPPERS
   { "ogr-where", 'w', TRUE, "filter to apply on layer features"},
 #endif
-  { "help", 'h', FALSE, "show help" },
-  { "quiet", 'q', FALSE, "don't show progress info" },
-  { "force", 'f', FALSE, "force tile recreation even if it already exists" },
-  { "verbose", 'v', FALSE, "show debug log messages" },
-  { NULL, 0, 0, NULL },
+  { "transfer", 'x', TRUE, "tileset to transfer" },
+  { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+  { NULL, 0, 0, NULL }
 };
 
 void handle_sig_int(int signal)
@@ -527,7 +533,7 @@ void cmd_worker()
   apr_pool_create(&cmd_ctx.pool,ctx.pool);
   tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
   tile->dimensions = dimensions;
-  if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
+  if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
     do {
       tile->x = x;
       tile->y = y;
@@ -788,6 +794,15 @@ int main(int argc, const char **argv)
       case 'x':
         tileset_transfer_name = optarg;
         break;
+      case 'i':
+        if(!strcmp(optarg,"drill-down")) {
+          iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
+        } else if(!strcmp(optarg,"level-by-level")) {
+          iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
+        } else {
+          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"level-by-level\"");
+        }
+        break;
       case 'm':
         if(!strcmp(optarg,"delete")) {
           mode = MAPCACHE_CMD_DELETE;
@@ -1008,6 +1023,14 @@ int main(int argc, const char **argv)
         return usage(argv[0],"grid not configured for tileset");
       }
     }
+    if(iteration_mode == MAPCACHE_ITERATION_UNSET) {
+      if(!strcmp(grid_link->grid->name,"g") || !strcmp(grid_link->grid->name,"WGS84")
+              || !strcmp(grid_link->grid->name,"GoogleMapsCompatible")) {
+        iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
+      } else {
+        iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
+      }
+    }
     if(minzoom == -1 && maxzoom == -1) {
       minzoom = grid_link->minz;
       maxzoom = grid_link->maxz - 1;
@@ -1022,9 +1045,9 @@ int main(int argc, const char **argv)
     }
 
     /* ensure our metasize is a power of 2 in drill down mode */
-    if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
+    if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
       if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
-        return usage(argv[0],"metatile size is not set to a power of two, rerun with e.g -M 8,8");
+        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"level-by-level\"");
       }
     }
 
