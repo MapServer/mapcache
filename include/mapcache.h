@@ -1300,7 +1300,7 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
  */
 void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset, double *resolution, int *level);
 
-void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid *grid, double resolution, int *level);
+void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
 void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
 
 /**

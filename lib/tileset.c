@@ -185,7 +185,7 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int x,y;
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
-  mapcache_grid_get_closest_level(ctx,grid_link->grid,resolution,&level);
+  mapcache_grid_get_closest_level(ctx,grid_link,resolution,&level);
 
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
