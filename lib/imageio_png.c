@@ -384,8 +384,7 @@ struct box {
   int sum;
 };
 
-static acolorhist_vector mediancut
-(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors);
+static acolorhist_vector mediancut(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors);
 static int redcompare (const void *ch1, const void *ch2);
 static int greencompare (const void *ch1, const void *ch2);
 static int bluecompare (const void *ch1, const void *ch2);
@@ -568,10 +567,7 @@ int _mapcache_imageio_classify(mapcache_image *rb, unsigned char *pixels,
  */
 
 static acolorhist_vector
-mediancut( achv, colors, sum, maxval, newcolors )
-acolorhist_vector achv;
-int colors, sum, newcolors;
-unsigned char maxval;
+mediancut(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors )
 {
   acolorhist_vector acolormap;
   box_vector bv;

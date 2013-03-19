@@ -1,0 +1,7 @@
+#ifndef _MAPCACHE_UTIL_CONFIG_H
+#define _MAPCACHE_UTIL_CONFIG_H
+
+#cmakedefine USE_OGR 1
+#cmakedefine USE_GEOS 1
+
+#endif

@@ -34,6 +34,9 @@
 #ifndef MAPCACHE_H_
 #define MAPCACHE_H_
 
+#include "mapcache-config.h"
+#include "mapcache-version.h"
+
 #include <apr_tables.h>
 #include <apr_hash.h>
 
@@ -72,7 +75,6 @@
 #define MAPCACHE_CACHE_MISS 5
 #define MAPCACHE_FILE_LOCKED 6
 
-#define MAPCACHE_VERSION "1.0.0"
 #define MAPCACHE_USERAGENT "mod-mapcache/"MAPCACHE_VERSION
 
 #define MAPCACHE_LOCKFILE_PREFIX "_gc_lock"
@@ -227,7 +229,7 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst);
  *
  */
 struct mapcache_buffer {
-  char* buf; /**< pointer to the actual data contained in buffer */
+  void* buf; /**< pointer to the actual data contained in buffer */
   size_t size; /**< number of bytes actually used in the buffer */
   size_t avail; /**< number of bytes allocated */
   apr_pool_t* pool; /**< apache pool to allocate from */

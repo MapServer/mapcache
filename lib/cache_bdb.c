@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache-config.h"
 #ifdef USE_BDB
 
 #include "mapcache.h"
@@ -359,7 +360,7 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
       dd[plte_offset+8] = (unsigned char)((pltecrc >> 16) & 0xff);
       dd[plte_offset+9] = (unsigned char)((pltecrc >> 8) & 0xff);
       dd[plte_offset+10] = (unsigned char)(pltecrc & 0xff);
-      if((unsigned char*)(((char*)data.data)+4) != 255) {
+      if(*((unsigned char*)(((char*)data.data)+4)) != 255) {
         int trnscrc;
         memcpy(dd+trns_offset+4,((char*)data.data)+4,1); // a;
         trnscrc = crc(dd+trns_offset,5);

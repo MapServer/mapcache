@@ -1,0 +1,14 @@
+
+FIND_PATH(PCRE_INCLUDE_DIR
+    NAMES pcre.h
+)
+
+FIND_LIBRARY(PCRE_LIBRARY
+    NAMES pcre pcred
+)
+
+set(PCRE_INCLUDE_DIRS ${PCRE_INCLUDE_DIR})
+set(PCRE_LIBRARIES ${PCRE_LIBRARY})
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(PCRE DEFAULT_MSG PCRE_LIBRARY PCRE_INCLUDE_DIR)
+mark_as_advanced(PCRE_LIBRARY PCRE_INCLUDE_DIR)

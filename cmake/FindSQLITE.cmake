@@ -1,0 +1,15 @@
+
+FIND_PATH(SQLITE_INCLUDE_DIR
+    NAMES sqlite3.h
+    PATH_SUFFIXES sqlite sqlite3
+)
+
+FIND_LIBRARY(SQLITE_LIBRARY
+    NAMES sqlite3 sqlite3_i
+)
+
+set(SQLITE_INCLUDE_DIRS ${SQLITE_INCLUDE_DIR})
+set(SQLITE_LIBRARIES ${SQLITE_LIBRARY})
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(SQLITE DEFAULT_MSG SQLITE_LIBRARY SQLITE_INCLUDE_DIR)
+mark_as_advanced(SQLITE_LIBRARY SQLITE_INCLUDE_DIR)

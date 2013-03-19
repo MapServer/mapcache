@@ -30,6 +30,7 @@
 /*
  * Include the core server components.
  */
+#include "mod_mapcache-config.h"
 #include <httpd.h>
 #include <http_core.h>
 #include <http_config.h>
@@ -347,7 +348,7 @@ static int mod_mapcache_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t 
     return 1;
   }
 
-#ifndef DISABLE_VERSION_STRING
+#ifdef USE_VERSION_STRING
   ap_add_version_component(p, MAPCACHE_USERAGENT);
 #endif
 
