@@ -538,8 +538,14 @@
               * AUTH
          -->
 
-         <!-- timeout in seconds before bailing out from a request -->
+         <!-- timeout in seconds before bailing out from a request if no connection was created -->
          <connection_timeout>30</connection_timeout>
+         
+         <!-- timeout in seconds before bailing out from a request. This is the total time needed
+              to fullfill the request, and includes the time needed to transfer the response through
+              the network. Defaults to 600 seconds, set to a higher value if e.g. WMS requests for
+              large metatiles take longer than 10 minutes to render -->
+         <timeout>300</timeout>
       </http>
    </source>
    <source name="osm" type="wms">

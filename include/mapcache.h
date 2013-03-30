@@ -295,6 +295,7 @@ struct mapcache_http {
   char *url; /**< the base url to request */
   apr_table_t *headers; /**< additional headers to add to the http request, eg, Referer */
   int connection_timeout;
+  int timeout;
   /* TODO: authentication */
 };
 
