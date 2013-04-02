@@ -334,7 +334,44 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
     mapcache_request_get_capabilities_tms *req = (mapcache_request_get_capabilities_tms*)apr_pcalloc(
           ctx->pool,sizeof(mapcache_request_get_capabilities_tms));
     req->request.request.type = MAPCACHE_REQUEST_GET_CAPABILITIES;
-    if(index >= 2) {
+    if(index == 2) {
+      tileset = mapcache_configuration_get_tileset(config,sTileset);
+      if(!tileset) {
+        /*tileset not found directly, test if it was given as "name@grid" notation*/
+        char *tname = apr_pstrdup(ctx->pool,sTileset);
+        char *gname = tname;
+        int i;
+        while(*gname) {
+          if(*gname == '@') {
+            *gname = '\0';
+            gname++;
+            break;
+          }
+          gname++;
+        }
+        if(!gname) {
+          ctx->set_error(ctx,404, "received tms request with invalid layer %s", key);
+          return;
+        }
+        tileset = mapcache_configuration_get_tileset(config,tname);
+        if(!tileset) {
+          ctx->set_error(ctx,404, "received tms request with invalid layer %s", tname);
+          return;
+        }
+        for(i=0; i<tileset->grid_links->nelts; i++) {
+          mapcache_grid_link *sgrid = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
+          if(!strcmp(sgrid->grid->name,gname)) {
+            grid_link = sgrid;
+            break;
+          }
+        }
+        if(!grid_link) {
+          ctx->set_error(ctx,404, "received tms request with invalid grid %s", gname);
+          return;
+        }
+      } else {
+        grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
+      }
       req->tileset = tileset;
       req->grid_link = grid_link;
     }

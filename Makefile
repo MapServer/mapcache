@@ -8,14 +8,12 @@ all: .header
 install: .header install-module install-lib install-util install-cgi
 
 install-util: .header install-lib
-	$(INSTALL) -d $(bindir)
 	cd util; $(MAKE) $(MFLAGS) install
 
 install-cgi: .header install-lib
 	cd cgi; $(MAKE) $(MFLAGS) install
 
 install-lib: .header
-	$(INSTALL) -d $(libdir)
 	cd lib; $(MAKE) $(MFLAGS) install
 
 module: .header
