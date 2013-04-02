@@ -1,7 +1,7 @@
 include ../Makefile.inc
 top_builddir = @top_builddir@
 module_dir=`$(APXS) -q LIBEXECDIR`
-httpd_inc_dir=-I`apxs -q INCLUDEDIR`
+httpd_inc_dir=-I`$(APXS) -q INCLUDEDIR`
 
 all: mod_mapcache.la
 
