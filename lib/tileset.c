@@ -266,7 +266,6 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   srcimage->h = (My-my+1)*tiles[0]->grid_link->grid->tile_sy;
   srcimage->stride = srcimage->w*4;
   srcimage->data = calloc(1,srcimage->w*srcimage->h*4*sizeof(unsigned char));
-  apr_pool_cleanup_register(ctx->pool, srcimage->data, (void*)free, apr_pool_cleanup_null) ;
 
   /* copy the tiles data into the src image */
   for(i=0; i<ntiles; i++) {
@@ -347,6 +346,8 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
         break;
     }
   }
+  /* free the memory of the temporary source image */
+  apr_pool_cleanup_run(ctx->pool, srcimage->data, (void*)free) ;
   return image;
 }
 
