@@ -20,30 +20,6 @@
          <url>http://vmap0.tiles.osgeo.org/wms/vmap0</url>
       </http>
    </source>
-   <source name="geosignal" type="wms">
-      <getmap>
-         <params>
-            <FORMAT>image/png</FORMAT>
-            <LAYERS>fpc_fond_plan_communaut.fpcvoieferree</LAYERS>
-         </params>
-      </getmap>
-      
-      <http>
-         <url>http://ogc.data.grandlyon.com/gdlyon</url>
-      </http>
-   </source>
-
-   <grid name="LAMB2">
-      <metadata>
-         <title>Lambert 2</title>
-      </metadata>
-      <origin>top-left</origin>
-      <extent>731869 23628 857982 155264</extent>
-      <srs>EPSG:27562</srs>
-      <resolutions>2048 1024 512 256 128 64 32 16 8 4 2 1 0.5 0.25 0.125 0.0625</resolutions>
-      <units>m</units>
-      <size>256 256</size>
-   </grid>
    
    <tileset name="test">
       <source>vmap0</source>
@@ -55,16 +31,6 @@
       <metabuffer>10</metabuffer>
       <expires>3600</expires>
    </tileset>
-   <tileset name="rail2">
-      <source>geosignal</source>
-      <cache>disk</cache>
-      <grid>LAMB2</grid>
-      <format>PNG</format>
-      <metatile>5 5</metatile>
-      <metabuffer>10</metabuffer>
-      <expires>3600</expires>
-   </tileset>
-
 
    <default_format>JPEG</default_format>
 
