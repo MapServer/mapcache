@@ -631,7 +631,7 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
   mapcache_tile *childtile = mapcache_tileset_tile_clone_tmp(ctx->pool,tile);
   childtile->z = tile->grid_link->max_cached_zoom;
   scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
-  tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+  tile->nodata = 1;
   for(i=0;i<n;i++) {
     childtile->x = x[i];
     childtile->y = y[i];
@@ -639,9 +639,20 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
     double dstminx,dstminy;
     mapcache_tileset_tile_get(ctx,childtile);
     GC_CHECK_ERROR(ctx);
+    if(childtile->nodata) {
+      /* silently skip empty tiles */
+      childtile->nodata = 0; /* reset flag */
+      continue;
+    }
     if(!childtile->raw_image) {
       childtile->raw_image = mapcache_imageio_decode(ctx, childtile->encoded_data);
       GC_CHECK_ERROR(ctx);
+    }
+    if(tile->nodata) {
+      /* we defer the creation of the actual image bytes, no use allocating before knowing
+       that one of the child tiles actually contains data*/
+      tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+      tile->nodata = 0;
     }
     /* now copy/scale the srcimage onto the destination image */
     mapcache_grid_get_extent(ctx,childtile->grid_link->grid,
