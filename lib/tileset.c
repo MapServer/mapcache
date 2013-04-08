@@ -675,7 +675,9 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
       unsigned int dstminxi = - dstminx / scalefactor;
       unsigned int dstminyi = - dstminy / scalefactor;
       srcpixptr = &(childtile->raw_image->data[dstminyi * childtile->raw_image->stride + dstminxi * 4]);
+      /*
       ctx->log(ctx, MAPCACHE_WARN, "factor: %g. pixel: %d,%d (val:%d)",scalefactor,dstminxi,dstminyi,*((unsigned int*)srcpixptr));
+       */
       unsigned char *row_ptr = tile->raw_image->data;
       for(row=0;row<tile->raw_image->h;row++) {
         unsigned char *pix_ptr = row_ptr;
