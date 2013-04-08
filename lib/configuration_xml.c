@@ -37,6 +37,7 @@
 #include <apr_file_io.h>
 #include <apr_file_info.h>
 #include <math.h>
+#include <cpl_port.h>
 
 
 void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
@@ -590,7 +591,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->minz = 0;
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
-    gridlink->max_cached_zoom = 8;
     gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
@@ -658,6 +658,32 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     if(gridlink->minz<0 || gridlink->maxz>grid->nlevels || gridlink->minz>=gridlink->maxz) {
       ctx->set_error(ctx, 400, "invalid grid maxzoom/minzoom %d/%d", gridlink->minz,gridlink->maxz);
       return;
+    }
+    
+    sTolerance = (char*)ezxml_attr(cur_node,"max-cached-zoom");
+    if(sTolerance) {
+      char *endptr;
+      tolerance = (int)strtol(sTolerance,&endptr,10);
+      if(*endptr != 0 || tolerance < 0) {
+        ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (expecting a positive integer)",
+                       sTolerance);
+        return;
+      }
+      gridlink->max_cached_zoom = tolerance;
+      gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+      sTolerance = (char*)ezxml_attr(cur_node,"out-of-zoom-strategy");
+      if(sTolerance) {
+        if(!strcasecmp(sTolerance,"reassemble")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+        }
+        else if(!strcasecmp(sTolerance,"proxy")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_PROXY;
+        } else {
+          ctx->set_error(ctx, 400, "failed to parse grid out-of-zoom-strategy %s (expecting \"reassemble\" or \"proxy\")",
+                        sTolerance);
+          return;
+        }
+      }
     }
 
 
