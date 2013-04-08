@@ -590,6 +590,8 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->minz = 0;
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
+    gridlink->max_cached_zoom = 8;
+    gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {

@@ -277,8 +277,24 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       return NULL;
     }
   } else {
-    response->data = req_tile->tiles[first]->encoded_data;
-    format = req_tile->tiles[first]->tileset->format;
+    if(!req_tile->tiles[first]->encoded_data) {
+      if(req_tile->format) {
+        format = req_tile->format;
+      } else {
+        format = req_tile->tiles[first]->tileset->format;
+        if(!format) {
+          format = ctx->config->default_image_format; /* this one is always defined */
+        }
+      }
+      response->data = format->write(ctx, req_tile->tiles[first]->raw_image, format);
+      if(GC_HAS_ERROR(ctx)) {
+        return NULL;
+      }
+      
+    } else {
+      response->data = req_tile->tiles[first]->encoded_data;
+      format = req_tile->tiles[first]->tileset->format;
+    }
   }
 
   /* compute the content-type */

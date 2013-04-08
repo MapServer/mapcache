@@ -881,6 +881,7 @@ struct mapcache_image {
  * \brief initialize a new mapcache_image
  */
 mapcache_image* mapcache_image_create(mapcache_context *ctx);
+mapcache_image* mapcache_image_create_with_data(mapcache_context *ctx, int width, int height);
 
 void mapcache_image_copy_resampled_nearest(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
     double off_x, double off_y, double scale_x, double scale_y);
@@ -1180,6 +1181,11 @@ struct mapcache_grid {
   mapcache_grid_origin origin;
 };
 
+typedef enum {
+  MAPCACHE_OUTOFZOOM_NOTCONFIGURED = 0,
+  MAPCACHE_OUTOFZOOM_REASSEMBLE,
+  MAPCACHE_OUTOFZOOM_PROXY
+} mapcache_outofzoom_strategy;
 
 struct mapcache_grid_link {
   mapcache_grid *grid;
@@ -1191,6 +1197,15 @@ struct mapcache_grid_link {
   mapcache_extent *restricted_extent;
   mapcache_extent_i *grid_limits;
   int minz,maxz;
+  
+  /**
+   * tiles above this zoom level will not be stored to the cache, but will be
+   * dynamically generated (either by reconstructing from lower level tiles, or
+   * by "proxying" the source
+   */
+
+  int max_cached_zoom;
+  mapcache_outofzoom_strategy outofzoom_strategy;
 };
 
 /**\class mapcache_tileset
