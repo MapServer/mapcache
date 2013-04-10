@@ -1006,6 +1006,18 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
     fi->map.width = grid_link->grid->tile_sx;
     fi->map.height = grid_link->grid->tile_sy;
+
+    if(tileset->dimensions) {
+      int d;
+      for(d=0; d<tileset->dimensions->nelts; d++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+        const char *value = apr_table_get(dimtable,dimension->name);
+        if(value) {
+          apr_table_set(fi->map.dimensions,dimension->name,value);
+        }
+      }
+    }
+
     switch(grid_link->grid->origin) {
       case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
         mapcache_grid_get_extent(ctx,grid_link->grid,
