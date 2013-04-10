@@ -31,6 +31,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
+#include <apr-1/apr_tables.h>
 
 /** \addtogroup services */
 /** @{ */
@@ -133,7 +134,7 @@ static char *demo_layer_wms =
   "          sphericalMercator: %s\n"
   "        }\n"
   "    );\n"
-  "    map.addLayer(%s_wms_layer)\n\n";
+  "    map.addLayer(%s_wms_layer);\n\n";
 
 static char *demo_layer_tms =
   "    var %s_tms_layer = new OpenLayers.Layer.TMS( \"%s-%s-TMS\",\n"
@@ -169,7 +170,7 @@ static char *demo_layer_wmts =
   "        sphericalMercator: %s\n"
   "      }\n"
   "    );\n"
-  "    map.addLayer(%s_wmts_layer)\n\n";
+  "    map.addLayer(%s_wmts_layer);\n\n";
 
 static char *demo_layer_ve =
   "    var %s_ve_layer = new OpenLayers.Layer.TMS( \"%s-%s-VE\",\n"
@@ -478,42 +479,28 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
       if(strstr(grid->srs, ":900913") || strstr(grid->srs, ":3857")) {
         smerc = "true";
       }
-      ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
-      /* normalize name to something that is a valid variable name */
-      for(i=0; i<strlen(ol_layer_name); i++)
-        if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
-            || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
-          ol_layer_name[i] = '_';
 
       resolutions = apr_psprintf(ctx->pool,"%s%.20f",resolutions,grid->levels[grid_link->minz]->resolution);
       for(i=grid_link->minz+1; i<grid_link->maxz; i++) {
         resolutions = apr_psprintf(ctx->pool,"%s,%.20f",resolutions,grid->levels[i]->resolution);
       }
 
-      ol_layer = apr_psprintf(ctx->pool,demo_layer_wms,
-                              ol_layer_name,
-                              tileset->name,
-                              grid->name,
-                              apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
-                              tileset->name,
-                              resolutions,
-                              unit,
-                              grid->extent.minx,
-                              grid->extent.miny,
-                              grid->extent.maxx,
-                              grid->extent.maxy,
-                              grid->srs,
-                              smerc,
-                              ol_layer_name);
-      caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+      if(!tileset->timedimension) {
+        ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
+        /* normalize name to something that is a valid variable name */
+        for(i=0; i<strlen(ol_layer_name); i++)
+          if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+              || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+            ol_layer_name[i] = '_';
 
-      if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
-        ol_layer = apr_psprintf(ctx->pool,demo_layer_singletile,
+        ol_layer = apr_psprintf(ctx->pool,demo_layer_wms,
                                 ol_layer_name,
                                 tileset->name,
                                 grid->name,
                                 apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
-                                tileset->name,resolutions,unit,
+                                tileset->name,
+                                resolutions,
+                                unit,
                                 grid->extent.minx,
                                 grid->extent.miny,
                                 grid->extent.maxx,
@@ -522,6 +509,77 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
                                 smerc,
                                 ol_layer_name);
         caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+
+        if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
+          ol_layer = apr_psprintf(ctx->pool,demo_layer_singletile,
+                                  ol_layer_name,
+                                  tileset->name,
+                                  grid->name,
+                                  apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
+                                  tileset->name,resolutions,unit,
+                                  grid->extent.minx,
+                                  grid->extent.miny,
+                                  grid->extent.maxx,
+                                  grid->extent.maxy,
+                                  grid->srs,
+                                  smerc,
+                                  ol_layer_name);
+          caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+        }
+      } else {
+        int id;
+        apr_array_header_t *timedimvals = tileset->timedimension->get_all_entries(
+                ctx,tileset->timedimension,tileset);
+        for(id=0;id<timedimvals->nelts;id++) {
+          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
+          char *dimparam_wms = "    %s_wms_layer.mergeNewParams({%s:\"%s\"});\n";
+          char *dimparam_singletile = "    %s_slayer.mergeNewParams({%s:\"%s\"});\n";
+          ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
+          /* normalize name to something that is a valid variable name */
+          for(i=0; i<strlen(ol_layer_name); i++)
+            if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+                || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+              ol_layer_name[i] = '_';
+          ol_layer = apr_psprintf(ctx->pool, demo_layer_wms,
+                                  ol_layer_name,
+                                  tileset->name,
+                                  grid->name,
+                                  apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
+                                  tileset->name,
+                                  resolutions,
+                                  unit,
+                                  grid->extent.minx,
+                                  grid->extent.miny,
+                                  grid->extent.maxx,
+                                  grid->extent.maxy,
+                                  grid->srs,
+                                  smerc,
+                                  ol_layer_name);
+          caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+          caps = apr_psprintf(ctx->pool,"%s%s",caps,
+                  apr_psprintf(ctx->pool,dimparam_wms,ol_layer_name,tileset->timedimension->key,idval));
+            
+          if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
+            ol_layer = apr_psprintf(ctx->pool, demo_layer_singletile,
+                                    ol_layer_name,
+                                    tileset->name,
+                                    grid->name,
+                                    apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
+                                    tileset->name,
+                                    resolutions,
+                                    unit,
+                                    grid->extent.minx,
+                                    grid->extent.miny,
+                                    grid->extent.maxx,
+                                    grid->extent.maxy,
+                                    grid->srs,
+                                    smerc,
+                                    ol_layer_name);
+            caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+            caps = apr_psprintf(ctx->pool,"%s%s",caps,
+                    apr_psprintf(ctx->pool,dimparam_singletile,ol_layer_name,tileset->timedimension->key,idval));
+          }
+        }
       }
     }
     if(tileset->source && tileset->source->info_formats) {
@@ -745,37 +803,76 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
       if(strstr(grid->srs, ":900913") || strstr(grid->srs, ":3857")) {
         smerc = "true";
       }
-      ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
-      /* normalize name to something that is a valid variable name */
-      for(i=0; i<strlen(ol_layer_name); i++)
-        if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
-            || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
-          ol_layer_name[i] = '_';
 
       resolutions = apr_psprintf(ctx->pool,"%s%.20f",resolutions,grid->levels[grid_link->minz]->resolution);
       for(i=grid_link->minz+1; i<grid_link->maxz; i++) {
         resolutions = apr_psprintf(ctx->pool,"%s,%.20f",resolutions,grid->levels[i]->resolution);
       }
 
-      ol_layer = apr_psprintf(ctx->pool, demo_layer_wmts,
-                              ol_layer_name,
-                              tileset->name,
-                              grid->name,
-                              apr_pstrcat(ctx->pool,url_prefix,"wmts/",NULL),
-                              tileset->name,
-                              grid->name,
-                              mime_type,
-                              resolutions,
-                              grid_link->minz,
-                              unit,
-                              grid->extent.minx,
-                              grid->extent.miny,
-                              grid->extent.maxx,
-                              grid->extent.maxy,
-                              grid->srs,
-                              smerc,
-                              ol_layer_name);
-      caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+      if(!tileset->timedimension) {
+        ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
+        /* normalize name to something that is a valid variable name */
+        for(i=0; i<strlen(ol_layer_name); i++)
+          if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+              || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+            ol_layer_name[i] = '_';
+        ol_layer = apr_psprintf(ctx->pool, demo_layer_wmts,
+                                ol_layer_name,
+                                tileset->name,
+                                grid->name,
+                                apr_pstrcat(ctx->pool,url_prefix,"wmts/",NULL),
+                                tileset->name,
+                                grid->name,
+                                mime_type,
+                                resolutions,
+                                grid_link->minz,
+                                unit,
+                                grid->extent.minx,
+                                grid->extent.miny,
+                                grid->extent.maxx,
+                                grid->extent.maxy,
+                                grid->srs,
+                                smerc,
+                                ol_layer_name);
+        caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+      } else {
+        int id;
+        apr_array_header_t *timedimvals = tileset->timedimension->get_all_entries(
+                ctx,tileset->timedimension,tileset);
+        GC_CHECK_ERROR(ctx);
+        for(id=0;id<timedimvals->nelts;id++) {
+          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
+          char *dimparam = "%s_wmts_layer.mergeNewParams({%s:\"%s\"});\n";
+          ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
+          /* normalize name to something that is a valid variable name */
+          for(i=0; i<strlen(ol_layer_name); i++)
+            if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+                || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+              ol_layer_name[i] = '_';
+          ol_layer = apr_psprintf(ctx->pool, demo_layer_wmts,
+                                ol_layer_name,
+                                tileset->name,
+                                grid->name,
+                                apr_pstrcat(ctx->pool,url_prefix,"wmts/",NULL),
+                                tileset->name,
+                                grid->name,
+                                mime_type,
+                                resolutions,
+                                grid_link->minz,
+                                unit,
+                                grid->extent.minx,
+                                grid->extent.miny,
+                                grid->extent.maxx,
+                                grid->extent.maxy,
+                                grid->srs,
+                                smerc,
+                                ol_layer_name);
+          caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+          caps = apr_psprintf(ctx->pool,"%s%s",caps,
+                  apr_psprintf(ctx->pool,dimparam,ol_layer_name,tileset->timedimension->key,idval));
+            
+        }
+      }
     }
     tileindex_index = apr_hash_next(tileindex_index);
   }

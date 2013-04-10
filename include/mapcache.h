@@ -53,6 +53,7 @@
 #endif
 
 #include <assert.h>
+#include <time.h>
 #include <apr_time.h>
 
 #ifdef USE_PCRE
@@ -135,6 +136,7 @@ typedef struct mapcache_grid_link mapcache_grid_link;
 typedef struct mapcache_context mapcache_context;
 typedef struct mapcache_dimension mapcache_dimension;
 typedef struct mapcache_dimension_time mapcache_dimension_time;
+typedef struct mapcache_timedimension mapcache_timedimension;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
@@ -1261,6 +1263,8 @@ struct mapcache_tileset {
    */
   apr_array_header_t *dimensions;
 
+  mapcache_timedimension *timedimension;
+
   /**
    * image to be used as a watermark
    */
@@ -1338,6 +1342,8 @@ int mapcache_grid_is_bbox_aligned(mapcache_context *ctx, mapcache_grid *grid, ma
  */
 mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *tileset, mapcache_grid_link *grid_link);
 
+mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src);
+
 /**
  * \brief create and initialize a map for the given tileset and grid_link
  * @param tileset
@@ -1346,6 +1352,8 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
  * @return
  */
 mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *tileset, mapcache_grid_link *grid_link);
+
+mapcache_map* mapcache_tileset_map_clone(apr_pool_t *pool, mapcache_map *src);
 
 
 /**
@@ -1699,6 +1707,36 @@ mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
 
+typedef enum {
+  MAPCACHE_TIMEDIMENSION_ASSEMBLY_STACK,
+  MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE
+} mapcache_timedimension_assembly_type;
+
+typedef enum {
+  MAPCACHE_TIMEDIMENSION_SOURCE_SQLITE
+} mapcache_timedimension_source_type;
+
+apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
+        mapcache_tileset *tileset, const char *value);
+
+struct mapcache_timedimension {
+  mapcache_timedimension_assembly_type assembly_type;
+  void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
+  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, time_t start, time_t end);
+  apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
+  char *default_value;
+  char *key; /* TIME, hardcoded */
+};
+
+#ifdef USE_SQLITE
+typedef struct mapcache_timedimension_sqlite mapcache_timedimension_sqlite;
+struct mapcache_timedimension_sqlite {
+  mapcache_timedimension timedimension;
+  char *dbfile;
+  char *query;
+};
+mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool);
+#endif
 
 int mapcache_is_axis_inverted(const char *srs);
 

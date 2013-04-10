@@ -532,7 +532,39 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
       apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
     }
   }
+  if(tileset->timedimension) {
+    if(!tile->dimensions) {
+      tile->dimensions = apr_table_make(pool,1);
+    }
+    apr_table_set(tile->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
+  }
   return tile;
+}
+
+mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
+{
+  mapcache_tile *tile = (mapcache_tile*)apr_pcalloc(pool, sizeof(mapcache_tile));
+  tile->tileset = src->tileset;
+  tile->expires = src->expires;
+  tile->grid_link = src->grid_link;
+  tile->dimensions = apr_table_clone(pool,src->dimensions);
+  tile->x = src->x;
+  tile->y = src->y;
+  tile->z = src->z;
+  return tile;
+}
+
+mapcache_map* mapcache_tileset_map_clone(apr_pool_t *pool, mapcache_map *src)
+{
+  mapcache_map *map = (mapcache_map*)apr_pcalloc(pool, sizeof(mapcache_map));
+  map->tileset = src->tileset;
+  map->expires = src->expires;
+  map->grid_link = src->grid_link;
+  map->dimensions = apr_table_clone(pool,src->dimensions);
+  map->height = src->height;
+  map->width = src->width;
+  map->extent = src->extent;
+  return map;
 }
 
 /*
@@ -550,6 +582,12 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
       apr_table_set(map->dimensions,dimension->name,dimension->default_value);
     }
+  }
+  if(tileset->timedimension) {
+    if(!map->dimensions) {
+      map->dimensions = apr_table_make(pool,1);
+    }
+    apr_table_set(map->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
   }
   return map;
 }
