@@ -245,8 +245,8 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
   pixman_transform_scale(&transform,NULL,pixman_double_to_fixed(1.0/scale_x),pixman_double_to_fixed(1.0/scale_y));
   pixman_image_set_transform (si, &transform);
   pixman_image_set_repeat (si, PIXMAN_REPEAT_REFLECT);
-  pixman_image_set_filter(si,PIXMAN_FILTER_GOOD, NULL, 0);
-  pixman_image_composite (PIXMAN_OP_SCREEN, si, NULL, bi,
+  pixman_image_set_filter(si,PIXMAN_FILTER_BILINEAR, NULL, 0);
+  pixman_image_composite (PIXMAN_OP_OVER, si, NULL, bi,
                           0, 0, 0, 0, 0, 0, dst->w,dst->h);
   pixman_image_unref(si);
   pixman_image_unref(bi);

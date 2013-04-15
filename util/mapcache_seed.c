@@ -1041,6 +1041,9 @@ int main(int argc, const char **argv)
     }
     if(minzoom<grid_link->minz) minzoom = grid_link->minz;
     if(maxzoom>= grid_link->maxz) maxzoom = grid_link->maxz - 1;
+    if(grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED && maxzoom > grid_link->max_cached_zoom) {
+      maxzoom = grid_link->max_cached_zoom;
+    }
 
     /* adjust metasize */
     if(metax>0) {
