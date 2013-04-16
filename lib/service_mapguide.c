@@ -56,7 +56,6 @@ void _mapcache_service_mg_parse_request(mapcache_context *ctx, mapcache_service 
   mapcache_grid_link *grid_link = NULL;
   char *pathinfo = NULL;
   int x=-1,y=-1,z=-1,ygroup=-1,xgroup=1;
-  mapcache_service_mapguide *mgs = (mapcache_service_mapguide*)this;
 
   if(cpathinfo) {
     pathinfo = apr_pstrdup(ctx->pool,cpathinfo);
