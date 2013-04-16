@@ -613,20 +613,6 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   return fi;
 }
 
-mapcache_tile* mapcache_tileset_tile_clone_tmp(apr_pool_t *pool, mapcache_tile *src)
-{
-  mapcache_tile *tile = (mapcache_tile*)apr_pcalloc(pool, sizeof(mapcache_tile));
-  tile->tileset = src->tileset;
-  tile->expires = src->expires;
-  tile->grid_link = src->grid_link;
-  if(src->dimensions)
-    tile->dimensions = apr_table_clone(pool,src->dimensions);
-  tile->x = src->x;
-  tile->y = src->y;
-  tile->z = src->z;
-  return tile;
-}
-
 void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_tile *tile) {
   assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
 
@@ -666,7 +652,7 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
   tile_bbox.minx -= shrink_x;
   tile_bbox.miny -= shrink_y;
 
-  mapcache_tile *childtile = mapcache_tileset_tile_clone_tmp(ctx->pool,tile);
+  mapcache_tile *childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
   childtile->z = tile->grid_link->max_cached_zoom;
   scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
   tile->nodata = 1;
