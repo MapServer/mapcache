@@ -31,7 +31,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
-#include <apr-1/apr_tables.h>
+#include <apr_tables.h>
 
 /** \addtogroup services */
 /** @{ */
