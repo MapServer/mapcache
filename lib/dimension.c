@@ -345,7 +345,7 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
   apr_array_header_t *time_ids = NULL;
   ret = sqlite3_open_v2(sdim->dbfile, &handle, flags, NULL);
   if (ret != SQLITE_OK) {
-    ctx->set_error(ctx,500,"failed to open time dimension db file");
+    ctx->set_error(ctx,500,"failed to open time dimension db file %s: (sqlite3 code %d)",sdim->dbfile,ret);
     return NULL;
   }
   ret = sqlite3_prepare_v2(handle,sdim->query,-1,&stmt,NULL);

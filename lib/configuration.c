@@ -164,15 +164,20 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   cfg->metadata = apr_table_make(pool,3);
 
   mapcache_configuration_add_image_format(cfg,
-                                          mapcache_imageio_create_png_format(pool,"PNG",MAPCACHE_COMPRESSION_FAST),
-                                          "PNG");
+          mapcache_imageio_create_png_format(pool,"PNG",MAPCACHE_COMPRESSION_FAST),
+          "PNG");
   mapcache_configuration_add_image_format(cfg,
-                                          mapcache_imageio_create_png_q_format(pool,"PNG8",MAPCACHE_COMPRESSION_FAST,256),
-                                          "PNG8");
+          mapcache_imageio_create_png_q_format(pool,"PNG8",MAPCACHE_COMPRESSION_FAST,256),
+          "PNG8");
   mapcache_configuration_add_image_format(cfg,
-                                          mapcache_imageio_create_jpeg_format(pool,"JPEG",90,MAPCACHE_PHOTOMETRIC_YCBCR),
-                                          "JPEG");
-  cfg->default_image_format = mapcache_configuration_get_image_format(cfg,"JPEG");
+          mapcache_imageio_create_jpeg_format(pool,"JPEG",90,MAPCACHE_PHOTOMETRIC_YCBCR),
+          "JPEG");
+  mapcache_configuration_add_image_format(cfg,
+          mapcache_imageio_create_mixed_format(pool,"mixed",
+                    mapcache_configuration_get_image_format(cfg,"PNG"),
+                    mapcache_configuration_get_image_format(cfg,"JPEG")),
+          "mixed");
+  cfg->default_image_format = mapcache_configuration_get_image_format(cfg,"mixed");
   cfg->reporting = MAPCACHE_REPORT_MSG;
 
   grid = mapcache_grid_create(pool);

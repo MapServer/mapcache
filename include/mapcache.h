@@ -462,6 +462,7 @@ struct mapcache_cache_sqlite {
   apr_table_t *pragmas;
   void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
   int n_prepared_statements;
+  int detect_blank;
 };
 
 /**
@@ -1533,6 +1534,8 @@ struct mapcache_image_format_mixed {
   mapcache_image_format *transparent;
   mapcache_image_format *opaque;
 };
+
+mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, const unsigned char *hex_color, int *is_empty);
 
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
