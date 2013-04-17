@@ -44,6 +44,18 @@ mapcache_image* mapcache_image_create(mapcache_context *ctx)
   return img;
 }
 
+mapcache_image* mapcache_image_create_with_data(mapcache_context *ctx, int width, int height) {
+  mapcache_image *img = (mapcache_image*)apr_pcalloc(ctx->pool,sizeof(mapcache_image));
+  img->w = width;
+  img->h = height;
+  img->data = calloc(1, width*height*4*sizeof(unsigned char));
+  apr_pool_cleanup_register(ctx->pool, img->data, (void*)free, apr_pool_cleanup_null) ;
+  img->stride = 4 * width;
+  img->has_alpha = MC_ALPHA_UNKNOWN;
+  img->is_blank = MC_EMPTY_UNKNOWN;
+  return img;
+}
+
 int mapcache_image_has_alpha(mapcache_image *img)
 {
   size_t i,j;
@@ -220,7 +232,6 @@ void mapcache_image_copy_resampled_nearest(mapcache_context *ctx, mapcache_image
 #endif
 }
 
-
 void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
     double off_x, double off_y, double scale_x, double scale_y)
 {
@@ -233,8 +244,9 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
   pixman_transform_init_translate(&transform,pixman_double_to_fixed(-off_x),pixman_double_to_fixed(-off_y));
   pixman_transform_scale(&transform,NULL,pixman_double_to_fixed(1.0/scale_x),pixman_double_to_fixed(1.0/scale_y));
   pixman_image_set_transform (si, &transform);
+  pixman_image_set_repeat (si, PIXMAN_REPEAT_REFLECT);
   pixman_image_set_filter(si,PIXMAN_FILTER_BILINEAR, NULL, 0);
-  pixman_image_composite (PIXMAN_OP_SRC, si, NULL, bi,
+  pixman_image_composite (PIXMAN_OP_OVER, si, NULL, bi,
                           0, 0, 0, 0, 0, 0, dst->w,dst->h);
   pixman_image_unref(si);
   pixman_image_unref(bi);

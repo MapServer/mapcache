@@ -631,6 +631,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->minz = 0;
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
+    gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
@@ -697,6 +698,41 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     if(gridlink->minz<0 || gridlink->maxz>grid->nlevels || gridlink->minz>=gridlink->maxz) {
       ctx->set_error(ctx, 400, "invalid grid maxzoom/minzoom %d/%d", gridlink->minz,gridlink->maxz);
       return;
+    }
+    
+    sTolerance = (char*)ezxml_attr(cur_node,"max-cached-zoom");
+    /* RFC97 implementation: check for a maximum zoomlevel to cache */
+    if(sTolerance) {
+      char *endptr;
+      tolerance = (int)strtol(sTolerance,&endptr,10);
+      if(*endptr != 0 || tolerance < 0) {
+        ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (expecting a positive integer)",
+                       sTolerance);
+        return;
+      }
+      
+      if(tolerance > gridlink->maxz) {
+        ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (max cached zoom is greater than grid's max zoom)",
+                       sTolerance);
+        return;
+      }
+      gridlink->max_cached_zoom = tolerance;
+      
+      /* default to reassembling */
+      gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+      sTolerance = (char*)ezxml_attr(cur_node,"out-of-zoom-strategy");
+      if(sTolerance) {
+        if(!strcasecmp(sTolerance,"reassemble")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+        }
+        else if(!strcasecmp(sTolerance,"proxy")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_PROXY;
+        } else {
+          ctx->set_error(ctx, 400, "failed to parse grid out-of-zoom-strategy %s (expecting \"reassemble\" or \"proxy\")",
+                        sTolerance);
+          return;
+        }
+      }
     }
 
 

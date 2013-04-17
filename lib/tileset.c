@@ -186,6 +186,11 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
   mapcache_grid_get_closest_level(ctx,grid_link,resolution,&level);
+  
+  /* we don't want to assemble tiles that have already been reassembled from a lower level */
+  if(grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > grid_link->max_cached_zoom) {
+    level = grid_link->max_cached_zoom;
+  }
 
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
@@ -227,7 +232,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   mapcache_tile *toplefttile=NULL;
   int mx=INT_MAX,my=INT_MAX,Mx=INT_MIN,My=INT_MIN;
   int i;
-  mapcache_image *image = mapcache_image_create(ctx);
+  mapcache_image *image;
   mapcache_image *srcimage;
   double tileresolution, dstminx, dstminy, hf, vf;
 #ifdef DEBUG
@@ -243,12 +248,10 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   }
 #endif
 
-  image->w = width;
-  image->h = height;
-  image->stride = width*4;
-  image->data = calloc(1,width*height*4*sizeof(unsigned char));
-  apr_pool_cleanup_register(ctx->pool, image->data, (void*)free, apr_pool_cleanup_null) ;
+  image = mapcache_image_create_with_data(ctx,width,height);
   if(ntiles == 0) {
+    image->has_alpha = MC_ALPHA_YES;
+    image->is_blank = MC_EMPTY_YES;
     return image;
   }
 
@@ -261,11 +264,9 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
     if(tile->y > My) My = tile->y;
   }
   /* create image that will contain the unscaled tiles data */
-  srcimage = mapcache_image_create(ctx);
-  srcimage->w = (Mx-mx+1)*tiles[0]->grid_link->grid->tile_sx;
-  srcimage->h = (My-my+1)*tiles[0]->grid_link->grid->tile_sy;
-  srcimage->stride = srcimage->w*4;
-  srcimage->data = calloc(1,srcimage->w*srcimage->h*4*sizeof(unsigned char));
+  srcimage = mapcache_image_create_with_data(ctx,
+          (Mx-mx+1)*tiles[0]->grid_link->grid->tile_sx,
+          (My-my+1)*tiles[0]->grid_link->grid->tile_sy);
 
   /* copy the tiles data into the src image */
   for(i=0; i<ntiles; i++) {
@@ -612,6 +613,132 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   return fi;
 }
 
+void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_tile *tile) {
+  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
+
+  /* we have at most 4 tiles composing the requested tile */
+  mapcache_extent tile_bbox;
+  double shrink_x, shrink_y, scalefactor;
+  int x[4],y[4];
+  int i, n=1;
+  mapcache_grid_get_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z, &tile_bbox);
+
+  /*
+   shrink the extent so we do not fall exactly on a tile boundary, to avoid rounding
+   errors when computing the x,y of the lower level tile(s) we will need
+  */
+  
+  shrink_x = (tile_bbox.maxx - tile_bbox.minx) / (tile->grid_link->grid->tile_sx * 1000); /* 1/1000th of a pixel */
+  shrink_y = (tile_bbox.maxy - tile_bbox.miny) / (tile->grid_link->grid->tile_sy * 1000); /* 1/1000th of a pixel */
+  tile_bbox.maxx -= shrink_x;
+  tile_bbox.maxy -= shrink_y;
+  tile_bbox.minx += shrink_x;
+  tile_bbox.miny += shrink_y;
+
+  /* compute the x,y of the lower level tiles we'll use for reassembling (we take them from the grid_link->max_cached_zoom,
+   * which is the closest level were we can consume tiles from the cache
+   */
+
+  mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.minx, tile_bbox.miny, tile->grid_link->max_cached_zoom, &x[0], &y[0]);
+  mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.maxx, tile_bbox.maxy, tile->grid_link->max_cached_zoom, &x[1], &y[1]);
+  if(x[0] != x[1] || y[0] != y[1]) {
+    /* no use computing these if the first two were identical */
+    n = 4;
+    mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.minx, tile_bbox.maxy, tile->grid_link->max_cached_zoom, &x[2], &y[2]);
+    mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.maxx, tile_bbox.miny, tile->grid_link->max_cached_zoom, &x[3], &y[3]);
+  }
+  tile_bbox.maxx += shrink_x;
+  tile_bbox.maxy += shrink_y;
+  tile_bbox.minx -= shrink_x;
+  tile_bbox.miny -= shrink_y;
+
+  mapcache_tile *childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
+  childtile->z = tile->grid_link->max_cached_zoom;
+  scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
+  tile->nodata = 1;
+  for(i=0;i<n;i++) {
+    childtile->x = x[i];
+    childtile->y = y[i];
+    mapcache_extent childtile_bbox;
+    double dstminx,dstminy;
+    mapcache_tileset_tile_get(ctx,childtile);
+    GC_CHECK_ERROR(ctx);
+    if(childtile->nodata) {
+      /* silently skip empty tiles */
+      childtile->nodata = 0; /* reset flag */
+      continue;
+    }
+    if(!childtile->raw_image) {
+      childtile->raw_image = mapcache_imageio_decode(ctx, childtile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+    }
+    if(tile->nodata) {
+      /* we defer the creation of the actual image bytes, no use allocating before knowing
+       that one of the child tiles actually contains data*/
+      tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+      tile->nodata = 0;
+    }
+    /* now copy/scale the srcimage onto the destination image */
+    mapcache_grid_get_extent(ctx,childtile->grid_link->grid,
+                            childtile->x, childtile->y, childtile->z, &childtile_bbox);
+
+    /*compute the pixel position of top left corner*/
+    dstminx = (childtile_bbox.minx-tile_bbox.minx)/tile->grid_link->grid->levels[tile->z]->resolution;
+    dstminy = (tile_bbox.maxy-childtile_bbox.maxy)/tile->grid_link->grid->levels[tile->z]->resolution;
+    /*
+     * ctx->log(ctx, MAPCACHE_DEBUG, "factor: %g. start: %g,%g (im size: %g)",scalefactor,dstminx,dstminy,scalefactor*256);
+     */
+    if(scalefactor <= tile->grid_link->grid->tile_sx/2) /*FIXME: might fail for non-square tiles, also check tile_sy */
+      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor);
+    else {
+      /* no use going through bilinear resampling if the requested scalefactor maps less than 4 pixels onto the
+      * resulting tile, plus pixman has some rounding bugs in this case, see
+      * https://bugs.freedesktop.org/show_bug.cgi?id=46277 */
+      unsigned int row,col;
+      unsigned char *srcpixptr;
+      unsigned int dstminxi = - dstminx / scalefactor;
+      unsigned int dstminyi = - dstminy / scalefactor;
+      srcpixptr = &(childtile->raw_image->data[dstminyi * childtile->raw_image->stride + dstminxi * 4]);
+      /*
+      ctx->log(ctx, MAPCACHE_WARN, "factor: %g. pixel: %d,%d (val:%d)",scalefactor,dstminxi,dstminyi,*((unsigned int*)srcpixptr));
+       */
+      unsigned char *row_ptr = tile->raw_image->data;
+      for(row=0;row<tile->raw_image->h;row++) {
+        unsigned char *pix_ptr = row_ptr;
+        for(col=0;col<tile->raw_image->w;col++) {
+          *((unsigned int*)pix_ptr) = *((unsigned int*)srcpixptr);
+          pix_ptr += 4;
+        }
+        row_ptr += tile->raw_image->stride;
+      }
+    }
+
+
+    /* do some cleanup, a bit in advance as we won't be using this tile's data anymore */
+    apr_pool_cleanup_run(ctx->pool,childtile->raw_image->data,(void*)free);
+    childtile->raw_image = NULL;
+    childtile->encoded_data = NULL;
+  }
+
+
+
+  
+  
+}
+
+void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) {
+  assert(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED);
+  if(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE) {
+    mapcache_tileset_assemble_out_of_zoom_tile(ctx, tile);
+  } else {/* if(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_PROXY) */
+    if(ctx->config->non_blocking) {
+      ctx->set_error(ctx,404,"cannot proxy out-of-zoom tile, I'm configured in non-blocking mode");
+      return;
+    }
+    ctx->set_error(ctx,500,"Proxying out of zoom tiles not implemented");
+  }
+}
+
 /**
  * \brief return the image data for a given tile
  * this call uses a global (interprocess+interthread) mutex if the tile was not found
@@ -634,6 +761,11 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 {
   int isLocked,ret;
   mapcache_metatile *mt=NULL;
+  if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
+          tile->z > tile->grid_link->max_cached_zoom) {
+    mapcache_tileset_outofzoom_get(ctx, tile);
+    return;
+  }
   ret = tile->tileset->cache->tile_get(ctx, tile);
   GC_CHECK_ERROR(ctx);
 
