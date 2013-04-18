@@ -176,7 +176,7 @@ static apr_status_t _sqlite_reslist_free_connection(void *conn_, void *params, a
 static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
   apr_status_t rv;
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
-  struct sqlite_conn *conn;
+  struct sqlite_conn *conn = NULL;
   apr_reslist_t *pool = NULL;
   apr_hash_t *pool_container;
   if (readonly) {
@@ -318,7 +318,7 @@ static void _bind_sqlite_params(mapcache_context *ctx, void *vstmt, mapcache_til
         GC_CHECK_ERROR(ctx);
       }
       if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
-        char buf[5];
+        char *buf = apr_palloc(ctx->pool, 5* sizeof(char));
         buf[0] = '#';
         memcpy(buf+1,tile->raw_image->data,4);
         written = 1;
