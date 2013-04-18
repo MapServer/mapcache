@@ -160,14 +160,14 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
   return MAPCACHE_FAILURE;
 }
 
-void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid *grid, double resolution, int *level)
+void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *grid_link, double resolution, int *level)
 {
-  double dst = fabs(grid->levels[0]->resolution - resolution);
+  double dst = fabs(grid_link->grid->levels[grid_link->minz]->resolution - resolution);
   int i;
   *level = 0;
 
-  for(i=1; i<grid->nlevels; i++) {
-    double curdst = fabs(grid->levels[i]->resolution - resolution);
+  for(i=grid_link->minz + 1; i<grid_link->maxz; i++) {
+    double curdst = fabs(grid_link->grid->levels[i]->resolution - resolution);
     if( curdst < dst) {
       dst = curdst;
       *level = i;

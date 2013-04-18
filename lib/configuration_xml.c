@@ -47,6 +47,47 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
   }
 }
 
+void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset) {
+  const char *attr = NULL;
+  if(tileset->timedimension) {
+    ctx->set_error(ctx,400,"tileset \"%s\" can only have a single <timedimension>", tileset->name);
+    return;
+  }
+  attr = ezxml_attr(node,"type");
+  if(attr && *attr) {
+    if(!strcmp(attr,"sqlite")) {
+#ifdef USE_SQLITE
+      tileset->timedimension = mapcache_timedimension_sqlite_create(ctx->pool);
+#else
+      ctx->set_error(ctx,400, "failed to add sqlite timedimension: Sqlite support is not available on this build");
+      return;
+#endif
+    } else {
+      ctx->set_error(ctx,400,"unknown \"type\" attribute \"%s\" for %s's <timedimension>. Expecting one of (sqlite)",attr,tileset->name);
+      return;
+    }
+    
+  } else {
+    ctx->set_error(ctx,400,"missing \"type\" attribute for %s's <timedimension>",tileset->name);
+    return;
+  }
+  attr = ezxml_attr(node,"name");
+  if(attr && *attr) {
+    tileset->timedimension->key = apr_pstrdup(ctx->pool,attr);
+  } else {
+    tileset->timedimension->key = apr_pstrdup(ctx->pool,"TIME");
+  }
+  
+  attr = ezxml_attr(node,"default");
+  if(attr && *attr) {
+    tileset->timedimension->default_value = apr_pstrdup(ctx->pool,attr);
+  } else {
+    ctx->set_error(ctx,400,"no \"default\" attribute for <timedimension> %s",tileset->timedimension->key);
+    return;
+  }
+  tileset->timedimension->configuration_parse_xml(ctx,tileset->timedimension,node);
+}
+
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
@@ -539,6 +580,11 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   tileset = mapcache_tileset_create(ctx);
   tileset->name = name;
 
+  if ((cur_node = ezxml_child(node,"read-only")) != NULL) {
+    if(cur_node->txt && !strcmp(cur_node->txt,"true"))
+      tileset->read_only = 1;
+  }
+
   if ((cur_node = ezxml_child(node,"metadata")) != NULL) {
     parseMetadata(ctx, cur_node, tileset->metadata);
     GC_CHECK_ERROR(ctx);
@@ -585,6 +631,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->minz = 0;
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
+    gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
@@ -652,6 +699,41 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       ctx->set_error(ctx, 400, "invalid grid maxzoom/minzoom %d/%d", gridlink->minz,gridlink->maxz);
       return;
     }
+    
+    sTolerance = (char*)ezxml_attr(cur_node,"max-cached-zoom");
+    /* RFC97 implementation: check for a maximum zoomlevel to cache */
+    if(sTolerance) {
+      char *endptr;
+      tolerance = (int)strtol(sTolerance,&endptr,10);
+      if(*endptr != 0 || tolerance < 0) {
+        ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (expecting a positive integer)",
+                       sTolerance);
+        return;
+      }
+      
+      if(tolerance > gridlink->maxz) {
+        ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (max cached zoom is greater than grid's max zoom)",
+                       sTolerance);
+        return;
+      }
+      gridlink->max_cached_zoom = tolerance;
+      
+      /* default to reassembling */
+      gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+      sTolerance = (char*)ezxml_attr(cur_node,"out-of-zoom-strategy");
+      if(sTolerance) {
+        if(!strcasecmp(sTolerance,"reassemble")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
+        }
+        else if(!strcasecmp(sTolerance,"proxy")) {
+          gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_PROXY;
+        } else {
+          ctx->set_error(ctx, 400, "failed to parse grid out-of-zoom-strategy %s (expecting \"reassemble\" or \"proxy\")",
+                        sTolerance);
+          return;
+        }
+      }
+    }
 
 
 
@@ -664,6 +746,11 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 
   if ((cur_node = ezxml_child(node,"dimensions")) != NULL) {
     parseDimensions(ctx, cur_node, tileset);
+    GC_CHECK_ERROR(ctx);
+  }
+  
+  if ((cur_node = ezxml_child(node,"timedimension")) != NULL) {
+    parseTimeDimension(ctx, cur_node, tileset);
     GC_CHECK_ERROR(ctx);
   }
 
@@ -925,6 +1012,12 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
             new_service->configuration_parse_xml(ctx,service_node,new_service,config);
           }
           config->services[MAPCACHE_SERVICE_GMAPS] = new_service;
+        } else if (!strcasecmp(type,"mapguide")) {
+          mapcache_service *new_service = mapcache_service_mapguide_create(ctx);
+          if(new_service->configuration_parse_xml) {
+            new_service->configuration_parse_xml(ctx,service_node,new_service,config);
+          }
+          config->services[MAPCACHE_SERVICE_MAPGUIDE] = new_service;
         } else if (!strcasecmp(type,"ve")) {
           mapcache_service *new_service = mapcache_service_ve_create(ctx);
           if(new_service->configuration_parse_xml) {

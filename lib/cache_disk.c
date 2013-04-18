@@ -426,6 +426,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
   char errmsg[120];
   char *filename, *hackptr1, *hackptr2=NULL;
   const int creation_retry = ((mapcache_cache_disk*)tile->tileset->cache)->creation_retry;
+  int retry_count_create_file = 0;
 
 #ifdef DEBUG
   /* all this should be checked at a higher level */
@@ -581,7 +582,6 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
     GC_CHECK_ERROR(ctx);
   }
 
-  int retry_count_create_file = 0;
   /*
    * depending on configuration file creation will retry if it fails.
    * this can happen on nfs mounted network storage.

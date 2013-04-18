@@ -12,12 +12,12 @@
       <getmap>
          <params>
             <FORMAT>image/png</FORMAT>
-            <LAYERS>basic</LAYERS>
+            <LAYERS>TEST_SAR</LAYERS>
          </params>
       </getmap>
       
       <http>
-         <url>http://vmap0.tiles.osgeo.org/wms/vmap0</url>
+         <url>http://ngeo.eox.at/browse/ows</url>
       </http>
    </source>
    
@@ -32,7 +32,6 @@
       <expires>3600</expires>
    </tileset>
 
-
    <default_format>JPEG</default_format>
 
    <service type="wms" enabled="true">
@@ -46,6 +45,7 @@
    <service type="kml" enabled="true"/>
    <service type="gmaps" enabled="true"/>
    <service type="ve" enabled="true"/>
+   <service type="mapguide" enabled="true"/>
    <service type="demo" enabled="true"/>
 
    <errors>report</errors>

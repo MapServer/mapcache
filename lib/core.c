@@ -84,7 +84,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 #if !APR_HAS_THREADS
   int i;
   for(i=0; i<ntiles; i++) {
-    mapcache_tileset_tile_get(ctx, tiles[i], readonly);
+    mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
 #else
@@ -196,10 +196,9 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 {
   int expires = 0;
   mapcache_http_response *response;
-  int i,first = -1;
-  int ntiles_with_data = 0;
+  int i,is_empty=1 /* response image is initially empty */;
   char *timestr;
-  mapcache_image *base=NULL,*overlay;
+  mapcache_image *base=NULL;
   mapcache_image_format *format = NULL;
 
 #ifdef DEBUG
@@ -208,7 +207,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
     return NULL;
   }
 #endif
-  expires = 0;
   response = mapcache_http_response_create(ctx->pool);
 
 
@@ -216,81 +214,106 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   if(GC_HAS_ERROR(ctx))
     return NULL;
 
-  /* count how many tiles actually contain data */
+  /* loop through tiles, and eventually merge them vertically together */
   for(i=0; i<req_tile->ntiles; i++) {
-    /* add 1 if tile->nodata == 0 */
-    ntiles_with_data -= req_tile->tiles[i]->nodata - 1;
-  }
-  if(ntiles_with_data == 0) {
-    ctx->set_error(ctx,404,
-                   "no tiles containing image data could be retrieved (not in cache, and/or no source configured)");
-    return NULL;
-  }
-  /* this loop retrieves the tiles from the caches, and eventually decodes and merges them together
-   * if multiple tiles were asked for */
-  for(i=0; i<req_tile->ntiles; i++) {
-    mapcache_tile *tile = req_tile->tiles[i];
-    if(tile->nodata) continue;
-    if(first == -1) {
-      first = i;
+    mapcache_tile *tile = req_tile->tiles[i]; /* shortcut */
+    if(tile->mtime && tile->mtime < response->mtime)
       response->mtime = tile->mtime;
+    if(tile->expires && tile->expires < expires) {
       expires = tile->expires;
-      /* if we have multiple tiles to merge, decode the image data */
-      if(ntiles_with_data>1) {
-        if(!tile->raw_image) {
-          tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
-          if(!tile->raw_image) return NULL;
-        }
+    }
+    
+    if(tile->nodata) {
+      /* treat the special case where the cache explicitely stated that the
+       tile was empty, and we don't have any vertical merging to do */
+      if(tile->encoded_data && req_tile->ntiles == 1) {
+        response->data = tile->encoded_data;
+        /* we don't touch is_empty, as we have access to the encoded empty image, but the
+         resulting tile is empty */
+      }
+      continue;
+    }
+    
+    /* treat the most common case: 
+     - we have a single tile request (i.e. isempty is true)
+     - the cache returned the encoded image
+     */
+    if(is_empty && tile->encoded_data) {
+      response->data = tile->encoded_data;
+      /* just in case we also have the raw image data available, keep a ref to it
+       if we need to merge another tile ontop of it*/
+      if(tile->raw_image) {
         base = tile->raw_image;
       }
-    } else {
-      if(response->mtime < tile->mtime)
-        response->mtime = tile->mtime;
-      if(tile->expires < expires) {
-        expires = tile->expires;
+      is_empty = 0; /* we now know we might need to do some vertical merging */
+      continue;
+    }
+
+    /* if we're here, either
+     * - we need to merge the current tile onto the previous one(s), or
+     * - we only have the tile's raw data available
+     */
+
+    if(!is_empty) {
+      /* we have an existing tile, so we know we need to merge the current one into it */
+      if(!base) {
+        /* the existing tile has not been decoded yet, but we need the access to the raw pixels*/
+        base = mapcache_imageio_decode(ctx, response->data);
+        if(!base) return NULL;
       }
+      response->data = NULL; /* the encoded data is now obsolete, as we will be merging the current tile */
+
+      /* we need to access the current tile's pixel data */
       if(!tile->raw_image) {
-        tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+        tile->raw_image = mapcache_imageio_decode(ctx,tile->encoded_data);
         if(!tile->raw_image) return NULL;
       }
-      overlay = tile->raw_image;
-      mapcache_image_merge(ctx, base, overlay);
+      mapcache_image_merge(ctx, base, tile->raw_image);
+    } else {
+      /* we don't need to merge onto an existing tile and don't have access to the tile's encoded data.
+       * 
+       * we don't encode the tile's raw image data just yet because we might need to merge another one on top
+       * of it later.
+       */
+      base = tile->raw_image;
+      is_empty = 0;
+    }
+  }
+
+  if(!response->data) {
+    /* we need to encode the raw image data*/
+    if(base) {
+      if(req_tile->format) {
+        format = req_tile->format;
+      } else {
+        format = req_tile->tiles[0]->tileset->format;
+        if(!format) {
+          format = ctx->config->default_image_format; /* this one is always defined */
+        }
+      }
+      response->data = format->write(ctx, base, format);
       if(GC_HAS_ERROR(ctx)) {
         return NULL;
       }
-    }
-  }
-  format = NULL;
-
-  /* if we had more than one tile, we need to encode the raw image data into a mapcache_buffer */
-  if(ntiles_with_data > 1) {
-    if(req_tile->format) {
-      format = req_tile->format;
     } else {
-      format = req_tile->tiles[first]->tileset->format;
-      if(!format) {
-        format = ctx->config->default_image_format; /* this one is always defined */
+#ifdef DEBUG
+      if(!is_empty) {
+        ctx->set_error(ctx,500,"BUG: no image data to encode, but tile not marked as empty");
+        return NULL;
       }
+#endif
+      unsigned char empty[5] = {'#',0,0,0,0};
+      response->data = mapcache_empty_png_decode(ctx,empty,&is_empty); /* is_empty is unchanged and left to 1 */
+      format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
-    response->data = format->write(ctx, base, format);
-    if(GC_HAS_ERROR(ctx)) {
-      return NULL;
-    }
-  } else {
-    response->data = req_tile->tiles[first]->encoded_data;
-    format = req_tile->tiles[first]->tileset->format;
   }
-
+  
   /* compute the content-type */
-  if(format && format->mime_type) {
-    apr_table_set(response->headers,"Content-Type",format->mime_type);
-  } else {
-    mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,response->data);
-    if(t == GC_PNG)
-      apr_table_set(response->headers,"Content-Type","image/png");
-    else if(t == GC_JPEG)
-      apr_table_set(response->headers,"Content-Type","image/jpeg");
-  }
+  mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,response->data);
+  if(t == GC_PNG)
+    apr_table_set(response->headers,"Content-Type","image/png");
+  else if(t == GC_JPEG)
+    apr_table_set(response->headers,"Content-Type","image/jpeg");
 
   /* compute expiry headers */
   if(expires) {
@@ -306,11 +329,12 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   return response;
 }
 
-void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode)
+mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode)
 {
   mapcache_tile ***maptiles;
   int *nmaptiles;
   mapcache_tile **tiles;
+  mapcache_map *basemap = NULL;
   int ntiles = 0;
   int i;
   maptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_tile**));
@@ -332,7 +356,7 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
     }
   }
   mapcache_prefetch_tiles(ctx,tiles,ntiles);
-  GC_CHECK_ERROR(ctx);
+  if(GC_HAS_ERROR(ctx)) return NULL;
   for(i=0; i<nmaps; i++) {
     int j,hasdata = 0;
     for(j=0; j<nmaptiles[i]; j++) {
@@ -359,10 +383,26 @@ void mapcache_fetch_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, 
                            &maps[i]->extent, maps[i]->width, maps[i]->height,
                            nmaptiles[i], maptiles[i],
                            mode);
+      if(!basemap) {
+        basemap = maps[i];
+      } else {
+        mapcache_image_merge(ctx,basemap->raw_image,maps[i]->raw_image);
+        if(GC_HAS_ERROR(ctx)) return NULL;
+        if(maps[i]->mtime > basemap->mtime) basemap->mtime = maps[i]->mtime;
+        if(!basemap->expires || maps[i]->expires<basemap->expires) basemap->expires = maps[i]->expires;
+        apr_pool_cleanup_run(ctx->pool, maps[i]->raw_image->data, (void*)free) ;
+        maps[i]->raw_image = NULL;
+      }
     } else {
       maps[i]->nodata = 1;
     }
   }
+  if(!basemap) {
+    ctx->set_error(ctx,404,
+                  "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
+    return NULL;
+  }
+  return basemap;
 }
 
 mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map)
@@ -370,7 +410,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   mapcache_image_format *format = NULL;
   mapcache_http_response *response;
   mapcache_map *basemap = NULL;
-  int i;
   char *timestr;
 #ifdef DEBUG
   if(req_map->nmaps ==0) {
@@ -390,27 +429,8 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
-    mapcache_fetch_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
+    basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
     if(GC_HAS_ERROR(ctx)) return NULL;
-    for(i=0; i<req_map->nmaps; i++) {
-      if(req_map->maps[i]->nodata == 0) {
-        basemap = req_map->maps[i];
-        break;
-      }
-    }
-    if(!basemap) {
-      ctx->set_error(ctx,404,
-                     "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
-      return NULL;
-    }
-    for(i=i+1; i<req_map->nmaps; i++) {
-      mapcache_map *overlaymap = req_map->maps[i];
-      if(overlaymap->nodata) continue;
-      mapcache_image_merge(ctx,basemap->raw_image,overlaymap->raw_image);
-      if(GC_HAS_ERROR(ctx)) return NULL;
-      if(overlaymap->mtime > basemap->mtime) basemap->mtime = overlaymap->mtime;
-      if(!basemap->expires || overlaymap->expires<basemap->expires) basemap->expires = overlaymap->expires;
-    }
   } else if(!ctx->config->non_blocking && req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD) {
     int i;
     basemap = req_map->maps[0];

@@ -1,6 +1,6 @@
 Name:           mapcache
-Version:        1.0.0
-Release:        %{?dist}
+Version:        1.1.0
+Release:        1%{?dist}
 Summary:        Caching server for WMS layers
 Group:          Development/Tools
 License:        MIT
@@ -27,19 +27,19 @@ essential features (and more!) expected from a tile caching solution.
 CFLAGS="${CFLAGS} -ldl" ; export CFLAGS
 
 %configure \
-	--prefix=%{_prefix} 
+    --prefix=%{_prefix} 
 
 make
 
 %install
 rm -rf %{buildroot}
 make DESTDIR=%{buildroot} \
-	install
+    install
 
 # apache module
 cd apache
 make DESTDIR=%{buildroot} \
-	install
+    install
 
 
 #mkdir -p %{buildroot}/%{_libexecdir}

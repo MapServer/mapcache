@@ -185,7 +185,12 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int x,y;
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
-  mapcache_grid_get_closest_level(ctx,grid_link->grid,resolution,&level);
+  mapcache_grid_get_closest_level(ctx,grid_link,resolution,&level);
+  
+  /* we don't want to assemble tiles that have already been reassembled from a lower level */
+  if(grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > grid_link->max_cached_zoom) {
+    level = grid_link->max_cached_zoom;
+  }
 
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
@@ -227,7 +232,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   mapcache_tile *toplefttile=NULL;
   int mx=INT_MAX,my=INT_MAX,Mx=INT_MIN,My=INT_MIN;
   int i;
-  mapcache_image *image = mapcache_image_create(ctx);
+  mapcache_image *image;
   mapcache_image *srcimage;
   double tileresolution, dstminx, dstminy, hf, vf;
 #ifdef DEBUG
@@ -243,12 +248,10 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   }
 #endif
 
-  image->w = width;
-  image->h = height;
-  image->stride = width*4;
-  image->data = calloc(1,width*height*4*sizeof(unsigned char));
-  apr_pool_cleanup_register(ctx->pool, image->data, (void*)free, apr_pool_cleanup_null) ;
+  image = mapcache_image_create_with_data(ctx,width,height);
   if(ntiles == 0) {
+    image->has_alpha = MC_ALPHA_YES;
+    image->is_blank = MC_EMPTY_YES;
     return image;
   }
 
@@ -261,12 +264,9 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
     if(tile->y > My) My = tile->y;
   }
   /* create image that will contain the unscaled tiles data */
-  srcimage = mapcache_image_create(ctx);
-  srcimage->w = (Mx-mx+1)*tiles[0]->grid_link->grid->tile_sx;
-  srcimage->h = (My-my+1)*tiles[0]->grid_link->grid->tile_sy;
-  srcimage->stride = srcimage->w*4;
-  srcimage->data = calloc(1,srcimage->w*srcimage->h*4*sizeof(unsigned char));
-  apr_pool_cleanup_register(ctx->pool, srcimage->data, (void*)free, apr_pool_cleanup_null) ;
+  srcimage = mapcache_image_create_with_data(ctx,
+          (Mx-mx+1)*tiles[0]->grid_link->grid->tile_sx,
+          (My-my+1)*tiles[0]->grid_link->grid->tile_sy);
 
   /* copy the tiles data into the src image */
   for(i=0; i<ntiles; i++) {
@@ -347,6 +347,8 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
         break;
     }
   }
+  /* free the memory of the temporary source image */
+  apr_pool_cleanup_run(ctx->pool, srcimage->data, (void*)free) ;
   return image;
 }
 
@@ -448,8 +450,8 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
 {
   int i;
 #ifdef DEBUG
-  if(!mt->map.tileset->source) {
-    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source");
+  if(!mt->map.tileset->source || mt->map.tileset->read_only) {
+    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
 #endif
@@ -479,6 +481,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->metabuffer = 0;
   tileset->expires = 300; /*set a reasonable default to 5 mins */
   tileset->auto_expire = 0;
+  tileset->read_only = 0;
   tileset->metadata = apr_table_make(ctx->pool,3);
   tileset->dimensions = NULL;
   tileset->format = NULL;
@@ -530,7 +533,41 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
       apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
     }
   }
+  if(tileset->timedimension) {
+    if(!tile->dimensions) {
+      tile->dimensions = apr_table_make(pool,1);
+    }
+    apr_table_set(tile->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
+  }
   return tile;
+}
+
+mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
+{
+  mapcache_tile *tile = (mapcache_tile*)apr_pcalloc(pool, sizeof(mapcache_tile));
+  tile->tileset = src->tileset;
+  tile->expires = src->expires;
+  tile->grid_link = src->grid_link;
+  if(src->dimensions) {
+    tile->dimensions = apr_table_clone(pool,src->dimensions);
+  }
+  tile->x = src->x;
+  tile->y = src->y;
+  tile->z = src->z;
+  return tile;
+}
+
+mapcache_map* mapcache_tileset_map_clone(apr_pool_t *pool, mapcache_map *src)
+{
+  mapcache_map *map = (mapcache_map*)apr_pcalloc(pool, sizeof(mapcache_map));
+  map->tileset = src->tileset;
+  map->expires = src->expires;
+  map->grid_link = src->grid_link;
+  map->dimensions = apr_table_clone(pool,src->dimensions);
+  map->height = src->height;
+  map->width = src->width;
+  map->extent = src->extent;
+  return map;
 }
 
 /*
@@ -548,6 +585,12 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
       apr_table_set(map->dimensions,dimension->name,dimension->default_value);
     }
+  }
+  if(tileset->timedimension) {
+    if(!map->dimensions) {
+      map->dimensions = apr_table_make(pool,1);
+    }
+    apr_table_set(map->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
   }
   return map;
 }
@@ -572,6 +615,132 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   return fi;
 }
 
+void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_tile *tile) {
+  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
+
+  /* we have at most 4 tiles composing the requested tile */
+  mapcache_extent tile_bbox;
+  double shrink_x, shrink_y, scalefactor;
+  int x[4],y[4];
+  int i, n=1;
+  mapcache_grid_get_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z, &tile_bbox);
+
+  /*
+   shrink the extent so we do not fall exactly on a tile boundary, to avoid rounding
+   errors when computing the x,y of the lower level tile(s) we will need
+  */
+  
+  shrink_x = (tile_bbox.maxx - tile_bbox.minx) / (tile->grid_link->grid->tile_sx * 1000); /* 1/1000th of a pixel */
+  shrink_y = (tile_bbox.maxy - tile_bbox.miny) / (tile->grid_link->grid->tile_sy * 1000); /* 1/1000th of a pixel */
+  tile_bbox.maxx -= shrink_x;
+  tile_bbox.maxy -= shrink_y;
+  tile_bbox.minx += shrink_x;
+  tile_bbox.miny += shrink_y;
+
+  /* compute the x,y of the lower level tiles we'll use for reassembling (we take them from the grid_link->max_cached_zoom,
+   * which is the closest level were we can consume tiles from the cache
+   */
+
+  mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.minx, tile_bbox.miny, tile->grid_link->max_cached_zoom, &x[0], &y[0]);
+  mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.maxx, tile_bbox.maxy, tile->grid_link->max_cached_zoom, &x[1], &y[1]);
+  if(x[0] != x[1] || y[0] != y[1]) {
+    /* no use computing these if the first two were identical */
+    n = 4;
+    mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.minx, tile_bbox.maxy, tile->grid_link->max_cached_zoom, &x[2], &y[2]);
+    mapcache_grid_get_xy(ctx,tile->grid_link->grid,tile_bbox.maxx, tile_bbox.miny, tile->grid_link->max_cached_zoom, &x[3], &y[3]);
+  }
+  tile_bbox.maxx += shrink_x;
+  tile_bbox.maxy += shrink_y;
+  tile_bbox.minx -= shrink_x;
+  tile_bbox.miny -= shrink_y;
+
+  mapcache_tile *childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
+  childtile->z = tile->grid_link->max_cached_zoom;
+  scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
+  tile->nodata = 1;
+  for(i=0;i<n;i++) {
+    childtile->x = x[i];
+    childtile->y = y[i];
+    mapcache_extent childtile_bbox;
+    double dstminx,dstminy;
+    mapcache_tileset_tile_get(ctx,childtile);
+    GC_CHECK_ERROR(ctx);
+    if(childtile->nodata) {
+      /* silently skip empty tiles */
+      childtile->nodata = 0; /* reset flag */
+      continue;
+    }
+    if(!childtile->raw_image) {
+      childtile->raw_image = mapcache_imageio_decode(ctx, childtile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+    }
+    if(tile->nodata) {
+      /* we defer the creation of the actual image bytes, no use allocating before knowing
+       that one of the child tiles actually contains data*/
+      tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+      tile->nodata = 0;
+    }
+    /* now copy/scale the srcimage onto the destination image */
+    mapcache_grid_get_extent(ctx,childtile->grid_link->grid,
+                            childtile->x, childtile->y, childtile->z, &childtile_bbox);
+
+    /*compute the pixel position of top left corner*/
+    dstminx = (childtile_bbox.minx-tile_bbox.minx)/tile->grid_link->grid->levels[tile->z]->resolution;
+    dstminy = (tile_bbox.maxy-childtile_bbox.maxy)/tile->grid_link->grid->levels[tile->z]->resolution;
+    /*
+     * ctx->log(ctx, MAPCACHE_DEBUG, "factor: %g. start: %g,%g (im size: %g)",scalefactor,dstminx,dstminy,scalefactor*256);
+     */
+    if(scalefactor <= tile->grid_link->grid->tile_sx/2) /*FIXME: might fail for non-square tiles, also check tile_sy */
+      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor);
+    else {
+      /* no use going through bilinear resampling if the requested scalefactor maps less than 4 pixels onto the
+      * resulting tile, plus pixman has some rounding bugs in this case, see
+      * https://bugs.freedesktop.org/show_bug.cgi?id=46277 */
+      unsigned int row,col;
+      unsigned char *srcpixptr;
+      unsigned int dstminxi = - dstminx / scalefactor;
+      unsigned int dstminyi = - dstminy / scalefactor;
+      srcpixptr = &(childtile->raw_image->data[dstminyi * childtile->raw_image->stride + dstminxi * 4]);
+      /*
+      ctx->log(ctx, MAPCACHE_WARN, "factor: %g. pixel: %d,%d (val:%d)",scalefactor,dstminxi,dstminyi,*((unsigned int*)srcpixptr));
+       */
+      unsigned char *row_ptr = tile->raw_image->data;
+      for(row=0;row<tile->raw_image->h;row++) {
+        unsigned char *pix_ptr = row_ptr;
+        for(col=0;col<tile->raw_image->w;col++) {
+          *((unsigned int*)pix_ptr) = *((unsigned int*)srcpixptr);
+          pix_ptr += 4;
+        }
+        row_ptr += tile->raw_image->stride;
+      }
+    }
+
+
+    /* do some cleanup, a bit in advance as we won't be using this tile's data anymore */
+    apr_pool_cleanup_run(ctx->pool,childtile->raw_image->data,(void*)free);
+    childtile->raw_image = NULL;
+    childtile->encoded_data = NULL;
+  }
+
+
+
+  
+  
+}
+
+void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) {
+  assert(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED);
+  if(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE) {
+    mapcache_tileset_assemble_out_of_zoom_tile(ctx, tile);
+  } else {/* if(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_PROXY) */
+    if(ctx->config->non_blocking) {
+      ctx->set_error(ctx,404,"cannot proxy out-of-zoom tile, I'm configured in non-blocking mode");
+      return;
+    }
+    ctx->set_error(ctx,500,"Proxying out of zoom tiles not implemented");
+  }
+}
+
 /**
  * \brief return the image data for a given tile
  * this call uses a global (interprocess+interthread) mutex if the tile was not found
@@ -594,10 +763,15 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 {
   int isLocked,ret;
   mapcache_metatile *mt=NULL;
+  if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
+          tile->z > tile->grid_link->max_cached_zoom) {
+    mapcache_tileset_outofzoom_get(ctx, tile);
+    return;
+  }
   ret = tile->tileset->cache->tile_get(ctx, tile);
   GC_CHECK_ERROR(ctx);
 
-  if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source) {
+  if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
     /* the cache is in auto-expire mode, and can return the tile modification date,
      * and there is a source configured so we can possibly update it,
      * so we check to see if it is stale */
@@ -612,8 +786,8 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 
   if(ret == MAPCACHE_CACHE_MISS) {
 
-    /* bail out straight away if the tileset has no source */
-    if(!tile->tileset->source) {
+    /* bail out straight away if the tileset has no source or is read-only */
+    if(tile->tileset->read_only || !tile->tileset->source) {
       /* there is no source configured for this tile. not an error, let caller now*/
       /*
       ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",

@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache-config.h"
 #ifdef USE_SQLITE
 
 #include "mapcache.h"
@@ -98,10 +99,10 @@ static int _sqlite_set_pragmas(apr_pool_t *pool, mapcache_cache_sqlite* cache, s
 static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
+  int flags;  
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) params;
   struct sqlite_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_conn));
   *conn_ = conn;
-  int flags;
   flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_CREATE;
   ret = sqlite3_open_v2(cache->dbfile, &conn->handle, flags, NULL);
   if (ret != SQLITE_OK) {
@@ -135,40 +136,15 @@ static apr_status_t _sqlite_reslist_get_rw_connection(void **conn_, void *params
 static apr_status_t _sqlite_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
+  int flags;  
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) params;
   struct sqlite_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_conn));
   *conn_ = conn;
-  int flags;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   ret = sqlite3_open_v2(cache->dbfile, &conn->handle, flags, NULL);
+  
   if (ret != SQLITE_OK) {
-    /* maybe the database file doesn't exist yet. so we create it and setup the schema */
-    ret = sqlite3_open_v2(cache->dbfile, &conn->handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-    if (ret != SQLITE_OK) {
-      conn->errmsg = apr_psprintf(pool,"sqlite backend failed to open db %s: %s", cache->dbfile, sqlite3_errmsg(conn->handle));
-      sqlite3_close(conn->handle);
-      return APR_EGENERAL;
-    }
-    sqlite3_busy_timeout(conn->handle, 300000);
-    do {
-      ret = sqlite3_exec(conn->handle, cache->create_stmt.sql, 0, 0, NULL);
-      if (ret != SQLITE_OK && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-        break;
-      }
-    } while (ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-    if (ret != SQLITE_OK) {
-      conn->errmsg = apr_psprintf(pool,"sqlite backend failed to create db schema on %s: %s", cache->dbfile, sqlite3_errmsg(conn->handle));
-      sqlite3_close(conn->handle);
-      return APR_EGENERAL;
-    }
-
-    sqlite3_close(conn->handle);
-    ret = sqlite3_open_v2(cache->dbfile, &conn->handle, flags, NULL);
-    if (ret != SQLITE_OK) {
-      conn->errmsg = apr_psprintf(pool, "sqlite backend failed to re-open freshly created db %s readonly: %s", cache->dbfile, sqlite3_errmsg(conn->handle));
-      sqlite3_close(conn->handle);
-      return APR_EGENERAL;
-    }
+    return APR_EGENERAL;
   }
   sqlite3_busy_timeout(conn->handle, 300000);
   conn->readonly = 1;
@@ -200,7 +176,7 @@ static apr_status_t _sqlite_reslist_free_connection(void *conn_, void *params, a
 static struct sqlite_conn* _sqlite_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
   apr_status_t rv;
   mapcache_cache_sqlite *cache = (mapcache_cache_sqlite*) tile->tileset->cache;
-  struct sqlite_conn *conn;
+  struct sqlite_conn *conn = NULL;
   apr_reslist_t *pool = NULL;
   apr_hash_t *pool_container;
   if (readonly) {
@@ -334,14 +310,31 @@ static void _bind_sqlite_params(mapcache_context *ctx, void *vstmt, mapcache_til
   /* tile blob data */
   paramidx = sqlite3_bind_parameter_index(stmt, ":data");
   if (paramidx) {
-    if (!tile->encoded_data) {
-      tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
-      GC_CHECK_ERROR(ctx);
+    int written = 0;
+    if(((mapcache_cache_sqlite*)tile->tileset->cache)->detect_blank && tile->grid_link->grid->tile_sx == 256 &&
+            tile->grid_link->grid->tile_sy == 256) {
+      if(!tile->raw_image) {
+        tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+        GC_CHECK_ERROR(ctx);
+      }
+      if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+        char *buf = apr_palloc(ctx->pool, 5* sizeof(char));
+        buf[0] = '#';
+        memcpy(buf+1,tile->raw_image->data,4);
+        written = 1;
+        sqlite3_bind_blob(stmt, paramidx, buf, 5, SQLITE_STATIC);
+      }
     }
-    if (tile->encoded_data && tile->encoded_data->size) {
-      sqlite3_bind_blob(stmt, paramidx, tile->encoded_data->buf, tile->encoded_data->size, SQLITE_STATIC);
-    } else {
-      sqlite3_bind_text(stmt, paramidx, "", -1, SQLITE_STATIC);
+    if(!written) {
+      if (!tile->encoded_data) {
+        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+        GC_CHECK_ERROR(ctx);
+      }
+      if (tile->encoded_data && tile->encoded_data->size) {
+        sqlite3_bind_blob(stmt, paramidx, tile->encoded_data->buf, tile->encoded_data->size, SQLITE_STATIC);
+      } else {
+        sqlite3_bind_text(stmt, paramidx, "", -1, SQLITE_STATIC);
+      }
     }
   }
 }
@@ -370,15 +363,16 @@ static void _bind_mbtiles_params(mapcache_context *ctx, void *vstmt, mapcache_ti
 
   paramidx = sqlite3_bind_parameter_index(stmt, ":color");
   if (paramidx) {
-    assert(tile->raw_image);
-    char *key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
+    char *key;
+    assert(tile->raw_image);    
+    key = apr_psprintf(ctx->pool,"#%02x%02x%02x%02x",
                              tile->raw_image->data[0],
                              tile->raw_image->data[1],
                              tile->raw_image->data[2],
                              tile->raw_image->data[3]);
     sqlite3_bind_text(stmt, paramidx, key, -1, SQLITE_STATIC);
   }
-
+  
   /* tile blob data */
   paramidx = sqlite3_bind_parameter_index(stmt, ":data");
   if (paramidx) {
@@ -392,6 +386,7 @@ static void _bind_mbtiles_params(mapcache_context *ctx, void *vstmt, mapcache_ti
       sqlite3_bind_text(stmt, paramidx, "", -1, SQLITE_STATIC);
     }
   }
+
 }
 
 static int _mapcache_cache_sqlite_has_tile(mapcache_context *ctx, mapcache_tile *tile)
@@ -401,7 +396,11 @@ static int _mapcache_cache_sqlite_has_tile(mapcache_context *ctx, mapcache_tile 
   sqlite3_stmt *stmt;
   int ret;
   if (GC_HAS_ERROR(ctx)) {
-    _sqlite_release_conn(ctx, tile, conn);
+    if(conn) _sqlite_release_conn(ctx, tile, conn);
+    if(!tile->tileset->read_only && tile->tileset->source) {
+      /* not an error in this case, as the db file may not have been created yet */
+      ctx->clear_errors(ctx);
+    }
     return MAPCACHE_FALSE;
   }
   stmt = conn->prepared_statements[HAS_TILE_STMT_IDX];
@@ -606,7 +605,13 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
   conn = _sqlite_get_conn(ctx, tile, 1);
   if (GC_HAS_ERROR(ctx)) {
     if(conn) _sqlite_release_conn(ctx, tile, conn);
-    return MAPCACHE_FAILURE;
+    if(tile->tileset->read_only || !tile->tileset->source) {
+      return MAPCACHE_FAILURE;
+    } else {
+      /* not an error in this case, as the db file may not have been created yet */
+      ctx->clear_errors(ctx);
+      return MAPCACHE_CACHE_MISS;
+    }
   }
   stmt = conn->prepared_statements[GET_TILE_STMT_IDX];
   if(!stmt) {
@@ -630,9 +635,13 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
   } else {
     const void *blob = sqlite3_column_blob(stmt, 0);
     int size = sqlite3_column_bytes(stmt, 0);
-    tile->encoded_data = mapcache_buffer_create(size, ctx->pool);
-    memcpy(tile->encoded_data->buf, blob, size);
-    tile->encoded_data->size = size;
+    if(size>0 && ((char*)blob)[0] == '#') {
+      tile->encoded_data = mapcache_empty_png_decode(ctx,blob,&tile->nodata);
+    } else {
+      tile->encoded_data = mapcache_buffer_create(size, ctx->pool);
+      memcpy(tile->encoded_data->buf, blob, size);
+      tile->encoded_data->size = size;
+    }
     if (sqlite3_column_count(stmt) > 1) {
       time_t mtime = sqlite3_column_int64(stmt, 1);
       apr_time_ansi_put(&(tile->mtime), mtime);
@@ -773,6 +782,14 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
   if ((cur_node = ezxml_child(node, "dbfile")) != NULL) {
     dcache->dbfile = apr_pstrdup(ctx->pool, cur_node->txt);
   }
+  
+  dcache->detect_blank = 0;
+  if ((cur_node = ezxml_child(node, "detect_blank")) != NULL) {
+    if(!strcasecmp(cur_node->txt,"true")) {
+      dcache->detect_blank = 1;
+    }
+  }
+
   if ((cur_node = ezxml_child(node, "hitstats")) != NULL) {
     if (!strcasecmp(cur_node->txt, "true")) {
       ctx->set_error(ctx, 500, "sqlite config <hitstats> not supported anymore");
@@ -866,6 +883,7 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx)
                                        "delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid");
   cache->n_prepared_statements = 4;
   cache->bind_stmt = _bind_sqlite_params;
+  cache->detect_blank = 1;
   return (mapcache_cache*) cache;
 }
 

@@ -68,7 +68,7 @@ mapcache_tileset *tileset;
 mapcache_tileset *tileset_transfer;
 mapcache_cfg *cfg;
 mapcache_context ctx;
-apr_table_t *dimensions;
+apr_table_t *dimensions=NULL;
 int minzoom=-1;
 int maxzoom=-1;
 mapcache_grid_link *grid_link;
@@ -93,11 +93,12 @@ typedef enum {
 } cmd;
 
 typedef enum {
-  MAPCACHE_SEED_DEPTH_FIRST,
-  MAPCACHE_SEED_LEVEL_FIRST
-} mapcache_seed_mode;
+  MAPCACHE_ITERATION_UNSET,
+  MAPCACHE_ITERATION_DEPTH_FIRST,
+  MAPCACHE_ITERATION_LEVEL_FIRST
+} mapcache_iteration_mode;
 
-mapcache_seed_mode seed_mode = MAPCACHE_SEED_DEPTH_FIRST;
+mapcache_iteration_mode iteration_mode = MAPCACHE_ITERATION_UNSET;
 
 struct seed_cmd {
   cmd command;
@@ -112,8 +113,6 @@ struct msg_cmd {
   struct seed_cmd cmd;
 };
 #endif
-
-int depthfirst = 1;
 
 cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either seed or delete */
 
@@ -191,28 +190,35 @@ int trypop_queue(struct seed_cmd *cmd)
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
-  { "tileset", 't', TRUE, "tileset to seed" },
-  { "grid", 'g', TRUE, "grid to seed" },
-  { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
-  { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
-  { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
-  { "nthreads", 'n', TRUE, "number of parallel threads to use (incompatible with -p/--nprocesses)" },
-  { "nprocesses", 'p', TRUE, "number of parallel processes to use (incompatible with -n/--nthreads)" },
-  { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
-  { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
-  { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
-  { "transfer", 'x', TRUE, "tileset to transfer" },
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
+#endif
+  { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
+  { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
+  { "force", 'f', FALSE, "force tile recreation even if it already exists" },
+  { "grid", 'g', TRUE, "grid to seed" },
+  { "help", 'h', FALSE, "show help" },
+  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"level-by-level\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and level-by-level for others. Use this flag to override." },
+#ifdef USE_CLIPPERS
   { "ogr-layer", 'l', TRUE, "layer inside datasource"},
+#endif
+  { "mode", 'm', TRUE, "mode: seed (default), delete or transfer" },
+  { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
+  { "nthreads", 'n', TRUE, "number of parallel threads to use (incompatible with -p/--nprocesses)" },
+  { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
+  { "nprocesses", 'p', TRUE, "number of parallel processes to use (incompatible with -n/--nthreads)" },
+  { "quiet", 'q', FALSE, "don't show progress info" },
+#ifdef USE_CLIPPERS
   { "ogr-sql", 's', TRUE, "sql to filter inside layer"},
+#endif
+  { "tileset", 't', TRUE, "tileset to seed" },
+  { "verbose", 'v', FALSE, "show debug log messages" },
+#ifdef USE_CLIPPERS
   { "ogr-where", 'w', TRUE, "filter to apply on layer features"},
 #endif
-  { "help", 'h', FALSE, "show help" },
-  { "quiet", 'q', FALSE, "don't show progress info" },
-  { "force", 'f', FALSE, "force tile recreation even if it already exists" },
-  { "verbose", 'v', FALSE, "show debug log messages" },
-  { NULL, 0, 0, NULL },
+  { "transfer", 'x', TRUE, "tileset to transfer" },
+  { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+  { NULL, 0, 0, NULL }
 };
 
 void handle_sig_int(int signal)
@@ -283,8 +289,9 @@ int lastmsglen = 0;
 void progresslog(int x, int y, int z)
 {
   char msg[1024];
+  int nworkers;
   if(quiet) return;
-  int nworkers = nthreads;
+  nworkers = nthreads;
   if(nprocesses >= 1) nworkers = nprocesses;
 
   sprintf(msg,"seeding tile %d %d %d",x,y,z);
@@ -526,7 +533,7 @@ void cmd_worker()
   apr_pool_create(&cmd_ctx.pool,ctx.pool);
   tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
   tile->dimensions = dimensions;
-  if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
+  if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
     do {
       tile->x = x;
       tile->y = y;
@@ -689,11 +696,17 @@ log_and_exit(const char *fmt, ...)
 }
 
 
-int usage(const char *progname, char *msg)
+int usage(const char *progname, char *msg, ...)
 {
   int i=0;
-  if(msg)
-    printf("%s\nusage: %s options\n",msg,progname);
+  if(msg) {
+    va_list args;
+    va_start(args,msg);
+    printf("%s\n",progname);
+    vprintf(msg,args);
+    printf("\noptions:\n");
+    va_end(args);
+  }
   else
     printf("usage: %s options\n",progname);
 
@@ -786,6 +799,15 @@ int main(int argc, const char **argv)
         break;
       case 'x':
         tileset_transfer_name = optarg;
+        break;
+      case 'i':
+        if(!strcmp(optarg,"drill-down")) {
+          iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
+        } else if(!strcmp(optarg,"level-by-level")) {
+          iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
+        } else {
+          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"level-by-level\"");
+        }
         break;
       case 'm':
         if(!strcmp(optarg,"delete")) {
@@ -992,6 +1014,10 @@ int main(int argc, const char **argv)
     if(!tileset) {
       return usage(argv[0], "tileset not found in configuration");
     }
+    if(tileset->read_only) {
+      printf("tileset %s is read-only, switching it to read-write for seeding\n",tileset_name);
+      tileset->read_only = 0;
+    }
     if( ! grid_name ) {
       grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
     } else {
@@ -1007,12 +1033,23 @@ int main(int argc, const char **argv)
         return usage(argv[0],"grid not configured for tileset");
       }
     }
+    if(iteration_mode == MAPCACHE_ITERATION_UNSET) {
+      if(!strcmp(grid_link->grid->name,"g") || !strcmp(grid_link->grid->name,"WGS84")
+              || !strcmp(grid_link->grid->name,"GoogleMapsCompatible")) {
+        iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
+      } else {
+        iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
+      }
+    }
     if(minzoom == -1 && maxzoom == -1) {
       minzoom = grid_link->minz;
       maxzoom = grid_link->maxz - 1;
     }
     if(minzoom<grid_link->minz) minzoom = grid_link->minz;
     if(maxzoom>= grid_link->maxz) maxzoom = grid_link->maxz - 1;
+    if(grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED && maxzoom > grid_link->max_cached_zoom) {
+      maxzoom = grid_link->max_cached_zoom;
+    }
 
     /* adjust metasize */
     if(metax>0) {
@@ -1021,9 +1058,9 @@ int main(int argc, const char **argv)
     }
 
     /* ensure our metasize is a power of 2 in drill down mode */
-    if(seed_mode == MAPCACHE_SEED_DEPTH_FIRST) {
+    if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
       if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
-        return usage(argv[0],"metatile size is not set to a power of two, rerun with e.g -M 8,8");
+        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"level-by-level\"");
       }
     }
 
@@ -1080,29 +1117,49 @@ int main(int argc, const char **argv)
   }
 
   /* validate the supplied dimensions */
-  if (!apr_is_empty_array(tileset->dimensions)) {
+  if (!apr_is_empty_array(tileset->dimensions) || tileset->timedimension) {
     int i;
+    const char *value;
     dimensions = apr_table_make(ctx.pool,3);
-
-    for(i=0; i<tileset->dimensions->nelts; i++) {
-      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      const char *value;
-      if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
-        char *tmpval = apr_pstrdup(ctx.pool,value);
-        int ok = dimension->validate(&ctx,dimension,&tmpval);
-        if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
-          return usage(argv[0],"failed to validate dimension");
-          return 1;
+    if (!apr_is_empty_array(tileset->dimensions)) {
+      for(i=0; i<tileset->dimensions->nelts; i++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+        if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
+          char *tmpval = apr_pstrdup(ctx.pool,value);
+          int ok = dimension->validate(&ctx,dimension,&tmpval);
+          if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
+            return usage(argv[0],"failed to validate dimension");
+            return 1;
+          } else {
+            /* validate may have changed the dimension value, so set that value into the dimensions table */
+            apr_table_setn(dimensions,dimension->name,tmpval);
+          }
         } else {
-          /* validate may have changed the dimension value, so set that value into the dimensions table */
-          apr_table_setn(dimensions,dimension->name,tmpval);
+          /* a dimension was not specified on the command line, add the default value */
+          apr_table_setn(dimensions, dimension->name, dimension->default_value);
         }
-      } else {
-        /* a dimension was not specified on the command line, add the default value */
-        apr_table_setn(dimensions, dimension->name, dimension->default_value);
       }
     }
-
+    if(tileset->timedimension) {
+      if((value = (char*)apr_table_get(argdimensions,tileset->timedimension->key)) != NULL) {
+        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, grid_link->grid, extent, value);
+        if(GC_HAS_ERROR(&ctx) || !timedim_selected) {
+          return usage(argv[0],"failed to validate time dimension");
+        }
+        if(timedim_selected->nelts == 0) {
+          return usage(argv[0],"Time dimension %s=%s returns no configured entry",tileset->timedimension->key,
+                  value);
+        }
+        if(timedim_selected->nelts > 1) {
+          return usage(argv[0],"Time dimension %s=%s returns more than 1 configured entries",tileset->timedimension->key,
+                  value);
+        }
+        apr_table_set(dimensions,tileset->timedimension->key,APR_ARRAY_IDX(timedim_selected,0,char*));
+      } else {
+        return usage(argv[0],"tileset references a TIME dimension, but none supplied on commandline. (hint: -D %s=<timestamp>",tileset->timedimension->key);
+        
+      }
+    }
   }
 
   if(nthreads == 0 && nprocesses == 0) {

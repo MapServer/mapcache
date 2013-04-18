@@ -105,6 +105,7 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, error_msg);
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, req->connection_timeout);
+  curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, req->timeout);
   curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1);
 
 
@@ -336,12 +337,24 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
     char *endptr;
     req->connection_timeout = (int)strtol(http_node->txt,&endptr,10);
     if(*endptr != 0 || req->connection_timeout<1) {
-      ctx->set_error(ctx,400,"invalid <http> <connection_limit> \"%s\" (positive integer expected)",
+      ctx->set_error(ctx,400,"invalid <http> <connection_timeout> \"%s\" (positive integer expected)",
                      http_node->txt);
       return NULL;
     }
   } else {
     req->connection_timeout = 30;
+  }
+  
+  if ((http_node = ezxml_child(node,"timeout")) != NULL) {
+    char *endptr;
+    req->timeout = (int)strtol(http_node->txt,&endptr,10);
+    if(*endptr != 0 || req->timeout<1) {
+      ctx->set_error(ctx,400,"invalid <http> <timeout> \"%s\" (positive integer expected)",
+                     http_node->txt);
+      return NULL;
+    }
+  } else {
+    req->timeout = 600;
   }
 
   req->headers = apr_table_make(ctx->pool,1);
@@ -362,6 +375,7 @@ mapcache_http* mapcache_http_clone(mapcache_context *ctx, mapcache_http *orig)
   ret->headers = apr_table_clone(ctx->pool,orig->headers);
   ret->url = apr_pstrdup(ctx->pool, orig->url);
   ret->connection_timeout = orig->connection_timeout;
+  ret->timeout = orig->timeout;
   return ret;
 }
 

@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #define INITIAL_BUFFER_SIZE 100
 
-static void _mapcache_buffer_realloc(mapcache_buffer *buffer, size_t len)
+static void _mapcache_buffer_realloc(mapcache_buffer *buffer, apr_off_t len)
 {
   if(buffer->avail) {
     unsigned char* newbuf ;

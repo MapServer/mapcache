@@ -1,0 +1,17 @@
+#ifndef _MAPCACHE_CONFIG_H
+#define _MAPCACHE_CONFIG_H
+
+#cmakedefine USE_PIXMAN 1
+#cmakedefine USE_FASTCGI 1
+#cmakedefine USE_SQLITE 1
+#cmakedefine USE_BDB 1
+#cmakedefine USE_MEMCACHE 1
+#cmakedefine USE_TIFF 1
+#cmakedefine USE_GEOTIFF 1
+#cmakedefine USE_PCRE 1
+
+#cmakedefine HAVE_STRNCASECMP 1
+#cmakedefine HAVE_SYMLINK 1
+     
+
+#endif

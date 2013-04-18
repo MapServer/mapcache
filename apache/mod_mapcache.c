@@ -30,6 +30,7 @@
 /*
  * Include the core server components.
  */
+#include "mod_mapcache-config.h"
 #include <httpd.h>
 #include <http_core.h>
 #include <http_config.h>
@@ -251,9 +252,9 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
+  int threaded;
   pchild = pool;
 #ifdef APR_HAS_THREADS
-  int threaded;
   ap_mpm_query(AP_MPMQ_IS_THREADED,&threaded);
   if(threaded) {
     apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
@@ -347,7 +348,7 @@ static int mod_mapcache_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t 
     return 1;
   }
 
-#ifndef DISABLE_VERSION_STRING
+#ifdef USE_VERSION_STRING
   ap_add_version_component(p, MAPCACHE_USERAGENT);
 #endif
 

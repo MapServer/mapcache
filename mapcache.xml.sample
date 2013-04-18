@@ -27,6 +27,18 @@
          -->
       </metadata>
 
+      <!--
+           Set to "true" if no new tiles should be created when not in
+           the configured cache. If a requested tile is not present in
+           a read-only cache, it wil be returned as "nodata", i.e. fully
+           transparent in a vertical assembly case, or as a 404 in a
+           single-tile case.
+           Note that the read-only status of a tileset is overridden to
+           read-write by the seeder for the duration of the seeding
+           session
+      <read-only>true</read-only>
+      -->
+
       <!-- 
            the spatial reference this tileset is in. a WMS client will need this for
            getMap requests. This is the srs that will be sent to the WMS source during
@@ -538,8 +550,14 @@
               * AUTH
          -->
 
-         <!-- timeout in seconds before bailing out from a request -->
+         <!-- timeout in seconds before bailing out from a request if no connection was created -->
          <connection_timeout>30</connection_timeout>
+         
+         <!-- timeout in seconds before bailing out from a request. This is the total time needed
+              to fullfill the request, and includes the time needed to transfer the response through
+              the network. Defaults to 600 seconds, set to a higher value if e.g. WMS requests for
+              large metatiles take longer than 10 minutes to render -->
+         <timeout>300</timeout>
       </http>
    </source>
    <source name="osm" type="wms">

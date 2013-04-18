@@ -46,6 +46,150 @@ typedef unsigned long int uint64_t;
 #define Z_BEST_COMPRESSION 9
 #endif
 
+/* Table of CRCs of all 8-bit messages. */
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+unsigned long crc_table[256] = {
+  0, 1996959894, 3993919788, 2567524794, 124634137, 1886057615, 3915621685,
+  2657392035, 249268274, 2044508324, 3772115230, 2547177864, 162941995,
+  2125561021, 3887607047, 2428444049, 498536548, 1789927666, 4089016648,
+  2227061214, 450548861, 1843258603, 4107580753, 2211677639, 325883990,
+  1684777152, 4251122042, 2321926636, 335633487, 1661365465, 4195302755,
+  2366115317, 997073096, 1281953886, 3579855332, 2724688242, 1006888145,
+  1258607687, 3524101629, 2768942443, 901097722, 1119000684, 3686517206,
+  2898065728, 853044451, 1172266101, 3705015759, 2882616665, 651767980,
+  1373503546, 3369554304, 3218104598, 565507253, 1454621731, 3485111705,
+  3099436303, 671266974, 1594198024, 3322730930, 2970347812, 795835527,
+  1483230225, 3244367275, 3060149565, 1994146192, 31158534, 2563907772,
+  4023717930, 1907459465, 112637215, 2680153253, 3904427059, 2013776290,
+  251722036, 2517215374, 3775830040, 2137656763, 141376813, 2439277719,
+  3865271297, 1802195444, 476864866, 2238001368, 4066508878, 1812370925,
+  453092731, 2181625025, 4111451223, 1706088902, 314042704, 2344532202,
+  4240017532, 1658658271, 366619977, 2362670323, 4224994405, 1303535960,
+  984961486, 2747007092, 3569037538, 1256170817, 1037604311, 2765210733,
+  3554079995, 1131014506, 879679996, 2909243462, 3663771856, 1141124467,
+  855842277, 2852801631, 3708648649, 1342533948, 654459306, 3188396048,
+  3373015174, 1466479909, 544179635, 3110523913, 3462522015, 1591671054,
+  702138776, 2966460450, 3352799412, 1504918807, 783551873, 3082640443,
+  3233442989, 3988292384, 2596254646, 62317068, 1957810842, 3939845945,
+  2647816111, 81470997, 1943803523, 3814918930, 2489596804, 225274430,
+  2053790376, 3826175755, 2466906013, 167816743, 2097651377, 4027552580,
+  2265490386, 503444072, 1762050814, 4150417245, 2154129355, 426522225,
+  1852507879, 4275313526, 2312317920, 282753626, 1742555852, 4189708143,
+  2394877945, 397917763, 1622183637, 3604390888, 2714866558, 953729732,
+  1340076626, 3518719985, 2797360999, 1068828381, 1219638859, 3624741850,
+  2936675148, 906185462, 1090812512, 3747672003, 2825379669, 829329135,
+  1181335161, 3412177804, 3160834842, 628085408, 1382605366, 3423369109,
+  3138078467, 570562233, 1426400815, 3317316542, 2998733608, 733239954,
+  1555261956, 3268935591, 3050360625, 752459403, 1541320221, 2607071920,
+  3965973030, 1969922972, 40735498, 2617837225, 3943577151, 1913087877,
+  83908371, 2512341634, 3803740692, 2075208622, 213261112, 2463272603,
+  3855990285, 2094854071, 198958881, 2262029012, 4057260610, 1759359992,
+  534414190, 2176718541, 4139329115, 1873836001, 414664567, 2282248934,
+  4279200368, 1711684554, 285281116, 2405801727, 4167216745, 1634467795,
+  376229701, 2685067896, 3608007406, 1308918612, 956543938, 2808555105,
+  3495958263, 1231636301, 1047427035, 2932959818, 3654703836, 1088359270,
+  936918000, 2847714899, 3736837829, 1202900863, 817233897, 3183342108,
+  3401237130, 1404277552, 615818150, 3134207493, 3453421203, 1423857449,
+  601450431, 3009837614, 3294710456, 1567103746, 711928724, 3020668471,
+  3272380065, 1510334235, 755167117
+};
+#else
+/* Flag: has the table been computed? Initially false. */
+int crc_table_computed = 0;
+unsigned long crc_table[256];
+
+/* Make the table for a fast CRC. */
+static void make_crc_table(void)
+{
+  unsigned long c;
+  int n, k;
+
+  for (n = 0; n < 256; n++) {
+    c = (unsigned long) n;
+    for (k = 0; k < 8; k++) {
+      if (c & 1)
+        c = 0xedb88320L ^ (c >> 1);
+      else
+        c = c >> 1;
+    }
+    crc_table[n] = c;
+  }
+  crc_table_computed = 1;
+}
+#endif
+
+
+/* Update a running CRC with the bytes buf[0..len-1]--the CRC
+   should be initialized to all 1's, and the transmitted value
+   is the 1's complement of the final running CRC (see the
+   crc() routine below)). */
+
+static unsigned long update_crc(unsigned long crc, unsigned char *buf,
+                                int len)
+{
+  unsigned long c = crc;
+  int n;
+
+#if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+  if (!crc_table_computed)
+    make_crc_table();
+#endif
+  for (n = 0; n < len; n++) {
+    c = crc_table[(c ^ buf[n]) & 0xff] ^ (c >> 8);
+  }
+  return c;
+}
+
+/* Return the CRC of the bytes buf[0..len-1]. */
+static unsigned long crc(unsigned char *buf, int len)
+{
+  return update_crc(0xffffffffL, buf, len) ^ 0xffffffffL;
+}
+
+static unsigned char empty_png[] = {
+  0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52
+  ,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x00,0x01,0x03,0x00,0x00,0x00,0x66,0xbc,0x3a
+  ,0x25,0x00,0x00,0x00,0x03,0x50,0x4c,0x54,0x45,0x73,0x91,0xad,0x31,0xf0,0x8f,0xdd
+  ,0x00,0x00,0x00,0x01,0x74,0x52,0x4e,0x53,0xff,0x6d,0xe4,0x37,0xeb,0x00,0x00,0x00
+  ,0x1f,0x49,0x44,0x41,0x54,0x68,0xde,0xed,0xc1,0x01,0x0d,0x00,0x00,0x00,0xc2,0xa0
+  ,0xf7,0x4f,0x6d,0x0e,0x37,0xa0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbe,0x0d
+  ,0x21,0x00,0x00,0x01,0x7f,0x19,0x9c,0xa7,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44
+  ,0xae,0x42,0x60,0x82
+};
+
+static size_t plte_offset = 0x25;
+static size_t trns_offset = 0x34;
+
+mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, const unsigned char *hex_color, int *is_empty) {
+  int chunkcrc;
+  unsigned char *dd;
+  mapcache_buffer *encoded_data = mapcache_buffer_create(sizeof(empty_png)+4,ctx->pool);
+  dd = encoded_data->buf;
+  memcpy(dd,empty_png,sizeof(empty_png));
+  dd[plte_offset+4] = hex_color[3]; //r
+  dd[plte_offset+5] = hex_color[2]; //g
+  dd[plte_offset+6] = hex_color[1]; //b
+  chunkcrc = crc(dd+plte_offset,7);
+  dd[plte_offset+7] = (unsigned char)((chunkcrc >> 24) & 0xff);
+  dd[plte_offset+8] = (unsigned char)((chunkcrc >> 16) & 0xff);
+  dd[plte_offset+9] = (unsigned char)((chunkcrc >> 8) & 0xff);
+  dd[plte_offset+10] = (unsigned char)(chunkcrc & 0xff);
+  if(hex_color[4] != 255) {
+    dd[trns_offset+4] = hex_color[4];
+    chunkcrc = crc(dd+trns_offset,5);
+    dd[trns_offset+5] = (unsigned char)((chunkcrc >> 24) & 0xff);
+    dd[trns_offset+6] = (unsigned char)((chunkcrc >> 16) & 0xff);
+    dd[trns_offset+7] = (unsigned char)((chunkcrc >> 8) & 0xff);
+    dd[trns_offset+8] = (unsigned char)(chunkcrc & 0xff);
+  }
+  if(hex_color[4] == 0) {
+    *is_empty = 1;
+  } else {
+    *is_empty = 0;
+  }
+  encoded_data->size = sizeof(empty_png);
+  return encoded_data;
+}
 
 
 /**\addtogroup imageio_png */
@@ -384,8 +528,7 @@ struct box {
   int sum;
 };
 
-static acolorhist_vector mediancut
-(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors);
+static acolorhist_vector mediancut(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors);
 static int redcompare (const void *ch1, const void *ch2);
 static int greencompare (const void *ch1, const void *ch2);
 static int bluecompare (const void *ch1, const void *ch2);
@@ -568,10 +711,7 @@ int _mapcache_imageio_classify(mapcache_image *rb, unsigned char *pixels,
  */
 
 static acolorhist_vector
-mediancut( achv, colors, sum, maxval, newcolors )
-acolorhist_vector achv;
-int colors, sum, newcolors;
-unsigned char maxval;
+mediancut(acolorhist_vector achv, int colors, int sum, unsigned char maxval, int newcolors )
 {
   acolorhist_vector acolormap;
   box_vector bv;

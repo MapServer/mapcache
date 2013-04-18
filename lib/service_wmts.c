@@ -30,6 +30,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
+#include <apr_tables.h>
 #include "ezxml.h"
 
 /** \addtogroup services */
@@ -37,26 +38,117 @@
 
 
 
-static ezxml_t _wmts_capabilities()
+static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  char *schemaLocation = "http://www.opengis.net/wmts/1.0 http://schemas.opengis.net/wmts/1.0/wmtsGetCapabilities_response.xsd";
+
   ezxml_t node = ezxml_new("Capabilities");
   ezxml_set_attr(node,"xmlns","http://www.opengis.net/wmts/1.0");
   ezxml_set_attr(node,"xmlns:ows","http://www.opengis.net/ows/1.1");
   ezxml_set_attr(node,"xmlns:xlink","http://www.w3.org/1999/xlink");
   ezxml_set_attr(node,"xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance");
   ezxml_set_attr(node,"xmlns:gml","http://www.opengis.net/gml");
-  ezxml_set_attr(node,"xsi:schemaLocation","http://www.opengis.net/wmts/1.0 http://schemas.opengis.net/wmts/1.0/wmtsGetCapabilities_response.xsd");
+
+  if( apr_table_get(cfg->metadata,"inspire_profile") ) {
+    ezxml_set_attr(node,"xmlns:inspire_common","http://inspire.ec.europa.eu/schemas/common/1.0");
+    ezxml_set_attr(node,"xmlns:inspire_vs","http://inspire.ec.europa.eu/schemas/inspire_vs_ows11/1.0");
+    schemaLocation = apr_pstrcat(ctx->pool,schemaLocation," http://inspire.ec.europa.eu/schemas/inspire_vs_ows11/1.0 http://inspire.ec.europa.eu/schemas/inspire_vs_ows11/1.0/inspire_vs_ows_11.xsd",NULL);
+  }
+
+  ezxml_set_attr(node,"xsi:schemaLocation",schemaLocation);
   ezxml_set_attr(node,"version","1.0.0");
+
   return node;
 }
 
-static ezxml_t _wmts_service_identification(mapcache_context *ctx, const char *title)
+int _wmts_service_identification_keywords(void *in, const char *key, const char *value) {
+   ezxml_t node = (ezxml_t )in;
+   ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+
+   return 1;
+}
+
+static ezxml_t _wmts_service_identification(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  const char *value;
+
   ezxml_t node = ezxml_new("ows:ServiceIdentification");
-  ezxml_set_txt(ezxml_add_child(node,"ows:Title",0),title);
+
+  value = apr_table_get(cfg->metadata,"title");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Title",0),value);
+
+  value = apr_table_get(cfg->metadata,"abstract");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Abstract",0),value);
+
+  value = apr_table_get(cfg->metadata,"keyword");
+  if(value) {
+    ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+    /*
+     * @todo: cfg->metadata holds only one item named keyword,
+     *    adjust configuration_xml.c
+     */
+    apr_table_do(_wmts_service_identification_keywords, nodeKeywords, cfg->metadata, "keyword", NULL);
+    ezxml_insert(nodeKeywords, node, 0);
+  }
+
   ezxml_set_txt(ezxml_add_child(node,"ows:ServiceType",0),"OGC WMTS");
   ezxml_set_txt(ezxml_add_child(node,"ows:ServiceTypeVersion",0),"1.0.0");
+
+  value = apr_table_get(cfg->metadata,"fees");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:Fees",0),value);
+
+  value = apr_table_get(cfg->metadata,"accessconstraints");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:AccessConstraints",0),value);
+
   return node;
+}
+
+int _wmts_inspire_metadata_responselanguages(void *in, const char *key, const char *value) {
+   ezxml_t node = (ezxml_t )in;
+   ezxml_set_txt(ezxml_add_child(node,"inspire_common:Language",0),value);
+
+   return 1;
+}
+
+static ezxml_t _wmts_inspire_metadata(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  ezxml_t extended = ezxml_new("inspire_vs:ExtendedCapabilities");
+  ezxml_t metadata;
+  ezxml_t metadataurl;
+  ezxml_t metadatatype;
+  ezxml_t langsupported;
+  ezxml_t langsupporteddefault;
+  ezxml_t langsupporteddefaultlang;
+  ezxml_t langresponse;
+  const char *value;
+
+  metadata = ezxml_add_child(extended,"inspire_common:MetadataUrl",0);
+  ezxml_set_attr(metadata,"xsi:type","inspire_common:resourceLocatorType");
+  metadataurl = ezxml_add_child(metadata, "inspire_common:URL", 0);
+
+  value = apr_table_get(cfg->metadata, "inspire_metadataurl");
+  if(value)
+    ezxml_set_txt(metadataurl, value);
+ 
+  metadatatype = ezxml_add_child(metadata, "inspire_common:MediaType", 0);
+  ezxml_set_txt(metadatatype, "application/vnd.iso.19139+xml");
+
+  langsupported = ezxml_add_child(extended, "inspire_common:SupportedLanguages", 0);
+  langsupporteddefault = ezxml_add_child(langsupported, "inspire_common:DefaultLanguage", 0);
+  langsupporteddefaultlang = ezxml_add_child(langsupporteddefault, "inspire_common:Language", 0);
+
+  value = apr_table_get(cfg->metadata, "defaultlanguage");
+  if(value)
+    ezxml_set_txt(langsupporteddefaultlang, apr_table_get(cfg->metadata, "defaultlanguage"));
+
+  langresponse = ezxml_add_child(extended, "inspire_common:ResponseLanguage", 0);
+  apr_table_do(_wmts_inspire_metadata_responselanguages, langresponse, cfg->metadata, "language", NULL);
+
+  return extended;
 }
 
 static ezxml_t _wmts_operations_metadata(mapcache_context *ctx, const char *onlineresource, const char *operationstr)
@@ -80,18 +172,117 @@ static ezxml_t _wmts_operations_metadata(mapcache_context *ctx, const char *onli
 
 }
 
-static ezxml_t _wmts_service_provider(mapcache_context *ctx, const char *onlineresource, const char *contact)
+static ezxml_t _wmts_service_contactinfo(mapcache_context *ctx, mapcache_cfg *cfg)
 {
+  const char *value;
+  int addNode = 0;
+  ezxml_t nodeAddress;
+
+  ezxml_t nodeInfo = ezxml_new("ows:ContactInfo");
+  ezxml_t nodePhone = ezxml_new("ows:Phone");
+
+  value = apr_table_get(cfg->metadata,"contactphone"); 
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodePhone,"ows:Voice",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactfacsimile"); 
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodePhone,"ows:Facsimile",0),value);
+  }
+
+  if( addNode == 1 )
+    ezxml_insert(nodePhone, nodeInfo, 0);
+
+
+  addNode = 0;
+  nodeAddress = ezxml_new("ows:Address");
+  
+  value = apr_table_get(cfg->metadata,"contactorganization");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:DeliveryPoint",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactcity");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:City",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactstateorprovince");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:AdministrativeArea",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactpostcode");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:PostalCode",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactcountry");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:Country",0),value);
+  }
+
+  value = apr_table_get(cfg->metadata,"contactelectronicmailaddress");
+  if(value) {
+    addNode = 1;
+    ezxml_set_txt(ezxml_add_child(nodeAddress,"ows:ElectronicMailAddress",0),value);
+  }
+
+  if( addNode == 1 )
+    ezxml_insert(nodeAddress, nodeInfo, 0);
+
+  return nodeInfo;
+}
+
+static ezxml_t _wmts_service_contact(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  const char *value;
+
+  ezxml_t node = ezxml_new("ows:ServiceContact");
+
+  value = apr_table_get(cfg->metadata,"contactname");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:IndividualName",0),value);
+
+  value = apr_table_get(cfg->metadata,"contactposition");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:PositionName",0),value);
+
+  ezxml_insert(_wmts_service_contactinfo(ctx,cfg),node,0);
+
+  return node;
+}
+
+static ezxml_t _wmts_service_provider(mapcache_context *ctx, mapcache_cfg *cfg)
+{
+  const char *value;
+
   ezxml_t node = ezxml_new("ows:ServiceProvider");
-  ezxml_set_txt(ezxml_add_child(node,"ows:ProviderName",0),contact);
-  ezxml_set_attr(ezxml_add_child(node,"ows:ProviderSite",0),"xlink:href",onlineresource);
+
+  value = apr_table_get(cfg->metadata,"providername");
+  if(value)
+    ezxml_set_txt(ezxml_add_child(node,"ows:ProviderName",0),value);
+
+  value = apr_table_get(cfg->metadata,"providerurl");
+  if(value)
+    ezxml_set_attr(ezxml_add_child(node,"ows:ProviderSite",0),"xlink:href",value);
+
+  ezxml_insert(_wmts_service_contact(ctx,cfg),node,0);
+
   return node;
 }
 
 
 void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capabilities *req, char *url, char *path_info, mapcache_cfg *cfg)
 {
-  const char *title;
   const char *onlineresource;
   mapcache_request_get_capabilities_wmts *request = (mapcache_request_get_capabilities_wmts*)req;
   ezxml_t caps;
@@ -100,6 +291,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
   apr_hash_index_t *layer_index;
   apr_hash_index_t *grid_index;
   char *tmpcaps;
+  apr_table_t *requiredGrids = apr_table_make(ctx->pool, apr_hash_count(cfg->grids));
 #ifdef DEBUG
   if(request->request.request.type != MAPCACHE_REQUEST_GET_CAPABILITIES) {
     ctx->set_error(ctx,500,"wrong wmts capabilities request");
@@ -112,21 +304,20 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     onlineresource = url;
   }
 
-  title = apr_table_get(cfg->metadata,"title");
-  if(!title) {
-    title = "no title set, add some in metadata";
-  }
-
   request->request.mime_type = apr_pstrdup(ctx->pool,"application/xml");
 
-  caps = _wmts_capabilities();
-  ezxml_insert(_wmts_service_identification(ctx,title),caps,0);
-  ezxml_insert(_wmts_service_provider(ctx,onlineresource,"contact_todo"),caps,0);
+  caps = _wmts_capabilities(ctx,cfg);
+  ezxml_insert(_wmts_service_identification(ctx,cfg),caps,0);
+  ezxml_insert(_wmts_service_provider(ctx,cfg),caps,0);
 
   operations_metadata = ezxml_add_child(caps,"ows:OperationsMetadata",0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetCapabilities"),operations_metadata,0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetTile"),operations_metadata,0);
   ezxml_insert(_wmts_operations_metadata(ctx,onlineresource,"GetFeatureInfo"),operations_metadata,0);
+
+  /* @todo: support both, url and embed profile */
+  if( apr_table_get(cfg->metadata,"inspire_profile") )
+    ezxml_insert(_wmts_inspire_metadata(ctx,cfg),operations_metadata,0);
 
   contents = ezxml_add_child(caps,"Contents",0);
 
@@ -195,28 +386,9 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       int i;
       for(i=0; i<tileset->source->info_formats->nelts; i++) {
         char *iformat = APR_ARRAY_IDX(tileset->source->info_formats,i,char*);
-        ezxml_t resourceurl;
         ezxml_set_txt(ezxml_add_child(layer,"InfoFormat",0),iformat);
-        resourceurl = ezxml_add_child(layer,"ResourceURL",0);
-        ezxml_set_attr(resourceurl,"format",iformat);
-        ezxml_set_attr(resourceurl,"resourcetype","FeatureInfo");
-        ezxml_set_attr(resourceurl,"template",
-                       apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
-                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",apr_psprintf(ctx->pool,"%d",i),NULL));
       }
     }
-
-    resourceurl = ezxml_add_child(layer,"ResourceURL",0);
-    if(tileset->format && tileset->format->mime_type)
-      ezxml_set_attr(resourceurl,"format",tileset->format->mime_type);
-    else
-      ezxml_set_attr(resourceurl,"format","image/unknown");
-    ezxml_set_attr(resourceurl,"resourceType","tile");
-    ezxml_set_attr(resourceurl,"template",
-                   apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
-                               dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",
-                               ((tileset->format)?tileset->format->extension:"xxx"),NULL));
-
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
       ezxml_t bbox = ezxml_add_child(layer,"ows:WGS84BoundingBox",0);
@@ -230,6 +402,11 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       mapcache_grid_link *grid_link = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
       ezxml_t tmsetlnk = ezxml_add_child(layer,"TileMatrixSetLink",0);
       ezxml_set_txt(ezxml_add_child(tmsetlnk,"TileMatrixSet",0),grid_link->grid->name);
+
+      /*
+       * remember TileMatrixSetLinks
+       */
+      apr_table_setn(requiredGrids, grid_link->grid->name, "true");
 
       if(grid_link->restricted_extent) {
         ezxml_t limits = ezxml_add_child(tmsetlnk,"TileMatrixSetLimits",0);
@@ -262,6 +439,32 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       ezxml_set_attr(bbox,"crs",mapcache_grid_get_crs(ctx,grid_link->grid));
       */
     }
+
+    if(tileset->source && tileset->source->info_formats) {
+      int i;
+      for(i=0; i<tileset->source->info_formats->nelts; i++) {
+        char *iformat = APR_ARRAY_IDX(tileset->source->info_formats,i,char*);
+        ezxml_t resourceurl;
+        resourceurl = ezxml_add_child(layer,"ResourceURL",0);
+        ezxml_set_attr(resourceurl,"format",iformat);
+        ezxml_set_attr(resourceurl,"resourceType","FeatureInfo");
+        ezxml_set_attr(resourceurl,"template",
+                       apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
+                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",apr_psprintf(ctx->pool,"%d",i),NULL));
+      }
+    }
+
+    resourceurl = ezxml_add_child(layer,"ResourceURL",0);
+    if(tileset->format && tileset->format->mime_type)
+      ezxml_set_attr(resourceurl,"format",tileset->format->mime_type);
+    else
+      ezxml_set_attr(resourceurl,"format","image/unknown");
+    ezxml_set_attr(resourceurl,"resourceType","tile");
+    ezxml_set_attr(resourceurl,"template",
+                   apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
+                               dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",
+                               ((tileset->format)?tileset->format->extension:"xxx"),NULL));
+
     layer_index = apr_hash_next(layer_index);
   }
 
@@ -275,27 +478,31 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     int level;
     const char *WellKnownScaleSet;
     ezxml_t tmset;
-    const char *title;
     ezxml_t bbox;
     apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
+
+    /*
+     * Skip grids which are not configures at tileset level
+     */
+    if( !apr_table_get(requiredGrids, grid->name) ) {
+      grid_index = apr_hash_next(grid_index);
+      continue;
+    }
 
     WellKnownScaleSet = apr_table_get(grid->metadata,"WellKnownScaleSet");
 
     tmset = ezxml_add_child(contents,"TileMatrixSet",0);
     ezxml_set_txt(ezxml_add_child(tmset,"ows:Identifier",0),grid->name);
-    title = apr_table_get(grid->metadata,"title");
-    if(title) {
-      ezxml_set_txt(ezxml_add_child(tmset,"ows:Title",0),title);
-    }
-    ezxml_set_txt(ezxml_add_child(tmset,"ows:SupportedCRS",0),mapcache_grid_get_crs(ctx,grid));
 
     bbox = ezxml_add_child(tmset,"ows:BoundingBox",0);
 
-    ezxml_set_txt(ezxml_add_child(bbox,"LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
+    ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
                   grid->extent.minx, grid->extent.miny));
-    ezxml_set_txt(ezxml_add_child(bbox,"UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
+    ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
                   grid->extent.maxx, grid->extent.maxy));
     ezxml_set_attr(bbox,"crs",mapcache_grid_get_crs(ctx,grid));
+
+    ezxml_set_txt(ezxml_add_child(tmset,"ows:SupportedCRS",0),mapcache_grid_get_crs(ctx,grid));
 
     if(WellKnownScaleSet) {
       ezxml_set_txt(ezxml_add_child(tmset,"WellKnownScaleSet",0),WellKnownScaleSet);
@@ -357,8 +564,11 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                      *matrix = NULL, *tilecol = NULL, *tilerow = NULL, *extension = NULL,
                       *infoformat = NULL, *fi_i = NULL, *fi_j = NULL;
   apr_table_t *dimtable = NULL;
+  mapcache_extent *extent = NULL;
+  char *timedim = NULL;
+  apr_array_header_t *timedim_selected; /* the individual time entries that corresponded to the input request */
   mapcache_tileset *tileset = NULL;
-  int row,col,level;
+  int row,col,level,x,y;
   int kvp = 0;
   mapcache_grid_link *grid_link;
   char *endptr;
@@ -416,9 +626,15 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           const char *value;
           if((value = apr_table_get(params,dimension->name)) != NULL) {
             apr_table_set(dimtable,dimension->name,value);
-          } else {
-            apr_table_set(dimtable,dimension->name,dimension->default_value);
           }
+        }
+      }
+      if(tileset->timedimension) {
+        const char* value;
+        if((value = apr_table_get(params,tileset->timedimension->key)) != NULL) {
+          timedim = apr_pstrdup(ctx->pool,value);
+        } else {
+          timedim = apr_pstrdup(ctx->pool,tileset->timedimension->default_value);
         }
       }
       if(!strcasecmp(str,"getfeatureinfo")) {
@@ -484,6 +700,10 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           apr_table_set(dimtable,dimension->name,key);
           continue;
         }
+      }
+      if(tileset->timedimension) {
+        timedim = key;
+        continue;
       }
       if(!matrixset) {
         matrixset = key;
@@ -561,24 +781,20 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       int ok;
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
       const char *value = apr_table_get(dimtable,dimension->name);
-      if(!value) {
-        ctx->set_error(ctx,404,"received request with no value for dimension \"%s\"",dimension->name);
-        if(kvp) ctx->set_exception(ctx,"MissingParameterValue","%s",dimension->name);
-        return;
-      }
-      tmpval = apr_pstrdup(ctx->pool,value);
-      ok = dimension->validate(ctx,dimension,&tmpval);
-      GC_CHECK_ERROR(ctx);
-      if(ok != MAPCACHE_SUCCESS) {
-        ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
-                       dimension->name, value);
-        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
-        return;
-      }
+      if(value) {
+        tmpval = apr_pstrdup(ctx->pool,value);
+        ok = dimension->validate(ctx,dimension,&tmpval);
+        GC_CHECK_ERROR(ctx);
+        if(ok != MAPCACHE_SUCCESS) {
+          ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
+                         dimension->name, value);
+          if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
+          return;
+        }
 
-      /* re-set the eventually modified value in the dimension table */
-      apr_table_set(dimtable,dimension->name,tmpval);
-
+        /* re-set the eventually modified value in the dimension table */
+        apr_table_set(dimtable,dimension->name,tmpval);
+      }
     }
   }
 
@@ -643,7 +859,35 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
   }
 
+  /* compute the x,y of the request depending on the grid origin */
+  switch(grid_link->grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      x = col;
+      y = grid_link->grid->levels[level]->maxy - row - 1;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      x = col;
+      y = row;
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+      x = grid_link->grid->levels[level]->maxx - col - 1;
+      y = grid_link->grid->levels[level]->maxy - row - 1;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      x = grid_link->grid->levels[level]->maxx - col - 1;
+      y = row;
+      break;
+  }
+
+
+  if(fi_j || timedim) {
+    //we need the extent of the request, compute it here
+    extent = apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+    mapcache_grid_get_extent(ctx,grid_link->grid,x,y,level,extent);
+  }
+
   if(!fi_j) { /*we have a getTile request*/
+    int i;
 
 #ifdef PEDANTIC_WMTS_FORMAT_CHECK
     if(tileset->format) {
@@ -668,54 +912,58 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
 
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(
                                        ctx->pool,sizeof(mapcache_request_get_tile));
-
+    
     req->request.type = MAPCACHE_REQUEST_GET_TILE;
-    req->ntiles = 1;
-    req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,sizeof(mapcache_tile*));
-
-
-    req->tiles[0] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-    if(!req->tiles[0]) {
-      ctx->set_error(ctx, 500, "failed to allocate tile");
-      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
-      return;
-    }
-
-    /*populate dimensions*/
-    if(tileset->dimensions) {
-      int i;
-      req->tiles[0]->dimensions = apr_table_make(ctx->pool,tileset->dimensions->nelts);
-      for(i=0; i<tileset->dimensions->nelts; i++) {
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-        const char *value = apr_table_get(dimtable,dimension->name);
-        apr_table_set(req->tiles[0]->dimensions,dimension->name,value);
+    if(timedim) {
+      timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
+              tileset->timedimension, tileset, grid_link->grid, extent, timedim);
+      GC_CHECK_ERROR(ctx);
+      if(!timedim_selected || timedim_selected->nelts == 0) {
+        ctx->set_error(ctx, 404, "no matching entry for given TIME dimension");
+        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TIME");
+        return;
       }
+      req->ntiles = timedim_selected->nelts;
+    } else {
+      req->ntiles = 1;
     }
+    req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,req->ntiles * sizeof(mapcache_tile*));
 
-    req->tiles[0]->z = level;
-    switch(grid_link->grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        req->tiles[0]->x = col;
-        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        req->tiles[0]->x = col;
-        req->tiles[0]->y = row;
-        break;
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-        req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-        req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-        req->tiles[0]->y = row;
-        break;
-    }
+    for(i=0;i<req->ntiles;i++) {
+      req->tiles[i] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
+      if(!req->tiles[i]) {
+        ctx->set_error(ctx, 500, "failed to allocate tile");
+        if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
+        return;
+      }
 
-    mapcache_tileset_tile_validate(ctx,req->tiles[0]);
-    if(GC_HAS_ERROR(ctx)) {
-      if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
-      return;
+      /*populate dimensions*/
+      if(tileset->dimensions) {
+        int d;
+        for(d=0; d<tileset->dimensions->nelts; d++) {
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+          const char *value = apr_table_get(dimtable,dimension->name);
+          if(value) {
+            apr_table_set(req->tiles[i]->dimensions,dimension->name,value);
+          }
+        }
+      }
+      if(tileset->timedimension) {
+        apr_table_set(req->tiles[i]->dimensions,tileset->timedimension->key,
+                APR_ARRAY_IDX(timedim_selected,i,char*));
+      }
+
+      req->tiles[i]->z = level;
+      req->tiles[i]->x = x;
+      req->tiles[i]->y = y;
+      if(i==0) {
+        /* no need to validate all the tiles as they all have the same x,y,z */
+        mapcache_tileset_tile_validate(ctx,req->tiles[0]);
+        if(GC_HAS_ERROR(ctx)) {
+          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
+          return;
+        }
+      }
     }
 
     *request = (mapcache_request*)req;
@@ -766,36 +1014,20 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
     fi->map.width = grid_link->grid->tile_sx;
     fi->map.height = grid_link->grid->tile_sy;
-    switch(grid_link->grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            col,
-            grid_link->grid->levels[level]->maxy-row-1,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            col,
-            row,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            grid_link->grid->levels[level]->maxx-col-1,
-            grid_link->grid->levels[level]->maxy-row-1,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            grid_link->grid->levels[level]->maxx-col-1,
-            row,
-            level,
-            &fi->map.extent);
-        break;
+
+    if(tileset->dimensions) {
+      int d;
+      for(d=0; d<tileset->dimensions->nelts; d++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+        const char *value = apr_table_get(dimtable,dimension->name);
+        if(value) {
+          apr_table_set(fi->map.dimensions,dimension->name,value);
+        }
+      }
     }
+
+    assert(extent);
+    fi->map.extent = *extent;
     *request = (mapcache_request*)req_fi;
   }
 }

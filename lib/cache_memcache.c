@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache-config.h"
 #ifdef USE_MEMCACHE
 
 #include "mapcache.h"
