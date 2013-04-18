@@ -5,14 +5,16 @@ Summary:        Caching server for WMS layers
 Group:          Development/Tools
 License:        MIT
 URL:            http://mapserver.org/trunk/en/mapcache/
-Source:         https://github.com/mapserver/mapcache/archive/master.tar.gz
+Source:         mapcache-%{version}.tar.gz
+#Obtain source using git archive available at https://github.com/mapserver/mapcache:
+#git archive --format=tar --prefix=mapcache-1.1dev/ master | gzip > mapcache-1.1dev.tar.gz
+#or adjust archive available at: https://github.com/mapserver/mapcache/archive/master.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Requires:       webserver
 
 BuildRequires:  httpd-devel fcgi-devel cmake libcurl-devel
-BuildRequires:  geos-devel proj-devel gdal-devel cairo-devel
-BuildRequires:  libjpeg-turbo-devel libpng-devel fribidi-devel giflib-devel
-BuildRequires:  libtiff-devel pixman-devel sqlite-devel
+BuildRequires:  geos-devel proj-devel gdal-devel libjpeg-turbo-devel
+BuildRequires:  libpng-devel libtiff-devel pixman-devel sqlite-devel
 
 
 %description
