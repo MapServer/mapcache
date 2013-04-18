@@ -40,4 +40,4 @@ message(STATUS "* Seeder Configuration Options:")
 status_optional_component("GEOS" "${USE_GEOS}" "${GEOS_LIBRARY}")
 status_optional_component("OGR" "${USE_OGR}" "${GDAL_LIBRARY}")
 
-INSTALL(TARGETS mapcache_seed RUNTIME DESTINATION bin)
+INSTALL(TARGETS mapcache_seed RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
