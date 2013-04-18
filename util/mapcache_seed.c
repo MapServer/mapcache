@@ -1142,7 +1142,7 @@ int main(int argc, const char **argv)
     }
     if(tileset->timedimension) {
       if((value = (char*)apr_table_get(argdimensions,tileset->timedimension->key)) != NULL) {
-        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, value);
+        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, grid_link->grid, extent, value);
         if(GC_HAS_ERROR(&ctx) || !timedim_selected) {
           return usage(argv[0],"failed to validate time dimension");
         }

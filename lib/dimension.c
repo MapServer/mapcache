@@ -408,7 +408,7 @@ static void _sqlite_time_release_conn(mapcache_context *ctx, mapcache_timedimens
 }
 
 static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stmt *stmt,
-        sqlite3 *handle, mapcache_tileset *tileset,
+        sqlite3 *handle, mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent,
         time_t start, time_t end)
 {
   int paramidx,ret;
@@ -418,6 +418,28 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
     if(ret != SQLITE_OK) {
       ctx->set_error(ctx,400, "failed to bind :tileset: %s", sqlite3_errmsg(handle));
       return;
+    }
+  }
+
+  if(grid) {
+    paramidx = sqlite3_bind_parameter_index(stmt, ":gridsrs");
+    if (paramidx) {
+      ret = sqlite3_bind_text(stmt, paramidx, grid->srs, -1, SQLITE_STATIC);
+      if(ret != SQLITE_OK) {
+        ctx->set_error(ctx,400, "failed to bind :gridsrs %s", sqlite3_errmsg(handle));
+        return;
+      }
+    }
+  }
+
+  if(extent) {
+    paramidx = sqlite3_bind_parameter_index(stmt, ":minx");
+    if (paramidx) {
+      ret = sqlite3_bind_double(stmt, paramidx, extent->minx);
+      if(ret != SQLITE_OK) {
+        ctx->set_error(ctx,400, "failed to bind :minx %s", sqlite3_errmsg(handle));
+        return;
+      }
     }
   }
 
@@ -441,7 +463,7 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
 }
 
 apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context *ctx, mapcache_timedimension *dim,
-        mapcache_tileset *tileset, time_t start, time_t end) {
+        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end) {
   mapcache_timedimension_sqlite *sdim = (mapcache_timedimension_sqlite*)dim;
   int ret;
   sqlite3_stmt *stmt;
@@ -462,12 +484,13 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
     stmt = conn->prepared_statement;
   }
   
-  _bind_sqlite_timedimension_params(ctx,stmt,conn->handle,tileset,start,end);
+  _bind_sqlite_timedimension_params(ctx,stmt,conn->handle,tileset,grid,extent,start,end);
   if(GC_HAS_ERROR(ctx)) {
     sqlite3_reset(stmt);
     _sqlite_time_release_conn(ctx, sdim, conn);
     return NULL;
   }
+  
   time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
   do {
     ret = sqlite3_step(stmt);
@@ -489,7 +512,7 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
 
 apr_array_header_t *_mapcache_timedimension_sqlite_get_all_entries(mapcache_context *ctx, mapcache_timedimension *dim,
         mapcache_tileset *tileset) {
-  return _mapcache_timedimension_sqlite_get_entries(ctx,dim,tileset,0,INT_MAX);
+  return _mapcache_timedimension_sqlite_get_entries(ctx,dim,tileset,NULL,NULL,0,INT_MAX);
 }
 #endif
 
@@ -550,7 +573,7 @@ char *mapcache_ogc_strptime(const char *value, struct tm *ts, mapcache_time_inte
 }
 
 apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimension,
-        mapcache_tileset *tileset, const char *value) {
+        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value) {
   /* look if supplied value is a predefined key */
   /* split multiple values, loop */
 
@@ -603,7 +626,7 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
   end = timegm(&tm_end);
   start = timegm(&tm_start);
 
-  return timedimension->get_entries_for_interval(ctx,timedimension,tileset,start,end);
+  return timedimension->get_entries_for_interval(ctx,timedimension,tileset,grid,extent,start,end);
   /* end loop */
 }
 

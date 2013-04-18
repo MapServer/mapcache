@@ -1735,12 +1735,13 @@ typedef enum {
 } mapcache_timedimension_source_type;
 
 apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
-        mapcache_tileset *tileset, const char *value);
+        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value);
 
 struct mapcache_timedimension {
   mapcache_timedimension_assembly_type assembly_type;
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, time_t start, time_t end);
+  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, 
+        mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
   apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
   char *default_value;
   char *key; /* TIME, hardcoded */

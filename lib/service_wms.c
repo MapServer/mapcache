@@ -659,7 +659,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
             if(!value)
               value = tileset->timedimension->default_value;
             timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
-                    tileset->timedimension, tileset, value);
+                    tileset->timedimension, tileset, grid_link->grid, &extent, value);
             GC_CHECK_ERROR(ctx);
             if(!timedim_selected || timedim_selected->nelts == 0) {
               errcode = 404;

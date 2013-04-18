@@ -564,10 +564,11 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                      *matrix = NULL, *tilecol = NULL, *tilerow = NULL, *extension = NULL,
                       *infoformat = NULL, *fi_i = NULL, *fi_j = NULL;
   apr_table_t *dimtable = NULL;
+  mapcache_extent *extent = NULL;
   char *timedim = NULL;
   apr_array_header_t *timedim_selected; /* the individual time entries that corresponded to the input request */
   mapcache_tileset *tileset = NULL;
-  int row,col,level;
+  int row,col,level,x,y;
   int kvp = 0;
   mapcache_grid_link *grid_link;
   char *endptr;
@@ -858,6 +859,33 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
   }
 
+  /* compute the x,y of the request depending on the grid origin */
+  switch(grid_link->grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      x = col;
+      y = grid_link->grid->levels[level]->maxy - row - 1;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      x = col;
+      y = row;
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+      x = grid_link->grid->levels[level]->maxx - col - 1;
+      y = grid_link->grid->levels[level]->maxy - row - 1;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      x = grid_link->grid->levels[level]->maxx - col - 1;
+      y = row;
+      break;
+  }
+
+
+  if(fi_j || timedim) {
+    //we need the extent of the request, compute it here
+    extent = apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+    mapcache_grid_get_extent(ctx,grid_link->grid,x,y,level,extent);
+  }
+
   if(!fi_j) { /*we have a getTile request*/
     int i;
 
@@ -888,7 +916,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     req->request.type = MAPCACHE_REQUEST_GET_TILE;
     if(timedim) {
       timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
-              tileset->timedimension, tileset, timedim);
+              tileset->timedimension, tileset, grid_link->grid, extent, timedim);
       GC_CHECK_ERROR(ctx);
       if(!timedim_selected || timedim_selected->nelts == 0) {
         ctx->set_error(ctx, 404, "no matching entry for given TIME dimension");
@@ -925,36 +953,16 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                 APR_ARRAY_IDX(timedim_selected,i,char*));
       }
 
+      req->tiles[i]->z = level;
+      req->tiles[i]->x = x;
+      req->tiles[i]->y = y;
       if(i==0) {
-        req->tiles[0]->z = level;
-        switch(grid_link->grid->origin) {
-          case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-            req->tiles[0]->x = col;
-            req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-            break;
-          case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-            req->tiles[0]->x = col;
-            req->tiles[0]->y = row;
-            break;
-          case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-            req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-            req->tiles[0]->y = grid_link->grid->levels[level]->maxy - row - 1;
-            break;
-          case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-            req->tiles[0]->x = grid_link->grid->levels[level]->maxx - col - 1;
-            req->tiles[0]->y = row;
-            break;
-        }
-
+        /* no need to validate all the tiles as they all have the same x,y,z */
         mapcache_tileset_tile_validate(ctx,req->tiles[0]);
         if(GC_HAS_ERROR(ctx)) {
           if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
           return;
         }
-      } else {
-        req->tiles[i]->z = req->tiles[0]->z;
-        req->tiles[i]->x = req->tiles[0]->x;
-        req->tiles[i]->y = req->tiles[0]->y;
       }
     }
 
@@ -1018,36 +1026,8 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       }
     }
 
-    switch(grid_link->grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            col,
-            grid_link->grid->levels[level]->maxy-row-1,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            col,
-            row,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            grid_link->grid->levels[level]->maxx-col-1,
-            grid_link->grid->levels[level]->maxy-row-1,
-            level,
-            &fi->map.extent);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-        mapcache_grid_get_extent(ctx,grid_link->grid,
-            grid_link->grid->levels[level]->maxx-col-1,
-            row,
-            level,
-            &fi->map.extent);
-        break;
-    }
+    assert(extent);
+    fi->map.extent = *extent;
     *request = (mapcache_request*)req_fi;
   }
 }
