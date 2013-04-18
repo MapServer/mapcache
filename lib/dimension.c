@@ -441,6 +441,30 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
         return;
       }
     }
+    paramidx = sqlite3_bind_parameter_index(stmt, ":miny");
+    if (paramidx) {
+      ret = sqlite3_bind_double(stmt, paramidx, extent->miny);
+      if(ret != SQLITE_OK) {
+        ctx->set_error(ctx,400, "failed to bind :miny %s", sqlite3_errmsg(handle));
+        return;
+      }
+    }
+    paramidx = sqlite3_bind_parameter_index(stmt, ":maxxx");
+    if (paramidx) {
+      ret = sqlite3_bind_double(stmt, paramidx, extent->maxx);
+      if(ret != SQLITE_OK) {
+        ctx->set_error(ctx,400, "failed to bind :maxx %s", sqlite3_errmsg(handle));
+        return;
+      }
+    }
+    paramidx = sqlite3_bind_parameter_index(stmt, ":maxy");
+    if (paramidx) {
+      ret = sqlite3_bind_double(stmt, paramidx, extent->maxy);
+      if(ret != SQLITE_OK) {
+        ctx->set_error(ctx,400, "failed to bind :maxy %s", sqlite3_errmsg(handle));
+        return;
+      }
+    }
   }
 
   paramidx = sqlite3_bind_parameter_index(stmt, ":start_timestamp");
