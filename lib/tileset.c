@@ -548,7 +548,9 @@ mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
   tile->tileset = src->tileset;
   tile->expires = src->expires;
   tile->grid_link = src->grid_link;
-  tile->dimensions = apr_table_clone(pool,src->dimensions);
+  if(src->dimensions) {
+    tile->dimensions = apr_table_clone(pool,src->dimensions);
+  }
   tile->x = src->x;
   tile->y = src->y;
   tile->z = src->z;
