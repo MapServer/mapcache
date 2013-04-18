@@ -5,7 +5,7 @@ Summary:        Caching server for WMS layers
 Group:          Development/Tools
 License:        MIT
 URL:            http://mapserver.org/trunk/en/mapcache/
-Source:         http://download.osgeo.org/mapserver/mapcache-%{version}.tar.gz
+Source:         https://github.com/mapserver/mapcache/archive/master.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Requires:       webserver
 
