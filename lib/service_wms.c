@@ -163,8 +163,6 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
 
   vendorxml = ezxml_add_child(capxml,"VendorSpecificCapabilities",0);
   toplayer = ezxml_add_child(capxml,"Layer",0);
-  tmpxml = ezxml_add_child(toplayer,"Name",0);
-  ezxml_set_txt(tmpxml,"rootlayer");
   tmpxml = ezxml_add_child(toplayer,"Title",0);
   ezxml_set_txt(tmpxml,title);
 
@@ -201,15 +199,17 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
 
     layerxml = ezxml_add_child(toplayer,"Layer",0);
     ezxml_set_attr(layerxml, "cascaded", "1");
-    ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0"),
-                   ezxml_set_txt(ezxml_add_child(layerxml,"Name",0),tileset->name);
-
+    ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0");
+    
+    ezxml_set_txt(ezxml_add_child(layerxml,"Name",0),tileset->name);
     tsxml = ezxml_add_child(vendorxml, "TileSet",0);
 
     /*optional layer title*/
     title = apr_table_get(tileset->metadata,"title");
     if(title) {
       ezxml_set_txt(ezxml_add_child(layerxml,"Title",0),title);
+    } else {
+      ezxml_set_txt(ezxml_add_child(layerxml,"Title",0),tileset->name);
     }
 
     /*optional layer abstract*/
