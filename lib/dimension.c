@@ -449,7 +449,7 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
         return;
       }
     }
-    paramidx = sqlite3_bind_parameter_index(stmt, ":maxxx");
+    paramidx = sqlite3_bind_parameter_index(stmt, ":maxx");
     if (paramidx) {
       ret = sqlite3_bind_double(stmt, paramidx, extent->maxx);
       if(ret != SQLITE_OK) {
