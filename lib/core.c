@@ -217,9 +217,9 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   /* loop through tiles, and eventually merge them vertically together */
   for(i=0; i<req_tile->ntiles; i++) {
     mapcache_tile *tile = req_tile->tiles[i]; /* shortcut */
-    if(tile->mtime && tile->mtime < response->mtime)
+    if(tile->mtime && (tile->mtime < response->mtime || response->mtime == 0))
       response->mtime = tile->mtime;
-    if(tile->expires && tile->expires < expires) {
+    if(tile->expires && (tile->expires < expires || expires == 0)) {
       expires = tile->expires;
     }
     
