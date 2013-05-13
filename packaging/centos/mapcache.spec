@@ -1,18 +1,20 @@
 Name:           mapcache
-Version:        0.1.0
-Release:        0.rc1%{?dist}
+Version:        1.1dev
+Release:        1%{?dist}
 Summary:        Caching server for WMS layers
 Group:          Development/Tools
 License:        MIT
-URL:            http://www.mapserver.org/trunk/en/mapcache/
-Source:         https://github.com/mapserver/mapcache/mapcache-0.1.0-rc1.tar.gz
+URL:            http://mapserver.org/trunk/en/mapcache/
+Source:         mapcache-%{version}.tar.gz
+#Obtain source using git archive available at https://github.com/mapserver/mapcache:
+#git archive --format=tar --prefix=mapcache-1.1dev/ master | gzip > mapcache-1.1dev.tar.gz
+#or adjust archive available at: https://github.com/mapserver/mapcache/archive/master.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-Requires:       httpd
+Requires:       webserver
 
-BuildRequires:  httpd-devel fcgi-devel
-BuildRequires:  geos-devel proj-devel gdal-devel cairo-devel
-BuildRequires:  libjpeg-devel libpng-devel fribidi-devel giflib-devel curl-devel libtiff-devel
-BuildRequires:  sqlite-devel
+BuildRequires:  httpd-devel fcgi-devel cmake libcurl-devel
+BuildRequires:  geos-devel proj-devel gdal-devel libjpeg-turbo-devel
+BuildRequires:  libpng-devel libtiff-devel pixman-devel sqlite-devel
 
 
 %description
@@ -21,30 +23,16 @@ The primary objectives are to be fast and easily deployable, while offering the
 essential features (and more!) expected from a tile caching solution.
 
 %prep
-%setup -q -n mapcache-0.1.0-rc1
+%setup -q -n %{name}-%{version}
 
 %build
-CFLAGS="${CFLAGS} -ldl" ; export CFLAGS
-
-%configure \
-	--prefix=%{_prefix} 
-
-make
+%cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr .
+make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
 make DESTDIR=%{buildroot} \
-	install
-
-# apache module
-cd apache
-make DESTDIR=%{buildroot} \
-	install
-
-
-#mkdir -p %{buildroot}/%{_libexecdir}
-#mv %{buildroot}/%{_bindir}/mapcache %{buildroot}/%{_libexecdir}/
-
+    install
 
 %clean
 rm -rf %{buildroot}
