@@ -38,7 +38,6 @@
 #include <http_request.h>
 #include <apr_strings.h>
 #include <apr_time.h>
-#include <ap_mpm.h>
 #include <http_log.h>
 #include "mapcache.h"
 #ifdef APR_HAS_THREADS
@@ -252,13 +251,9 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
-  int threaded;
   pchild = pool;
 #ifdef APR_HAS_THREADS
-  ap_mpm_query(AP_MPMQ_IS_THREADED,&threaded);
-  if(threaded) {
-    apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
-  }
+  apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
 #endif
 }
 
