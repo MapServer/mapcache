@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache-util-config.h"
 #include "mapcache.h"
 #include <apr_thread_proc.h>
 #include <apr_thread_mutex.h>
