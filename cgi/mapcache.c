@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache-cgi-config.h"
 #include "mapcache.h"
 #include <stdlib.h>
 #include <apr_strings.h>
