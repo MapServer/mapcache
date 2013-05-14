@@ -12,12 +12,12 @@
       <getmap>
          <params>
             <FORMAT>image/png</FORMAT>
-            <LAYERS>TEST_SAR</LAYERS>
+            <LAYERS>basic</LAYERS>
          </params>
       </getmap>
       
       <http>
-         <url>http://ngeo.eox.at/browse/ows</url>
+         <url>http://vmap0.tiles.osgeo.org/wms/vmap0</url>
       </http>
    </source>
    
