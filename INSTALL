@@ -1,18 +1,16 @@
 Unix compilation instructions
 -----------------------------
 
-If you are using a git clone rather than a tarball distribution, you must first
-run autoconf in the root directory, to create the configure file from configure.in:
+Mapcache now builds with cmake. It seems much happier if it can find apxs, which means you
+might need apache2-prefork installed (on ubuntu apt-get install apache2-prefork-dev).
 
-$ autoconf
-
-For unix users, the compilation process should resume to:
-
-$ ./configure
-$ make
-
-(as root)
-# make install-module
+cd mapcache
+mkdir build
+cd build
+cmake ..
+# follow instructions below if missing a dependency
+make
+sudo make install
 
 The installation script takes care of putting the built module in the apache module directory.
 The process for activating a module is usually distro specific, but can be resumed by the 
@@ -30,6 +28,10 @@ Next, a mapcache configuration is mapped to the server url with the following sn
     MapCacheAlias /mapcache "/path/to/directory/mapcache.xml"
 </IfModule>
 
+Before you restart, copy the example mapcache.xml file to where you want it:
+
+cp mapcache.xml /path/to/directory/mapcache.xml
+
 (as root)
 # apachectl restart
 
@@ -40,9 +42,15 @@ http://myserver/mapcache/demo
 Customizing the build, or if something went wrong
 -------------------------------------------------
 
-mod-mapcache requires apache, libcurl, libjpeg and libpng development headers.
-The configure script will try to locate them in default system locations, that can be
-overriden or specified with switches (./configure --help should give you a full list):
+mod_mapcache requires apache, libcurl, libjpeg and libpng development headers.
+The cmake script will try to locate them in default system locations, that can be
+overriden or specified with -D switches. For example, if you don't want fcgi and
+you get a message such as 'Could NOT find APR ', you can use a command such as: 
+(assuming that apr is at /usr/local/apr)
+
+cmake -DWITH_FCGI=0 -DCMAKE_PREFIX_PATH="/usr/local/apr;" ..
+
+
 
 apache apxs
 ===========
@@ -52,7 +60,8 @@ apache apxs
 apxs is the apache extension tool that is used for building and installing the module to a local
 apache instance. it should be installed along with a standard apache build, or supplied by
 distros when installing the apache development packages.
-apxs is sometimes called apxs2 (notably on debian)
+apxs is sometimes called apxs2 (notably on debian). 
+On Ubuntu, apt-get install apache2-prefork-dev might help
 
 apr
 ===
@@ -184,6 +193,25 @@ This can be configured in two different ways in mod-mapcache, each with their ad
    will never be released, you might end up with loads of idle processes stacking up. (stuck semaphores on linux can
    be discarded by deleteing the files of the form sem.x-x-x-gridname-tilesetname(...)  that are located in /dev/shm/.
    The "file" maechanism does not have this limitation, as stale lockfiles can be deleted upon server restart.
+
+
+enabling mod_mapcache on Ubuntu
+===============================
+
+Ubuntu has it's own method of invoking modules, using a 'load' file.
+The conf files should be created in /etc/apache2/mods-available/, ie 
+
+echo 'LoadModule mapcache_module /usr/lib/apache2/modules/mod_mapcache.so' > /etc/apache2/mods-available/mapcache.load
+
+and then enable it: a2enmod mapcache
+
+However, before you restart apache, you will need to make the lib (which is in 
+/usr/local/lib) available, maybe by:
+
+ln -s /usr/local/lib/libmapcache.so /usr/lib/libmapcache.so
+
+
+
 
 
 Win32 compilation instructions
