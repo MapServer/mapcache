@@ -37,7 +37,8 @@
 /** @{ */
 
 static char *demo_head =
-  "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n"
+  "<!DOCTYPE html>\n"
+  "<html>\n"
   "  <head>\n"
   "    <title>mod-mapcache demo service</title>\n"
   "    <style type=\"text/css\">\n"
