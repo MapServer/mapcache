@@ -584,12 +584,21 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
       }
     }
     if(tileset->source && tileset->source->info_formats) {
+      char *ol_layer_name;
+
+      ol_layer_name = apr_psprintf(ctx->pool, "%s", tileset->name);
+      /* normalize name to something that is a valid variable name */
+      for(i=0; i<strlen(ol_layer_name); i++)
+        if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+            || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+          ol_layer_name[i] = '_';
+
       ol_layer = apr_psprintf(ctx->pool, demo_control_featureinfo,
-                              tileset->name,
+                              ol_layer_name,
                               apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
                               APR_ARRAY_IDX(tileset->source->info_formats,0,char*),
-                              tileset->name,
-                              tileset->name);
+                              ol_layer_name,
+                              ol_layer_name);
       caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
     }
     tileindex_index = apr_hash_next(tileindex_index);
