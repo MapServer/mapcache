@@ -150,7 +150,7 @@ static char *demo_layer_tms =
   "          sphericalMercator: %s\n"
   "        }\n"
   "    );\n"
-  "    map.addLayer(%s_tms_layer)\n\n";
+  "    map.addLayer(%s_tms_layer);\n\n";
 
 
 static char *demo_layer_wmts =
@@ -185,7 +185,7 @@ static char *demo_layer_ve =
   "          sphericalMercator: %s\n"
   "        }\n"
   "    );\n"
-  "    map.addLayer(%s_ve_layer)\n\n";
+  "    map.addLayer(%s_ve_layer);\n\n";
 
 static char *demo_layer_singletile =
   "    var %s_slayer = new OpenLayers.Layer.WMS( \"%s-%s (singleTile)\",\n"
@@ -199,7 +199,7 @@ static char *demo_layer_singletile =
   "          sphericalMercator: %s\n"
   "        }\n"
   "    );\n"
-  "    map.addLayer(%s_slayer)\n\n";
+  "    map.addLayer(%s_slayer);\n\n";
 
 static char *demo_control_featureinfo =
   "    var %s_info = new OpenLayers.Control.WMSGetFeatureInfo({\n"
@@ -221,7 +221,7 @@ static char *demo_control_featureinfo =
   "      }\n"
   "    });\n"
   "    map.addControl(%s_info);\n"
-  "    %s_info.activate()\n\n";
+  "    %s_info.activate();\n\n";
 
 
 static char *demo_footer =
@@ -614,7 +614,7 @@ static char *demo_layer_mapguide =
 	"          defaultSize: new OpenLayers.Size(%d,%d)\n"
   "        }\n"
   "    );\n"
-  "    map.addLayer(%s_mg_layer)\n\n";
+  "    map.addLayer(%s_mg_layer);\n\n";
 
 void _create_demo_mapguide(mapcache_context *ctx, mapcache_request_get_capabilities *req,
                       const char *url_prefix)
