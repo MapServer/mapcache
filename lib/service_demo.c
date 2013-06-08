@@ -447,7 +447,7 @@ void _create_demo_front(mapcache_context *ctx, mapcache_request_get_capabilities
     mapcache_service *service = ctx->config->services[i];
     if(!service || service->type == MAPCACHE_SERVICE_DEMO) continue; /* skip an unconfigured service, and the demo one */
     caps = apr_pstrcat(ctx->pool,caps,"<a href=\"",urlprefix,"demo/",service->name,"\">",
-                       service->name,"</a><br/>",NULL);
+                       service->name,"</a><br/>\n",NULL);
   }
   caps = apr_pstrcat(ctx->pool,caps,demo_footer_title,NULL);
 
@@ -996,7 +996,7 @@ void _create_demo_kml(mapcache_context *ctx, mapcache_request_get_capabilities *
       }
       caps = apr_pstrcat(ctx->pool,caps,
                          "<li><a href=\"",url_prefix,"kml/",tileset->name,
-                         "@",grid->name,".kml\">",tileset->name,"</a></li>",
+                         "@",grid->name,".kml\">",tileset->name,"</a></li>\n",
                          NULL);
     }
     tileindex_index = apr_hash_next(tileindex_index);
