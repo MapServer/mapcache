@@ -40,12 +40,22 @@ static char *demo_head =
   "<!DOCTYPE html>\n"
   "<html>\n"
   "  <head>\n"
+  "    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />\n"
   "    <title>mod-mapcache demo service</title>\n"
   "    <style type=\"text/css\">\n"
+  "    html, body {\n"
+  "        height: 100%;\n"
+  "        width: 100%;\n"
+  "        border: 0px;\n"
+  "        margin: 0px;\n"
+  "        padding: 0px;\n"
+  "    }\n"
   "    #map {\n"
-  "    width: 100%;\n"
-  "    height: 100%;\n"
-  "    border: 1px solid black;\n"
+  "        width: calc(100%% - 2px);\n"
+  "        height: calc(100%% - 2px);\n"
+  "        border: 1px solid black;\n"
+  "        margin: 0px;\n"
+  "        padding: 0px;\n"
   "    }\n"
   "    </style>\n"
   "    <script src=\"http://www.openlayers.org/api/OpenLayers.js\"></script>\n"
@@ -228,7 +238,7 @@ static char *demo_control_featureinfo =
 static char *demo_footer =
   "%s"
   "    if(!map.getCenter())\n"
-  "     map.zoomToMaxExtent();\n"
+  "        map.zoomToMaxExtent();\n"
   "    map.addControl(new OpenLayers.Control.LayerSwitcher());\n"
   "    map.addControl(new OpenLayers.Control.MousePosition());\n"
   "}\n"
@@ -245,6 +255,7 @@ static char *demo_head_gmaps =
   "<!DOCTYPE html>\n"
   "<html>\n"
   "<head>\n"
+  "<meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />\n"
   "<meta name=\"viewport\" content=\"initial-scale=1.0, user-scalable=no\" />\n"
   "<title>mod_mapcache gmaps demo</title>\n"
   "<style type=\"text/css\">\n"
@@ -383,7 +394,18 @@ static char *demo_footer_gmaps =
   "</body>\n"
   "</html>\n";
 
+static char *demo_head_title =
+  "<!DOCTYPE html>\n"
+  "<html>\n"
+  "<head>\n"
+  "  <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />\n"
+  "  <title>%s</title>\n"
+  "</head>\n"
+  "<body>\n";
 
+static char *demo_footer_title =
+  "</body>\n"
+  "</html>\n";
 
 /**
  * \brief parse a demo request
@@ -429,15 +451,14 @@ void _create_demo_front(mapcache_context *ctx, mapcache_request_get_capabilities
   int i;
   char *caps;
   req->mime_type = apr_pstrdup(ctx->pool,"text/html");
-  caps = apr_pstrdup(ctx->pool,
-                     "<html><head><title>mapcache demo landing page</title></head><body>");
+  caps = apr_psprintf(ctx->pool,demo_head_title,"mapcache demo landing page");
   for(i=0; i<MAPCACHE_SERVICES_COUNT; i++) {
     mapcache_service *service = ctx->config->services[i];
     if(!service || service->type == MAPCACHE_SERVICE_DEMO) continue; /* skip an unconfigured service, and the demo one */
     caps = apr_pstrcat(ctx->pool,caps,"<a href=\"",urlprefix,"demo/",service->name,"\">",
-                       service->name,"</a><br/>",NULL);
+                       service->name,"</a><br/>\n",NULL);
   }
-  caps = apr_pstrcat(ctx->pool,caps,"</body></html>",NULL);
+  caps = apr_pstrcat(ctx->pool,caps,demo_footer_title,NULL);
 
   req->capabilities = caps;
 }
@@ -968,8 +989,7 @@ void _create_demo_kml(mapcache_context *ctx, mapcache_request_get_capabilities *
   char *caps;
   apr_hash_index_t *tileindex_index;
   req->mime_type = apr_pstrdup(ctx->pool,"text/html");
-  caps = apr_pstrdup(ctx->pool,
-                     "<html><head><title>mapcache kml links</title></head><body>");
+  caps = apr_psprintf(ctx->pool,demo_head_title,"mapcache kml links");
   tileindex_index = apr_hash_first(ctx->pool,ctx->config->tilesets);
   while(tileindex_index) {
     mapcache_tileset *tileset;
@@ -985,13 +1005,13 @@ void _create_demo_kml(mapcache_context *ctx, mapcache_request_get_capabilities *
       }
       caps = apr_pstrcat(ctx->pool,caps,
                          "<li><a href=\"",url_prefix,"kml/",tileset->name,
-                         "@",grid->name,".kml\">",tileset->name,"</a></li>",
+                         "@",grid->name,".kml\">",tileset->name,"</a></li>\n",
                          NULL);
     }
     tileindex_index = apr_hash_next(tileindex_index);
   }
 
-  caps = apr_pstrcat(ctx->pool,caps,"</body></html>",NULL);
+  caps = apr_pstrcat(ctx->pool,caps,demo_footer_title,NULL);
   req->capabilities = caps;
 }
 
