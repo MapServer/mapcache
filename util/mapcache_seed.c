@@ -963,7 +963,9 @@ int main(int argc, const char **argv)
       }
     }
     if((nClippers=OGR_L_GetFeatureCount(layer, TRUE)) == 0) {
-      return usage(argv[0],"no features in provided ogr parameters, cannot continue");
+      printf("no features in provided ogr parameters, cannot continue\n");
+      apr_terminate();
+      exit(0);
     }
 
 
@@ -1248,6 +1250,11 @@ int main(int argc, const char **argv)
     printf("\nseeded %d metatiles at %g tiles/sec\n",seededtilestot, seededtilestot/duration);
   }
   apr_terminate();
+
+  if (error_detected > 0) {
+    exit(1);  
+  }
+  
   return 0;
 }
 /* vim: ts=2 sts=2 et sw=2
