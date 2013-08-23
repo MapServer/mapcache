@@ -627,28 +627,31 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
     ctx->set_error(ctx,400,"failed (2) to parse time %s",value);
     return NULL;
   }
-  switch(tie) {
-  case MAPCACHE_TINTERVAL_SECOND:
-    tm_end.tm_sec += 1;
-    break;
-  case MAPCACHE_TINTERVAL_MINUTE:
-    tm_end.tm_min += 1;
-    break;
-  case MAPCACHE_TINTERVAL_HOUR:
-    tm_end.tm_hour += 1;
-    break;
-  case MAPCACHE_TINTERVAL_DAY:
-    tm_end.tm_mday += 1;
-    break;
-  case MAPCACHE_TINTERVAL_MONTH:
-    tm_end.tm_mon += 1;
-    break;
-  case MAPCACHE_TINTERVAL_YEAR:
-    tm_end.tm_year += 1;
-    break;
-  }
   end = timegm(&tm_end);
   start = timegm(&tm_start);
+  if(difftime(start,end) == 0) {
+    switch(tie) {
+    case MAPCACHE_TINTERVAL_SECOND:
+      tm_end.tm_sec += 1;
+      break;
+    case MAPCACHE_TINTERVAL_MINUTE:
+      tm_end.tm_min += 1;
+      break;
+    case MAPCACHE_TINTERVAL_HOUR:
+      tm_end.tm_hour += 1;
+      break;
+    case MAPCACHE_TINTERVAL_DAY:
+      tm_end.tm_mday += 1;
+      break;
+    case MAPCACHE_TINTERVAL_MONTH:
+      tm_end.tm_mon += 1;
+      break;
+    case MAPCACHE_TINTERVAL_YEAR:
+      tm_end.tm_year += 1;
+      break;
+    }
+    end = timegm(&tm_end);
+  }
 
   return timedimension->get_entries_for_interval(ctx,timedimension,tileset,grid,extent,start,end);
   /* end loop */
