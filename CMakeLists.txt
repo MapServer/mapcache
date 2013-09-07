@@ -76,6 +76,7 @@ option(WITH_TIFF "Use TIFFs as a cache backend" OFF)
 option(WITH_TIFF_WRITE_SUPPORT "Enable (experimental) support for writable TIFF cache backends" OFF)
 option(WITH_GEOTIFF "Allow GeoTIFF metadata creation for TIFF cache backends" OFF)
 option(WITH_PCRE "Use PCRE for regex tests" OFF)
+option(WITH_MAPSERVER "Enable (experimental) support for the mapserver library" OFF)
 
 find_package(PNG)
 if(PNG_FOUND)
@@ -212,6 +213,17 @@ if(WITH_GEOTIFF)
   endif(GEOTIFF_FOUND)
 endif (WITH_GEOTIFF)
 
+if(WITH_MAPSERVER)
+   find_package(MAPSERVER)
+  if(MAPSERVER_FOUND)
+    include_directories(${MAPSERVER_INCLUDE_DIR})
+    target_link_libraries(mapcache ${MAPSERVER_LIBRARY})
+    set (USE_MAPSERVER 1)
+  else(MAPSERVER_FOUND)
+    report_optional_not_found(MAPSERVER)
+  endif(MAPSERVER_FOUND)
+endif (WITH_MAPSERVER)
+
 
 if(UNIX)
 target_link_libraries(mapcache ${CMAKE_DL_LIBS} m )
@@ -259,6 +271,7 @@ status_optional_component("TIFF" "${USE_TIFF}" "${TIFF_LIBRARY}")
 status_optional_component("GeoTIFF" "${USE_GEOTIFF}" "${GEOTIFF_LIBRARY}")
 status_optional_component("Experimental TIFF write support" "${USE_TIFF_WRITE}" "${TIFF_LIBRARY}")
 status_optional_component("PCRE" "${USE_PCRE}" "${PCRE_LIBRARY}")
+status_optional_component("Experimental mapserver support" "${USE_MAPSERVER}" "${MAPSERVER_LIBRARY}")
 
 INSTALL(TARGETS mapcache DESTINATION ${CMAKE_INSTALL_LIBDIR})
 

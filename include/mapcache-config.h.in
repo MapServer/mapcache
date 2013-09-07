@@ -10,6 +10,7 @@
 #cmakedefine USE_TIFF_WRITE 1
 #cmakedefine USE_GEOTIFF 1
 #cmakedefine USE_PCRE 1
+#cmakedefine USE_MAPSERVER 1
 
 #cmakedefine HAVE_STRNCASECMP 1
 #cmakedefine HAVE_SYMLINK 1
