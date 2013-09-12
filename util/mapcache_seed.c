@@ -1072,11 +1072,11 @@ int main(int argc, const char **argv)
 
   if (mode == MAPCACHE_CMD_TRANSFER) {
     if (!tileset_transfer_name)
-      return usage(argv[0],"tileset where tiles should be transfered to not specified");
+      return usage(argv[0],"tileset where tiles should be transferred to not specified");
 
     tileset_transfer = mapcache_configuration_get_tileset(cfg,tileset_transfer_name);
     if(!tileset_transfer)
-      return usage(argv[0], "tileset where tiles should be transfered to not found in configuration");
+      return usage(argv[0], "tileset where tiles should be transferred to not found in configuration");
   }
 
   if(old) {
