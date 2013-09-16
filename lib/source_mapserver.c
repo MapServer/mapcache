@@ -27,10 +27,11 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#ifdef USE_MAPSERVER
 
 #include "mapcache.h"
 #include "ezxml.h"
+
+#ifdef USE_MAPSERVER
 #include <apr_tables.h>
 #include <apr_strings.h>
 #ifdef APR_HAS_THREADS
@@ -273,7 +274,11 @@ mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
   source->source.query_info = _mapcache_source_mapserver_query;
   return (mapcache_source*)source;
 }
-
+#else
+mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
+{
+  ctx->set_error(ctx, 500, "mapserver source not configured for this build");
+}
 #endif
 
 /* vim: ts=2 sts=2 et sw=2
