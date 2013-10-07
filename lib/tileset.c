@@ -340,7 +340,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   } else {
     switch(mode) {
       case MAPCACHE_RESAMPLE_BILINEAR:
-        mapcache_image_copy_resampled_bilinear(ctx,srcimage,image,dstminx,dstminy,hf,vf);
+        mapcache_image_copy_resampled_bilinear(ctx,srcimage,image,dstminx,dstminy,hf,vf,0);
         break;
       default:
         mapcache_image_copy_resampled_nearest(ctx,srcimage,image,dstminx,dstminy,hf,vf);
@@ -691,7 +691,7 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
      * ctx->log(ctx, MAPCACHE_DEBUG, "factor: %g. start: %g,%g (im size: %g)",scalefactor,dstminx,dstminy,scalefactor*256);
      */
     if(scalefactor <= tile->grid_link->grid->tile_sx/2) /*FIXME: might fail for non-square tiles, also check tile_sy */
-      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor);
+      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor,1);
     else {
       /* no use going through bilinear resampling if the requested scalefactor maps less than 4 pixels onto the
       * resulting tile, plus pixman has some rounding bugs in this case, see

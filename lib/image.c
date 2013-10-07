@@ -233,7 +233,7 @@ void mapcache_image_copy_resampled_nearest(mapcache_context *ctx, mapcache_image
 }
 
 void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
-    double off_x, double off_y, double scale_x, double scale_y)
+    double off_x, double off_y, double scale_x, double scale_y, int reflect_edges)
 {
 #ifdef USE_PIXMAN
   pixman_image_t *si = pixman_image_create_bits(PIXMAN_a8r8g8b8,src->w,src->h,
@@ -244,7 +244,9 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
   pixman_transform_init_translate(&transform,pixman_double_to_fixed(-off_x),pixman_double_to_fixed(-off_y));
   pixman_transform_scale(&transform,NULL,pixman_double_to_fixed(1.0/scale_x),pixman_double_to_fixed(1.0/scale_y));
   pixman_image_set_transform (si, &transform);
-  pixman_image_set_repeat (si, PIXMAN_REPEAT_REFLECT);
+  if(reflect_edges) {
+    pixman_image_set_repeat (si, PIXMAN_REPEAT_REFLECT);
+  }
   pixman_image_set_filter(si,PIXMAN_FILTER_BILINEAR, NULL, 0);
   pixman_image_composite (PIXMAN_OP_OVER, si, NULL, bi,
                           0, 0, 0, 0, 0, 0, dst->w,dst->h);
