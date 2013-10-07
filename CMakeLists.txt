@@ -70,7 +70,7 @@ add_library(mapcache SHARED ${mapcache_SOURCES})
 #options suported by the cmake builder
 option(WITH_PIXMAN "Use pixman for SSE optimized image manipulations" ON)
 option(WITH_SQLITE "Use sqlite as a cache backend" ON)
-option(WITH_BERKELEY_DB "Use sqlite as a cache backend" OFF)
+option(WITH_BERKELEY_DB "Use Berkeley DB as a cache backend" OFF)
 option(WITH_MEMCACHE "Use memcache as a cache backend (requires recent apr-util)" OFF)
 option(WITH_TIFF "Use TIFFs as a cache backend" OFF)
 option(WITH_TIFF_WRITE_SUPPORT "Enable (experimental) support for writable TIFF cache backends" OFF)
