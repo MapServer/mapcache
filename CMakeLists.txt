@@ -66,6 +66,10 @@ set(CMAKE_LINK_INTERFACE_LIBRARY "")
 file(GLOB mapcache_SOURCES lib/*.c )
 
 add_library(mapcache SHARED ${mapcache_SOURCES})
+set_target_properties(mapcache PROPERTIES
+  VERSION ${MAPCACHE_VERSION_STRING}
+  SOVERSION 1
+)
 
 #options suported by the cmake builder
 option(WITH_PIXMAN "Use pixman for SSE optimized image manipulations" ON)
