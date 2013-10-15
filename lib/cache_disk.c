@@ -278,6 +278,74 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
   }
 }
 
+static void _mapcache_cache_disk_tilecache_tile_keytfw(mapcache_context *ctx, mapcache_tile *tile, char **path)
+{
+  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
+  if(dcache->base_directory) {
+    char *start;
+    _mapcache_cache_disk_base_tile_key(ctx, tile, &start);
+    *path = apr_psprintf(ctx->pool,"%s/%02d/%03d/%03d/%03d/%03d/%03d/%03d.%s",
+                         start,
+                         tile->z,
+                         tile->x / 1000000,
+                         (tile->x / 1000) % 1000,
+                         tile->x % 1000,
+                         tile->y / 1000000,
+                         (tile->y / 1000) % 1000,
+                         tile->y % 1000,
+                         "wld");
+  } else {
+    *path = dcache->filename_template;
+    *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
+    *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
+    *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
+                                      "wld");
+    if(strstr(*path,"{x}"))
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
+                                        apr_psprintf(ctx->pool,"%d",tile->x));
+    else
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
+                                        apr_psprintf(ctx->pool,"%d",
+                                            tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1));
+    if(strstr(*path,"{y}"))
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
+                                        apr_psprintf(ctx->pool,"%d",tile->y));
+    else
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
+                                        apr_psprintf(ctx->pool,"%d",
+                                            tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1));
+    if(strstr(*path,"{z}"))
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
+                                        apr_psprintf(ctx->pool,"%d",tile->z));
+    else
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
+                                        apr_psprintf(ctx->pool,"%d",
+                                            tile->grid_link->grid->nlevels - tile->z - 1));
+    if(tile->dimensions) {
+      char *dimstring="";
+      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
+      int i = elts->nelts;
+      while(i--) {
+        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
+        char *dimval = apr_pstrdup(ctx->pool,entry->val);
+        char *iter = dimval;
+        while(*iter) {
+          /* replace dangerous characters by '#' */
+          if(*iter == '.' || *iter == '/') {
+            *iter = '#';
+          }
+          iter++;
+        }
+        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
+      }
+      *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
+    }
+  }
+  if(!*path) {
+    ctx->set_error(ctx,500, "failed to allocate tile key");
+  }
+}
+
 static void _mapcache_cache_disk_arcgis_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
 {
   mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
@@ -533,6 +601,51 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
         apr_file_close(f);
       }
 
+      char osTFWText[1024];
+      char *path;
+      apr_file_t *f2;
+      double tileresolution, dstminx, dstminy, hf, vf;
+      mapcache_extent tilebox;
+      mapcache_extent *bbox;
+      bbox = &tilebox;
+
+      mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+      tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+
+      dstminx = tilebox.minx;
+      dstminy = tilebox.maxy;
+      hf = tileresolution;
+      vf = tileresolution * (-1.0);
+
+      sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                        hf,
+                        0.0,
+                        0.0,
+                        vf,
+                        dstminx,
+                        dstminy);
+
+      _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+
+      if((ret = apr_file_open(&f2, path,
+                              APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                              APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+        ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+        mapcache_unlock_resource(ctx,path);
+        return; /* we could not create the file */
+      }
+
+      ret = apr_file_puts(osTFWText, f2);
+      if(ret != APR_SUCCESS) {
+        ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+        mapcache_unlock_resource(ctx,path);
+        return; /* we could not create the file */
+      }
+
+      apr_file_close(f2);
+
+      mapcache_unlock_resource(ctx,path);
+
       int retry_count_create_symlink = 0;
 
       /*
@@ -616,6 +729,72 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
     ctx->set_error(ctx, 500,  "failed to write data to file %s (wrote %d of %d bytes): %s",filename, (int)bytes, (int)tile->encoded_data->size, apr_strerror(ret,errmsg,120));
     return; /* we could not create the file */
   }
+
+  char osTFWText[1024];
+  char *path;
+  apr_file_t *f2;
+  double tileresolution, dstminx, dstminy, hf, vf;
+  mapcache_extent tilebox;
+  mapcache_extent *bbox;
+  bbox = &tilebox;
+
+  mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+  tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+
+  /*compute the pixel position of top left corner*/
+  dstminx = tilebox.minx; //cause source bottom left
+  dstminy = tilebox.maxy;
+  hf = tileresolution;
+  vf = tileresolution * (-1.0);
+
+  sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                        hf,
+                        0.0,
+                        0.0,
+                        vf,
+                        dstminx,
+                        dstminy);
+
+  _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+
+  retry_count_create_file = 0;
+  /*
+   * depending on configuration file creation will retry if it fails.
+   * this can happen on nfs mounted network storage.
+   * the solution is to create the containing directory again and retry the file creation.
+   */
+  while((ret = apr_file_open(&f2, path,
+                             APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                             APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+    retry_count_create_file++;
+
+    if(retry_count_create_file > creation_retry) {
+      ctx->set_error(ctx, 500, "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+      return; /* we could not create the file */
+    }
+
+    *hackptr2 = '\0';
+
+    if(APR_SUCCESS != (ret = apr_dir_make_recursive(path,APR_OS_DEFAULT,ctx->pool))) {
+      if(!APR_STATUS_IS_EEXIST(ret)) {
+        ctx->set_error(ctx, 500, "failed to create file, can not create directory %s: %s",path, apr_strerror(ret,errmsg,120));
+        return; /* we could not create the file */
+      }
+    }
+
+    *hackptr2 = '/';
+  }
+
+  ret = apr_file_puts(osTFWText, f2);
+  if(ret != APR_SUCCESS) {
+    ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+    mapcache_unlock_resource(ctx,path);
+    return; /* we could not create the file */
+  }
+
+  apr_file_close(f2);
+
+  mapcache_unlock_resource(ctx,path);
 
   if(bytes != tile->encoded_data->size) {
     ctx->set_error(ctx, 500, "failed to write image data to %s, wrote %d of %d bytes", filename, (int)bytes, (int)tile->encoded_data->size);

@@ -742,6 +742,53 @@ close_tiff:
   ctx->set_error(ctx,500,"tiff write support disabled by default");
 #endif
 
+  char osTFWText[1024];
+  char *path;
+  apr_file_t *f2;
+  double tileresolution, dstminx, dstminy, hf, vf;
+  mapcache_extent tilebox;
+  mapcache_extent *bbox;
+  bbox = &tilebox;
+
+  mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+  tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+
+  /*compute the pixel position of top left corner*/
+  dstminx = tilebox.minx;
+  dstminy = tilebox.miny;
+  hf = tileresolution;
+  vf = tileresolution;
+
+  sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                        hf,
+                        0.0,
+                        0.0,
+                        vf,
+                        dstminx,
+                        dstminy);
+
+  _mapcache_cache_tiff_tile_key(ctx, tile, &path);
+  if(strstr(*path,".tif"))
+    *path = mapcache_util_str_replace(ctx->pool,*path, ".tif", ".tfw");
+
+  if((ret = apr_file_open(&f2, path,
+                          APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                          APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+    ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+    mapcache_unlock_resource(ctx,path);
+    return; /* we could not create the file */
+  }
+
+  ret = apr_file_puts(osTFWText, f2);
+  if(ret != APR_SUCCESS) {
+    ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+    mapcache_unlock_resource(ctx,path);
+    return; /* we could not create the file */
+  }
+
+  apr_file_close(f2);
+
+  mapcache_unlock_resource(ctx,path);
 }
 
 /**
