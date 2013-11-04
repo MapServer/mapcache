@@ -1484,6 +1484,7 @@ char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, cha
 typedef enum {
   MAPCACHE_COMPRESSION_BEST, /**< best but slowest compression*/
   MAPCACHE_COMPRESSION_FAST, /**< fast compression*/
+  MAPCACHE_COMPRESSION_DISABLE, /**< no compression*/
   MAPCACHE_COMPRESSION_DEFAULT /**< default compression*/
 } mapcache_compression_type;
 
