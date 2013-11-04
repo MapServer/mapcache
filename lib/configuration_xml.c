@@ -387,6 +387,8 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         compression = MAPCACHE_COMPRESSION_FAST;
       } else if(!strcmp(cur_node->txt, "best")) {
         compression = MAPCACHE_COMPRESSION_BEST;
+      } else if(!strcmp(cur_node->txt, "none")) {
+        compression = MAPCACHE_COMPRESSION_DISABLE;
       } else {
         ctx->set_error(ctx, 400, "unknown compression type %s for format \"%s\"", cur_node->txt, name);
         return;
