@@ -1320,9 +1320,9 @@ mapcache_buffer* _mapcache_imageio_png_q_encode( mapcache_context *ctx, mapcache
     png_set_compression_level (png_ptr, Z_BEST_COMPRESSION);
   else if(compression == MAPCACHE_COMPRESSION_FAST)
     png_set_compression_level (png_ptr, Z_BEST_SPEED);
-  png_set_filter(png_ptr,0,PNG_FILTER_NONE);
   else if(compression == MAPCACHE_COMPRESSION_DISABLE)
     png_set_compression_level (png_ptr, Z_NO_COMPRESSION);
+  png_set_filter(png_ptr,0,PNG_FILTER_NONE);
   info_ptr = png_create_info_struct(png_ptr);
   if (!info_ptr) {
     png_destroy_write_struct(&png_ptr,(png_infopp)NULL);
