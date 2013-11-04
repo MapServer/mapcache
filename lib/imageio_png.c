@@ -45,6 +45,9 @@ typedef unsigned long int uint64_t;
 #ifndef Z_BEST_COMPRESSION
 #define Z_BEST_COMPRESSION 9
 #endif
+#ifndef Z_NO_COMPRESSION
+#define Z_NO_COMPRESSION 0
+#endif
 
 /* Table of CRCs of all 8-bit messages. */
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -410,6 +413,9 @@ mapcache_buffer* _mapcache_imageio_png_encode(mapcache_context *ctx, mapcache_im
     png_set_compression_level (png_ptr, Z_BEST_COMPRESSION);
   else if(compression == MAPCACHE_COMPRESSION_FAST)
     png_set_compression_level (png_ptr, Z_BEST_SPEED);
+  else if(compression == MAPCACHE_COMPRESSION_DISABLE)
+    png_set_compression_level (png_ptr, Z_NO_COMPRESSION);
+    
   png_set_filter(png_ptr,0,PNG_FILTER_NONE);
 
   info_ptr = png_create_info_struct(png_ptr);
@@ -1314,6 +1320,8 @@ mapcache_buffer* _mapcache_imageio_png_q_encode( mapcache_context *ctx, mapcache
     png_set_compression_level (png_ptr, Z_BEST_COMPRESSION);
   else if(compression == MAPCACHE_COMPRESSION_FAST)
     png_set_compression_level (png_ptr, Z_BEST_SPEED);
+  else if(compression == MAPCACHE_COMPRESSION_DISABLE)
+    png_set_compression_level (png_ptr, Z_NO_COMPRESSION);
   png_set_filter(png_ptr,0,PNG_FILTER_NONE);
   info_ptr = png_create_info_struct(png_ptr);
   if (!info_ptr) {
