@@ -828,6 +828,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 
       mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
     }
+    GC_CHECK_ERROR(ctx);
 
     /* the previous step has successfully finished, we can now query the cache to return the tile content */
     ret = tile->tileset->cache->tile_get(ctx, tile);
