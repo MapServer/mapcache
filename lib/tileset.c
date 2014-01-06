@@ -194,10 +194,10 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
 
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
-  Mx = MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),grid_link->grid_limits[level].maxx);
-  My = MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),grid_link->grid_limits[level].maxy);
-  mx = MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),grid_link->grid_limits[level].minx);
-  my = MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),grid_link->grid_limits[level].miny);
+  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),grid_link->grid_limits[level].maxx),grid_link->grid_limits[level].minx);
+  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),grid_link->grid_limits[level].maxy),grid_link->grid_limits[level].miny);
+  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),grid_link->grid_limits[level].minx),grid_link->grid_limits[level].maxx);
+  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),grid_link->grid_limits[level].miny),grid_link->grid_limits[level].maxy);
   *ntiles = (Mx-mx+1)*(My-my+1);
   i=0;
   *tiles = (mapcache_tile**)apr_pcalloc(ctx->pool, *ntiles*sizeof(mapcache_tile*));
