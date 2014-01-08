@@ -481,7 +481,7 @@ mapcache_buffer* _mapcache_imageio_png_encode(mapcache_context *ctx, mapcache_im
  ** documentation.  This software is provided "as is" without express or
  ** implied warranty.
  */
-
+/*
 typedef struct {
   unsigned char b,g,r,a;
 } rgbaPixel;
@@ -489,7 +489,7 @@ typedef struct {
 typedef struct {
   unsigned char r,g,b;
 } rgbPixel;
-
+*/
 #define PAM_GETR(p) ((p).r)
 #define PAM_GETG(p) ((p).g)
 #define PAM_GETB(p) ((p).b)

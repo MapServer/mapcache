@@ -86,6 +86,7 @@ typedef struct mapcache_image_format mapcache_image_format;
 typedef struct mapcache_image_format_mixed mapcache_image_format_mixed;
 typedef struct mapcache_image_format_png mapcache_image_format_png;
 typedef struct mapcache_image_format_png_q mapcache_image_format_png_q;
+typedef struct mapcache_image_format_gif mapcache_image_format_gif;
 typedef struct mapcache_image_format_jpeg mapcache_image_format_jpeg;
 typedef struct mapcache_cfg mapcache_cfg;
 typedef struct mapcache_tileset mapcache_tileset;
@@ -525,6 +526,7 @@ typedef enum {
 typedef enum {
   MAPCACHE_GETMAP_ERROR,
   MAPCACHE_GETMAP_ASSEMBLE,
+  MAPCACHE_GETMAP_ANIMATE,
   MAPCACHE_GETMAP_FORWARD
 } mapcache_getmap_strategy;
 
@@ -843,7 +845,7 @@ void mapcache_service_dispatch_request(mapcache_context *ctx,
 /** @{ */
 
 typedef enum {
-  GC_UNKNOWN, GC_PNG, GC_JPEG
+  GC_UNKNOWN, GC_PNG, GC_JPEG, GC_GIF
 } mapcache_image_format_type;
 
 typedef enum {
@@ -1506,6 +1508,7 @@ struct mapcache_image_format {
   char *extension; /**< the extension to use when saving a file with this format */
   char *mime_type;
   mapcache_buffer * (*write)(mapcache_context *ctx, mapcache_image *image, mapcache_image_format * format);
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image **images, int numimages, mapcache_image_format * format);
   /**< pointer to a function that returns a mapcache_buffer containing the given image encoded
    * in the specified format
    */
@@ -1590,6 +1593,33 @@ mapcache_image_format* mapcache_imageio_create_png_format(apr_pool_t *pool, char
 mapcache_image_format* mapcache_imageio_create_png_q_format(apr_pool_t *pool, char *name, mapcache_compression_type compression, int ncolors);
 
 /** @} */
+
+typedef struct {
+  unsigned char b,g,r,a;
+} rgbaPixel;
+
+typedef struct {
+  unsigned char r,g,b;
+} rgbPixel;
+
+int _mapcache_imageio_quantize_image(mapcache_image *rb,
+                                     unsigned int *reqcolors, rgbaPixel *palette,
+                                     unsigned int *maxval,
+                                     rgbaPixel *forced_palette, int num_forced_palette_entries);
+int _mapcache_imageio_classify(mapcache_image *rb, unsigned char *pixels,
+                               rgbaPixel *palette, int numPaletteEntries);
+
+struct mapcache_image_format_gif {
+  mapcache_image_format format;
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image **images, int numimages, mapcache_image_format * format);
+  int *animate;
+};
+mapcache_image_format* mapcache_imageio_create_gif_format(apr_pool_t *pool, char *name);
+mapcache_buffer* _mapcache_imageio_gif_encode(mapcache_context *ctx, mapcache_image *img, mapcache_image_format *format);
+
+
+mapcache_image_format* mapcache_imageio_create_jpeg_format(apr_pool_t *pool, char *name, int quality,
+    mapcache_photometric photometric);
 
 /**\defgroup imageio_jpg JPEG Image IO
  * \ingroup imageio */

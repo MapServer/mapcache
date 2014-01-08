@@ -336,7 +336,6 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
   mapcache_service_wms *wms_service = (mapcache_service_wms*)this;
 
   *request = NULL;
-
   str = apr_table_get(params,"SERVICE");
   if(!str) {
     /* service is optional if we have a getmap */
@@ -703,6 +702,9 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
                 }
                 map_req->maps = tmpmaps;
                 /* end realloc workaround */
+                if(map_req->getmap_format->type == GC_GIF && wms_service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
+                    wms_service->getmap_strategy = MAPCACHE_GETMAP_ANIMATE;
+                }
               }
               for(i=0;i<timedim_selected->nelts;i++) {
                 if(i) {
@@ -852,7 +854,7 @@ proxies:
         /* if we have a getmap or multiple tiles, we must check that assembling is allowed */
         (((*request)->type == MAPCACHE_REQUEST_GET_MAP || (
             (*request)->type == MAPCACHE_REQUEST_GET_TILE && ((mapcache_request_get_tile*)(*request))->ntiles > 1)) &&
-         wms_service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE)
+         (wms_service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE || wms_service->getmap_strategy == MAPCACHE_GETMAP_ANIMATE))
       )) {
     /* if we're here, then we have succesfully parsed the request and can treat it ourselves, i.e. from cached tiles */
     return;

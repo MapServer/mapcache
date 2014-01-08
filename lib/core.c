@@ -410,7 +410,9 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   mapcache_image_format *format = NULL;
   mapcache_http_response *response;
   mapcache_map *basemap = NULL;
+  mapcache_image **animatedframes = NULL;
   char *timestr;
+  int numframes = 0;
 #ifdef DEBUG
   if(req_map->nmaps ==0) {
     ctx->set_error(ctx,500,"BUG: get_map called with 0 maps");
@@ -431,6 +433,41 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
     basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
     if(GC_HAS_ERROR(ctx)) return NULL;
+  } else if(req_map->getmap_strategy == MAPCACHE_GETMAP_ANIMATE) {
+    /* merge all non animated dimensions with each dimension */
+    int i, frame, frameidx = 0, nummaps = 0, currentframe = 0;
+    mapcache_map **map_frames = apr_pcalloc(ctx->pool, req_map->nmaps*sizeof(mapcache_map*));
+
+    for(i=0; i<req_map->nmaps; i++) {
+      if(apr_table_get(req_map->maps[i]->dimensions, req_map->maps[i]->tileset->timedimension->key) != NULL) {
+        numframes++;
+      }
+    }
+
+    animatedframes = apr_pcalloc(ctx->pool, numframes*sizeof(mapcache_image*));
+    for(frame=0; frame<numframes; frame++) {
+      frameidx = 0;
+      nummaps = 0;
+      for(i=0; i<req_map->nmaps; i++) {
+        if(apr_table_get(req_map->maps[i]->dimensions, req_map->maps[i]->tileset->timedimension->key) != NULL) {
+          if(frameidx == currentframe) {
+            frameidx = 999999;
+            currentframe++;
+          } else {
+            frameidx++;
+            continue;
+          }
+        }
+        map_frames[nummaps] = req_map->maps[i];
+        nummaps++;
+      }
+
+      basemap = mapcache_assemble_maps(ctx, map_frames, nummaps, req_map->resample_mode);
+      if(basemap->raw_image)
+          animatedframes[frame] = basemap->raw_image;
+      if(GC_HAS_ERROR(ctx)) return NULL;
+    }
+
   } else if(!ctx->config->non_blocking && req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD) {
     int i;
     basemap = req_map->maps[0];
@@ -467,7 +504,13 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
     return NULL;
   }
 
-  if(basemap->raw_image) {
+  if(req_map->getmap_strategy == MAPCACHE_GETMAP_ANIMATE && animatedframes[0]) {
+    format = req_map->getmap_format; /* always defined, defaults to JPEG */
+    response->data = format->write_frames(ctx, animatedframes, numframes, format);
+    if(GC_HAS_ERROR(ctx)) {
+      return NULL;
+    }
+  } else if(basemap->raw_image) {
     format = req_map->getmap_format; /* always defined, defaults to JPEG */
     response->data = format->write(ctx,basemap->raw_image,format);
     if(GC_HAS_ERROR(ctx)) {
