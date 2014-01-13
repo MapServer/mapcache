@@ -749,6 +749,7 @@ static void _mapcache_cache_mbtiles_multi_set(mapcache_context *ctx, mapcache_ti
     }
   }
   conn = _sqlite_get_conn(ctx, &tiles[0], 0);
+  GC_CHECK_ERROR(ctx);
 
   sqlite3_exec(conn->handle, "BEGIN TRANSACTION", 0, 0, 0);
   for (i = 0; i < ntiles; i++) {
