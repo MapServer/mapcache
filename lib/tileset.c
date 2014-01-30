@@ -194,10 +194,10 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
 
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
   mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
-  Mx = MAPCACHE_MAX(tr_x,bl_x);
-  My = MAPCACHE_MAX(tr_y,bl_y);
-  mx = MAPCACHE_MIN(tr_x,bl_x);
-  my = MAPCACHE_MIN(tr_y,bl_y);
+  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),grid_link->grid_limits[level].maxx),grid_link->grid_limits[level].minx);
+  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),grid_link->grid_limits[level].maxy),grid_link->grid_limits[level].miny);
+  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),grid_link->grid_limits[level].minx),grid_link->grid_limits[level].maxx);
+  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),grid_link->grid_limits[level].miny),grid_link->grid_limits[level].maxy);
   *ntiles = (Mx-mx+1)*(My-my+1);
   i=0;
   *tiles = (mapcache_tile**)apr_pcalloc(ctx->pool, *ntiles*sizeof(mapcache_tile*));
@@ -340,7 +340,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
   } else {
     switch(mode) {
       case MAPCACHE_RESAMPLE_BILINEAR:
-        mapcache_image_copy_resampled_bilinear(ctx,srcimage,image,dstminx,dstminy,hf,vf);
+        mapcache_image_copy_resampled_bilinear(ctx,srcimage,image,dstminx,dstminy,hf,vf,0);
         break;
       default:
         mapcache_image_copy_resampled_nearest(ctx,srcimage,image,dstminx,dstminy,hf,vf);
@@ -691,7 +691,7 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
      * ctx->log(ctx, MAPCACHE_DEBUG, "factor: %g. start: %g,%g (im size: %g)",scalefactor,dstminx,dstminy,scalefactor*256);
      */
     if(scalefactor <= tile->grid_link->grid->tile_sx/2) /*FIXME: might fail for non-square tiles, also check tile_sy */
-      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor);
+      mapcache_image_copy_resampled_bilinear(ctx,childtile->raw_image,tile->raw_image,dstminx,dstminy,scalefactor,scalefactor,1);
     else {
       /* no use going through bilinear resampling if the requested scalefactor maps less than 4 pixels onto the
       * resulting tile, plus pixman has some rounding bugs in this case, see
@@ -828,6 +828,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 
       mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
     }
+    GC_CHECK_ERROR(ctx);
 
     /* the previous step has successfully finished, we can now query the cache to return the tile content */
     ret = tile->tileset->cache->tile_get(ctx, tile);

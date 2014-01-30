@@ -889,7 +889,7 @@ mapcache_image* mapcache_image_create_with_data(mapcache_context *ctx, int width
 void mapcache_image_copy_resampled_nearest(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
     double off_x, double off_y, double scale_x, double scale_y);
 void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_image *src, mapcache_image *dst,
-    double off_x, double off_y, double scale_x, double scale_y);
+    double off_x, double off_y, double scale_x, double scale_y, int reflect_edges);
 
 
 /**
