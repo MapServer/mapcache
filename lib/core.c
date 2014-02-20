@@ -196,7 +196,9 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 {
   int expires = 0;
   mapcache_http_response *response;
-  int i,is_empty=1 /* response image is initially empty */;
+  int i,is_empty=1; /* response image is initially empty */;
+  int header_only=0;
+  mapcache_tile *ht = NULL;
   char *timestr;
   mapcache_image *base=NULL;
   mapcache_image_format *format = NULL;
@@ -208,11 +210,29 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 #endif
   response = mapcache_http_response_create(ctx->pool);
+  
+  if(ctx->supports_redirects && req_tile->ntiles == 1) {
+    ht = req_tile->tiles[0];
+    if(ht->tileset->read_only && ht->tileset->cache->type == MAPCACHE_CACHE_REST) {
+      mapcache_cache_rest *rc = (mapcache_cache_rest*)ht->tileset->cache;
+      if(rc->use_redirects) {
+        ht->allow_redirect = 1;
+        header_only = 1;
+      }
+    }
+  }
 
 
   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles);
   if(GC_HAS_ERROR(ctx))
     return NULL;
+
+  if(header_only && ht->redirect) {
+    response->code = 302;
+    apr_table_set(response->headers,"Location",ht->redirect);
+    response->data = mapcache_buffer_create(0, ctx->pool);
+    return response;
+  }
 
   /* loop through tiles, and eventually merge them vertically together */
   for(i=0; i<req_tile->ntiles; i++) {

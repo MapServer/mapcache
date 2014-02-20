@@ -498,6 +498,14 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   }
   if(!strcmp(type,"disk")) {
     cache = mapcache_cache_disk_create(ctx);
+  } else if(!strcmp(type,"rest")) {
+    cache = mapcache_cache_rest_create(ctx);
+  } else if(!strcmp(type,"s3")) {
+    cache = mapcache_cache_s3_create(ctx);
+  } else if(!strcmp(type,"azure")) {
+    cache = mapcache_cache_azure_create(ctx);
+  } else if(!strcmp(type,"google")) {
+    cache = mapcache_cache_google_create(ctx);
   } else if(!strcmp(type,"bdb")) {
 #ifdef USE_BDB
     cache = mapcache_cache_bdb_create(ctx);

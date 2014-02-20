@@ -439,6 +439,69 @@
       <base>/tmp/</base> <!-- will create /tmp/tokyocabinet.tcb , not configurable yet -->
       <key_template>{tileset}-{grid}-{dim}-{z}-{y}-{x}.{ext}</key_template>
    </cache>
+   
+   <cache name="myrestcache" type="rest">
+     <url>https://myserver/webdav/{tileset}/{grid}/{z}/{x}/{y}.{ext}</url>
+     <headers>
+       <Host>my-virtualhost-alias.domain.com</Host>
+     </headers>
+     <operation type="put">
+       <headers>
+         <X-my-specific-put-header>foo</X-my-specific-put-header>
+       </headers>
+     </operation>
+     <operation type="get">
+       <headers>
+         <X-my-specific-get-header>foo</X-my-specific-get-header>
+       </headers>
+     </operation>
+     <operation type="head">
+       <headers>
+         <X-my-specific-head-header>foo</X-my-specific-head-header>
+       </headers>
+     </operation>
+     <operation type="delete">
+       <headers>
+         <X-my-specific-delete-header>foo</X-my-specific-delete-header>
+       </headers>
+     </operation>
+   </cache>
+   <cache name="s3" type="s3">
+     <url>https://foo.s3.amazonaws.com/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>foo.s3.amazonaws.com</Host>
+     </headers>
+     <id>foo</id>
+     <secret>foo/sdsvd</secret>
+     <region>eu-west-1</region>
+     <operation type="put">
+       <headers>
+         <x-amz-storage-class>REDUCED_REDUNDANCY</x-amz-storage-class>
+         <x-amz-acl>public-read</x-amz-acl>
+       </headers>
+   </operation>
+   </cache>
+   <cache name="azure" type="azure">
+     <url>https://foo.blob.core.windows.net/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>foo.blob.core.windows.net</Host>
+     </headers>
+     <id>foo</id>
+     <secret>foobarcccccccccccccccccccccyA==</secret>
+     <container>tiles</container>
+   </cache>
+
+   <cache name="google" type="google">
+     <url>https://storage.googleapis.com/mytiles-mapcache/{tileset}/{grid}/{z}/{x}/{y}.{ext}</url>
+     <access>GOOGPGDWFDG345SDFGSD</access>
+     <secret>sdfgsdSDFwedfwefr2345324dfsGdsfgs</secret>
+     <operation type="put">
+       <headers>
+         <x-amz-acl>public-read</x-amz-acl>
+       </headers>
+     </operation>
+   </cache>
+
 
    <!-- format
 
