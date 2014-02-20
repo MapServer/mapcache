@@ -560,6 +560,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   mapcache_tileset *tileset = NULL;
   ezxml_t cur_node;
   char* value;
+  const char *attr = NULL;
   int havewgs84bbox=0;
   if(config->mode == MAPCACHE_MODE_NORMAL) {
     name = (char*)ezxml_attr(node,"name");
@@ -800,6 +801,10 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
     mapcache_tileset_add_watermark(ctx,tileset,cur_node->txt);
     GC_CHECK_ERROR(ctx);
+
+    attr = ezxml_attr(cur_node,"onrequest");
+    if(attr && !strcasecmp(attr, "true"))
+      tileset->watermark_on_request = 1;
   }
 
 

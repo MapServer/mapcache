@@ -481,6 +481,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->metabuffer = 0;
   tileset->expires = 300; /*set a reasonable default to 5 mins */
   tileset->auto_expire = 0;
+  tileset->watermark_on_request = 0;
   tileset->read_only = 0;
   tileset->metadata = apr_table_make(ctx->pool,3);
   tileset->dimensions = NULL;
@@ -507,6 +508,7 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
   dst->cache = src->cache;
   dst->source = src->source;
   dst->watermark = src->watermark;
+  dst->watermark_on_request = src->watermark_on_request;
   dst->wgs84bbox = src->wgs84bbox;
   dst->format = src->format;
   return dst;

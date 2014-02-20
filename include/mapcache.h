@@ -1257,6 +1257,11 @@ struct mapcache_tileset {
    */
   int auto_expire;
 
+  /**
+   * if the watermark should only be applied on request and not on storing the tile
+   */
+  int watermark_on_request;
+
   int read_only;
 
   /**
