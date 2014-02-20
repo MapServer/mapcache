@@ -840,9 +840,11 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
       if(isLocked == MAPCACHE_FALSE) {
         ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
                        tile->tileset->name);
+        return;
       } else {
         /* shouldn't really happen, as the error ought to have been caught beforehand */
         ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+        return;
       }
     }
   }
