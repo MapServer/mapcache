@@ -314,7 +314,8 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
             break;
         }
         tileimg->data = &(metatile->data[sy*metatile->stride + 4 * sx]);
-        if(mt->map.tileset->watermark) {
+        if(mt->map.tileset->watermark && !mt->map.tileset->watermark_on_request) {
+          /* do not put watermark on cached tile if watermark_on_request is set */
           mapcache_image_merge(ctx,tileimg,mt->map.tileset->watermark);
           GC_CHECK_ERROR(ctx);
         }
