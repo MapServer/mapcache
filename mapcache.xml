@@ -3,27 +3,38 @@
 <!-- see the accompanying mapcache.xml.sample for a fully commented configuration file -->
 
 <mapcache>
-   <cache name="disk" type="disk">
-      <base>/tmp</base>
-      <symlink_blank/>
+   <cache name="rest" type="s3">
+     <url>https://account.s3.amazonaws.com/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>account.s3.amazonaws.com</Host>
+     </headers>
+     <id>xxxxxxxxxxxxxxxxxxxxxx</id>
+     <secret>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</secret>
+     <region>eu-west-1</region>
+     <operation type="put">
+       <headers>
+         <x-amz-storage-class>REDUCED_REDUNDANCY</x-amz-storage-class>
+         <x-amz-acl>public-read</x-amz-acl>
+       </headers>
+   </operation>
    </cache>
 
    <source name="vmap0" type="wms">
       <getmap>
          <params>
             <FORMAT>image/png</FORMAT>
-            <LAYERS>basic</LAYERS>
+            <LAYERS>nexrad_base_reflect</LAYERS>
          </params>
       </getmap>
       
       <http>
-         <url>http://vmap0.tiles.osgeo.org/wms/vmap0</url>
+         <url>http://server/cgi-bin/wms/nexrad/n0r.cgi</url>
       </http>
    </source>
    
    <tileset name="test">
       <source>vmap0</source>
-      <cache>disk</cache>
+      <cache>rest</cache>
       <grid>WGS84</grid>
       <grid>g</grid>
       <format>PNG</format>

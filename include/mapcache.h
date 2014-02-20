@@ -103,6 +103,8 @@ typedef struct mapcache_source_wms mapcache_source_wms;
 typedef struct mapcache_source_gdal mapcache_source_gdal;
 #endif
 typedef struct mapcache_cache_disk mapcache_cache_disk;
+typedef struct mapcache_cache_rest mapcache_cache_rest;
+typedef struct mapcache_cache_s3 mapcache_cache_s3;
 #ifdef USE_TIFF
 typedef struct mapcache_cache_tiff mapcache_cache_tiff;
 #endif
@@ -355,7 +357,8 @@ struct mapcache_source_gdal {
 
 /** @{ */
 typedef enum {
-  MAPCACHE_CACHE_DISK
+  MAPCACHE_CACHE_DISK,
+  MAPCACHE_CACHE_REST
 #ifdef USE_MEMCACHE
   ,MAPCACHE_CACHE_MEMCACHE
 #endif
@@ -426,6 +429,66 @@ struct mapcache_cache_disk {
    * \memberof mapcache_cache_disk
    */
   void (*tile_key)(mapcache_context *ctx, mapcache_tile *tile, char **path);
+};
+
+
+typedef enum {
+  MAPCACHE_REST_METHOD_GET,
+  MAPCACHE_REST_METHOD_HEAD,
+  MAPCACHE_REST_METHOD_PUT,
+  MAPCACHE_REST_METHOD_POST,
+  MAPCACHE_REST_METHOD_DELETE
+} mapcache_rest_method;
+
+typedef enum {
+  MAPCACHE_REST_PROVIDER_NONE,
+  MAPCACHE_REST_PROVIDER_S3,
+  MAPCACHE_REST_PROVIDER_AZURE,
+} mapcache_rest_provider;
+
+void sha256(const unsigned char *message, unsigned int len, unsigned char *digest);
+void hmac_sha256(const unsigned char *message, unsigned int message_len,
+          const unsigned char *key, unsigned int key_size,
+          unsigned char *mac, unsigned mac_size);
+void sha_hex_encode(unsigned char *sha, unsigned int sha_size);
+
+typedef struct mapcache_rest_operation mapcache_rest_operation;
+struct mapcache_rest_operation {
+  apr_table_t *headers;
+  mapcache_rest_method method;
+  char *tile_url;
+  void (*add_headers)(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers);
+};
+
+typedef struct mapcache_rest_configuration mapcache_rest_configuration;
+struct mapcache_rest_configuration {
+  apr_table_t *common_headers;
+  char *tile_url;
+  mapcache_rest_operation has_tile;
+  mapcache_rest_operation get_tile;
+  mapcache_rest_operation set_tile;
+  mapcache_rest_operation multi_set_tile;
+  mapcache_rest_operation delete_tile;
+  void (*add_headers)(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers);
+};
+
+/**\class mapcache_cache_rest
+ * \brief a mapcache_cache on a 3rd party HTTP Rest API
+ * \implements mapcache_cache
+ */
+struct mapcache_cache_rest {
+  mapcache_cache cache;
+  mapcache_rest_configuration rest;
+  int use_redirects;
+  int retry_count;
+  mapcache_rest_provider provider;
+};
+
+struct mapcache_cache_s3 {
+  mapcache_cache_rest cache;
+  char *id;
+  char *secret;
+  char *region;
 };
 
 #ifdef USE_TIFF
@@ -1095,6 +1158,12 @@ mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx);
  * \memberof mapcache_cache_disk
  */
 mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx);
+
+/**
+ * \memberof mapcache_cache_rest
+ */
+mapcache_cache* mapcache_cache_rest_create(mapcache_context *ctx);
+mapcache_cache* mapcache_cache_s3_create(mapcache_context *ctx);
 
 #ifdef USE_TIFF
 /**
