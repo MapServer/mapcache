@@ -105,6 +105,7 @@ typedef struct mapcache_source_gdal mapcache_source_gdal;
 typedef struct mapcache_cache_disk mapcache_cache_disk;
 typedef struct mapcache_cache_rest mapcache_cache_rest;
 typedef struct mapcache_cache_s3 mapcache_cache_s3;
+typedef struct mapcache_cache_azure mapcache_cache_azure;
 #ifdef USE_TIFF
 typedef struct mapcache_cache_tiff mapcache_cache_tiff;
 #endif
@@ -451,6 +452,7 @@ void hmac_sha256(const unsigned char *message, unsigned int message_len,
           const unsigned char *key, unsigned int key_size,
           unsigned char *mac, unsigned mac_size);
 void sha_hex_encode(unsigned char *sha, unsigned int sha_size);
+char *base64_encode(apr_pool_t *pool, const unsigned char *data, size_t input_length);
 
 typedef struct mapcache_rest_operation mapcache_rest_operation;
 struct mapcache_rest_operation {
@@ -489,6 +491,13 @@ struct mapcache_cache_s3 {
   char *id;
   char *secret;
   char *region;
+};
+
+struct mapcache_cache_azure {
+  mapcache_cache_rest cache;
+  char *id;
+  char *secret;
+  char *container;
 };
 
 #ifdef USE_TIFF
@@ -1164,6 +1173,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx);
  */
 mapcache_cache* mapcache_cache_rest_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_s3_create(mapcache_context *ctx);
+mapcache_cache* mapcache_cache_azure_create(mapcache_context *ctx);
 
 #ifdef USE_TIFF
 /**

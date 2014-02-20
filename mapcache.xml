@@ -3,13 +3,13 @@
 <!-- see the accompanying mapcache.xml.sample for a fully commented configuration file -->
 
 <mapcache>
-   <cache name="rest" type="s3">
-     <url>https://account.s3.amazonaws.com/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+   <cache name="s3" type="s3">
+     <url>https://foo.s3.amazonaws.com/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
      <headers>
-       <Host>account.s3.amazonaws.com</Host>
+       <Host>foo.s3.amazonaws.com</Host>
      </headers>
-     <id>xxxxxxxxxxxxxxxxxxxxxx</id>
-     <secret>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</secret>
+     <id>foo</id>
+     <secret>foo/sdsvd</secret>
      <region>eu-west-1</region>
      <operation type="put">
        <headers>
@@ -17,6 +17,15 @@
          <x-amz-acl>public-read</x-amz-acl>
        </headers>
    </operation>
+   </cache>
+   <cache name="azure" type="azure">
+     <url>https://foo.blob.core.windows.net/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>foo.blob.core.windows.net</Host>
+     </headers>
+     <id>foo</id>
+     <secret>foobarcccccccccccccccccccccyA==</secret>
+     <container>tiles</container>
    </cache>
 
    <source name="vmap0" type="wms">
@@ -34,7 +43,7 @@
    
    <tileset name="test">
       <source>vmap0</source>
-      <cache>rest</cache>
+      <cache>azure</cache>
       <grid>WGS84</grid>
       <grid>g</grid>
       <format>PNG</format>
