@@ -854,6 +854,23 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     apr_time_t expire_time = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
     tile->expires = apr_time_sec(expire_time-now);
   }
+
+  /* apply watermark if desired */
+  if(tile->encoded_data && tile->tileset->watermark_on_request && tile->tileset->watermark) {
+    mapcache_image_format *format = NULL;
+
+    if(tile->encoded_data)
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+
+    mapcache_image_merge(ctx, tile->raw_image, tile->tileset->watermark);
+
+    format = tile->tileset->format;
+    if(!format)
+      format = ctx->config->default_image_format; /* always defined */
+
+    /* write altered image back to encoded_data for later use */
+    tile->encoded_data = format->write(ctx, tile->raw_image, format);
+  }
 }
 
 void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, int whole_metatile)
