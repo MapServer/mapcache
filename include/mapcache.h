@@ -420,6 +420,7 @@ struct mapcache_cache_disk {
   char *filename_template;
   int symlink_blank;
   int creation_retry;
+  int create_world_file;
 
   /**
    * Set filename for a given tile
@@ -436,6 +437,7 @@ struct mapcache_cache_tiff {
   int count_x;
   int count_y;
   mapcache_image_format_jpeg *format;
+  int create_world_file;
 };
 #endif
 

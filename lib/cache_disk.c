@@ -601,50 +601,53 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
         apr_file_close(f);
       }
 
-      char osTFWText[1024];
-      char *path;
-      apr_file_t *f2;
-      double tileresolution, dstminx, dstminy, hf, vf;
-      mapcache_extent tilebox;
-      mapcache_extent *bbox;
-      bbox = &tilebox;
+      /* create world file if desired */
+      if(((mapcache_cache_disk*)tile->tileset->cache)->create_world_file) {
+        char osTFWText[1024];
+        char *path;
+        apr_file_t *f2;
+        double tileresolution, dstminx, dstminy, hf, vf;
+        mapcache_extent tilebox;
+        mapcache_extent *bbox;
+        bbox = &tilebox;
 
-      mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
-      tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+        mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+        tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
 
-      dstminx = tilebox.minx;
-      dstminy = tilebox.maxy;
-      hf = tileresolution;
-      vf = tileresolution * (-1.0);
+        dstminx = tilebox.minx;
+        dstminy = tilebox.maxy;
+        hf = tileresolution;
+        vf = tileresolution * (-1.0);
 
-      sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
-                        hf,
-                        0.0,
-                        0.0,
-                        vf,
-                        dstminx,
-                        dstminy);
+        sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                           hf,
+                           0.0,
+                           0.0,
+                           vf,
+                           dstminx,
+                           dstminy);
 
-      _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+        _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
 
-      if((ret = apr_file_open(&f2, path,
-                              APR_FOPEN_CREATE|APR_FOPEN_WRITE,
-                              APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
-        ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+        if((ret = apr_file_open(&f2, path,
+                                APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                                APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+          ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+          mapcache_unlock_resource(ctx,path);
+          return; /* we could not create the file */
+        }
+
+        ret = apr_file_puts(osTFWText, f2);
+        if(ret != APR_SUCCESS) {
+          ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+          mapcache_unlock_resource(ctx,path);
+          return; /* we could not create the file */
+        }
+
+        apr_file_close(f2);
+
         mapcache_unlock_resource(ctx,path);
-        return; /* we could not create the file */
       }
-
-      ret = apr_file_puts(osTFWText, f2);
-      if(ret != APR_SUCCESS) {
-        ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
-        mapcache_unlock_resource(ctx,path);
-        return; /* we could not create the file */
-      }
-
-      apr_file_close(f2);
-
-      mapcache_unlock_resource(ctx,path);
 
       int retry_count_create_symlink = 0;
 
@@ -730,71 +733,74 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
     return; /* we could not create the file */
   }
 
-  char osTFWText[1024];
-  char *path;
-  apr_file_t *f2;
-  double tileresolution, dstminx, dstminy, hf, vf;
-  mapcache_extent tilebox;
-  mapcache_extent *bbox;
-  bbox = &tilebox;
+  /* create world file if desired */
+  if(((mapcache_cache_disk*)tile->tileset->cache)->create_world_file) {
+    char osTFWText[1024];
+    char *path;
+    apr_file_t *f2;
+    double tileresolution, dstminx, dstminy, hf, vf;
+    mapcache_extent tilebox;
+    mapcache_extent *bbox;
+    bbox = &tilebox;
 
-  mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
-  tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+    mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+    tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
 
-  /*compute the pixel position of top left corner*/
-  dstminx = tilebox.minx; //cause source bottom left
-  dstminy = tilebox.maxy;
-  hf = tileresolution;
-  vf = tileresolution * (-1.0);
+    /*compute the pixel position of top left corner*/
+    dstminx = tilebox.minx; //cause source bottom left
+    dstminy = tilebox.maxy;
+    hf = tileresolution;
+    vf = tileresolution * (-1.0);
 
-  sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
-                        hf,
-                        0.0,
-                        0.0,
-                        vf,
-                        dstminx,
-                        dstminy);
+    sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                       hf,
+                       0.0,
+                       0.0,
+                       vf,
+                       dstminx,
+                       dstminy);
 
-  _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+    _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
 
-  retry_count_create_file = 0;
-  /*
-   * depending on configuration file creation will retry if it fails.
-   * this can happen on nfs mounted network storage.
-   * the solution is to create the containing directory again and retry the file creation.
-   */
-  while((ret = apr_file_open(&f2, path,
-                             APR_FOPEN_CREATE|APR_FOPEN_WRITE,
-                             APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
-    retry_count_create_file++;
+    retry_count_create_file = 0;
+    /*
+     * depending on configuration file creation will retry if it fails.
+     * this can happen on nfs mounted network storage.
+     * the solution is to create the containing directory again and retry the file creation.
+     */
+    while((ret = apr_file_open(&f2, path,
+                               APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                               APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+      retry_count_create_file++;
 
-    if(retry_count_create_file > creation_retry) {
-      ctx->set_error(ctx, 500, "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+      if(retry_count_create_file > creation_retry) {
+        ctx->set_error(ctx, 500, "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+        return; /* we could not create the file */
+      }
+
+      *hackptr2 = '\0';
+
+      if(APR_SUCCESS != (ret = apr_dir_make_recursive(path,APR_OS_DEFAULT,ctx->pool))) {
+        if(!APR_STATUS_IS_EEXIST(ret)) {
+          ctx->set_error(ctx, 500, "failed to create file, can not create directory %s: %s",path, apr_strerror(ret,errmsg,120));
+          return; /* we could not create the file */
+        }
+      }
+
+      *hackptr2 = '/';
+    }
+
+    ret = apr_file_puts(osTFWText, f2);
+    if(ret != APR_SUCCESS) {
+      ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+      mapcache_unlock_resource(ctx,path);
       return; /* we could not create the file */
     }
 
-    *hackptr2 = '\0';
+    apr_file_close(f2);
 
-    if(APR_SUCCESS != (ret = apr_dir_make_recursive(path,APR_OS_DEFAULT,ctx->pool))) {
-      if(!APR_STATUS_IS_EEXIST(ret)) {
-        ctx->set_error(ctx, 500, "failed to create file, can not create directory %s: %s",path, apr_strerror(ret,errmsg,120));
-        return; /* we could not create the file */
-      }
-    }
-
-    *hackptr2 = '/';
-  }
-
-  ret = apr_file_puts(osTFWText, f2);
-  if(ret != APR_SUCCESS) {
-    ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
     mapcache_unlock_resource(ctx,path);
-    return; /* we could not create the file */
   }
-
-  apr_file_close(f2);
-
-  mapcache_unlock_resource(ctx,path);
 
   if(bytes != tile->encoded_data->size) {
     ctx->set_error(ctx, 500, "failed to write image data to %s, wrote %d of %d bytes", filename, (int)bytes, (int)tile->encoded_data->size);
@@ -854,6 +860,10 @@ static void _mapcache_cache_disk_configuration_parse_xml(mapcache_context *ctx, 
   if ((cur_node = ezxml_child(node,"creation_retry")) != NULL) {
     dcache->creation_retry = atoi(cur_node->txt);
   }
+
+  if (ezxml_child(node, "create_world_file")) {
+    dcache->create_world_file = 1;
+  }
 }
 
 /**
@@ -883,6 +893,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
   }
   cache->symlink_blank = 0;
   cache->creation_retry = 0;
+  cache->create_world_file = 0;
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_DISK;
   cache->cache.tile_delete = _mapcache_cache_disk_delete;

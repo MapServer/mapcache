@@ -742,53 +742,56 @@ close_tiff:
   ctx->set_error(ctx,500,"tiff write support disabled by default");
 #endif
 
-  char osTFWText[1024];
-  char *path;
-  apr_file_t *f2;
-  double tileresolution, dstminx, dstminy, hf, vf;
-  mapcache_extent tilebox;
-  mapcache_extent *bbox;
-  bbox = &tilebox;
+  /* create world file if desired */
+  if(dcache->create_world_file) {
+    char osTFWText[1024];
+    char *path;
+    apr_file_t *f2;
+    double tileresolution, dstminx, dstminy, hf, vf;
+    mapcache_extent tilebox;
+    mapcache_extent *bbox;
+    bbox = &tilebox;
 
-  mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
-  tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
+    mapcache_grid_get_extent(ctx, tile->grid_link->grid, tile->x, tile->y, tile->z, &tilebox);
+    tileresolution = tile->grid_link->grid->levels[tile->z]->resolution;
 
-  /*compute the pixel position of top left corner*/
-  dstminx = tilebox.minx;
-  dstminy = tilebox.miny;
-  hf = tileresolution;
-  vf = tileresolution;
+    /*compute the pixel position of top left corner*/
+    dstminx = tilebox.minx;
+    dstminy = tilebox.miny;
+    hf = tileresolution;
+    vf = tileresolution;
 
-  sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
-                        hf,
-                        0.0,
-                        0.0,
-                        vf,
-                        dstminx,
-                        dstminy);
+    sprintf(osTFWText, "%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n%.10f\n",
+                       hf,
+                       0.0,
+                       0.0,
+                       vf,
+                       dstminx,
+                       dstminy);
 
-  _mapcache_cache_tiff_tile_key(ctx, tile, &path);
-  if(strstr(*path,".tif"))
-    *path = mapcache_util_str_replace(ctx->pool,*path, ".tif", ".tfw");
+    _mapcache_cache_tiff_tile_key(ctx, tile, &path);
+    if(strstr(*path,".tif"))
+      *path = mapcache_util_str_replace(ctx->pool,*path, ".tif", ".tfw");
 
-  if((ret = apr_file_open(&f2, path,
-                          APR_FOPEN_CREATE|APR_FOPEN_WRITE,
-                          APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
-    ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+    if((ret = apr_file_open(&f2, path,
+                            APR_FOPEN_CREATE|APR_FOPEN_WRITE,
+                            APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
+      ctx->set_error(ctx, 500,  "failed to create file %s: %s",path, apr_strerror(ret,errmsg,120));
+      mapcache_unlock_resource(ctx,path);
+      return; /* we could not create the file */
+    }
+
+    ret = apr_file_puts(osTFWText, f2);
+    if(ret != APR_SUCCESS) {
+      ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
+      mapcache_unlock_resource(ctx,path);
+      return; /* we could not create the file */
+    }
+
+    apr_file_close(f2);
+
     mapcache_unlock_resource(ctx,path);
-    return; /* we could not create the file */
   }
-
-  ret = apr_file_puts(osTFWText, f2);
-  if(ret != APR_SUCCESS) {
-    ctx->set_error(ctx, 500,  "failed to write data to file %s : %s",path, apr_strerror(ret,errmsg,120));
-    mapcache_unlock_resource(ctx,path);
-    return; /* we could not create the file */
-  }
-
-  apr_file_close(f2);
-
-  mapcache_unlock_resource(ctx,path);
 }
 
 /**
@@ -880,6 +883,10 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
     return;
   }
   dcache->format = (mapcache_image_format_jpeg*)pformat;
+
+  if(ezxml_child(node, "create_world_file")) {
+    dcache->create_world_file = 1;
+  }
 }
 
 /**
@@ -920,6 +927,7 @@ mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx)
   cache->cache.configuration_parse_xml = _mapcache_cache_tiff_configuration_parse_xml;
   cache->count_x = 10;
   cache->count_y = 10;
+  cache->create_world_file = 0;
   cache->x_fmt = cache->y_fmt = cache->z_fmt
                                 = cache->inv_x_fmt = cache->inv_y_fmt
                                     = cache->div_x_fmt = cache->div_y_fmt
