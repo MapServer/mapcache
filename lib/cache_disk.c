@@ -493,7 +493,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
   apr_status_t ret;
   char errmsg[120];
   char *filename, *hackptr1, *hackptr2=NULL;
-  const int creation_retry = ((mapcache_cache_disk*)tile->tileset->cache)->creation_retry;
+  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
+  const int creation_retry = dcache->creation_retry;
   int retry_count_create_file = 0;
 
 #ifdef DEBUG
@@ -508,7 +509,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
   }
 #endif
 
-  ((mapcache_cache_disk*)tile->tileset->cache)->tile_key(ctx, tile, &filename);
+  dcache->tile_key(ctx, tile, &filename);
   GC_CHECK_ERROR(ctx);
 
   /* find the location of the last '/' in the string */
@@ -539,7 +540,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
 
 
 #ifdef HAVE_SYMLINK
-  if(((mapcache_cache_disk*)tile->tileset->cache)->symlink_blank) {
+  if(dcache->symlink_blank) {
     if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
@@ -554,7 +555,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
         }
         /* create the blank file */
         char *blankdirname = apr_psprintf(ctx->pool, "%s/%s/%s/blanks",
-                                          ((mapcache_cache_disk*)tile->tileset->cache)->base_directory,
+                                          dcache->base_directory,
                                           tile->tileset->name,
                                           tile->grid_link->grid->name);
         if(APR_SUCCESS != (ret = apr_dir_make_recursive(
@@ -602,7 +603,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
       }
 
       /* create world file if desired */
-      if(((mapcache_cache_disk*)tile->tileset->cache)->create_world_file) {
+      if(dcache->create_world_file) {
         char osTFWText[1024];
         char *path;
         apr_file_t *f2;
@@ -734,7 +735,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
   }
 
   /* create world file if desired */
-  if(((mapcache_cache_disk*)tile->tileset->cache)->create_world_file) {
+  if(dcache->create_world_file) {
     char osTFWText[1024];
     char *path;
     apr_file_t *f2;
