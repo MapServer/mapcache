@@ -239,7 +239,7 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
       }
     }
   }
-  if(response->data) {
+  if(response->data && response->data->size) {
     ap_set_content_length(r,response->data->size);
     ap_rwrite((void*)response->data->buf, response->data->size, r);
   }
@@ -275,6 +275,7 @@ static int mod_mapcache_request_handler(request_rec *r)
 
   apache_ctx = apache_request_context_create(r);
   global_ctx = (mapcache_context*)apache_ctx;
+  global_ctx->supports_redirects = 1;
 
   params = mapcache_http_parse_param_string(global_ctx, r->args);
 

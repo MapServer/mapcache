@@ -707,6 +707,10 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_tile *tile)
   char *url;
   apr_table_t *headers;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.get_tile, &url);
+  if(tile->allow_redirect) {
+    tile->redirect = url;
+    return MAPCACHE_SUCCESS;
+  }
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.get_tile);
   if(rcache->rest.add_headers) {
     rcache->rest.add_headers(ctx,tile,url,headers);
@@ -780,6 +784,11 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
   mapcache_cache_rest *dcache = (mapcache_cache_rest*)cache;
   if ((cur_node = ezxml_child(node,"url")) != NULL) {
     dcache->rest.tile_url = apr_pstrdup(ctx->pool,cur_node->txt);
+  }
+  if ((cur_node = ezxml_child(node,"use_redirects")) != NULL) {
+    if(!strcasecmp(cur_node->txt,"true")) {
+      dcache->use_redirects = 1;
+    }
   }
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {
     ezxml_t header_node;

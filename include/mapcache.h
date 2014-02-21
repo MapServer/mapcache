@@ -219,6 +219,7 @@ struct mapcache_context {
   mapcache_cfg *config;
   mapcache_service *service;
   apr_table_t *exceptions;
+  int supports_redirects;
 };
 
 void mapcache_context_init(mapcache_context *ctx);
@@ -630,7 +631,7 @@ struct mapcache_request_get_tile {
    */
   int ntiles;
   mapcache_image_format *format;
-
+  int allow_redirect;
 };
 
 struct mapcache_http_response {
@@ -1204,6 +1205,8 @@ struct mapcache_tile {
    * \sa mapcache_image_format
    */
   mapcache_buffer *encoded_data;
+  char *redirect;
+  int allow_redirect;
   mapcache_image *raw_image;
   apr_time_t mtime; /**< last modification time */
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
