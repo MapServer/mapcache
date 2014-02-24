@@ -770,8 +770,8 @@ close_tiff:
                        dstminy);
 
     _mapcache_cache_tiff_tile_key(ctx, tile, &path);
-    if(strstr(*path,".tif"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, ".tif", ".tfw");
+
+    path = mapcache_util_str_replace(ctx->pool, path, ".tif", ".tfw");
 
     if((ret = apr_file_open(&f2, path,
                             APR_FOPEN_CREATE|APR_FOPEN_WRITE,
