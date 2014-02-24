@@ -74,8 +74,7 @@ static void _set_headers(mapcache_context *ctx, CURL *curl, apr_table_t *headers
   }
 }
 
-static void _put_request(mapcache_context *ctx, mapcache_buffer *buffer, char *url, apr_table_t *headers) {
-  CURL *curl;
+static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buffer, char *url, apr_table_t *headers) {
   CURLcode res;
   buffer_struct data;
   mapcache_buffer *response;
@@ -85,11 +84,6 @@ static void _put_request(mapcache_context *ctx, mapcache_buffer *buffer, char *u
 
   response = mapcache_buffer_create(10,ctx->pool);
 
-  curl = curl_easy_init();
-  if(!curl) {
-    ctx->set_error(ctx,500,"failed to create curl handle");
-    return;
-  }
   _set_headers(ctx, curl, headers);
   /* we want to use our own read function */ 
   curl_easy_setopt(curl, CURLOPT_READFUNCTION, buffer_read_callback);
@@ -132,8 +126,6 @@ static void _put_request(mapcache_context *ctx, mapcache_buffer *buffer, char *u
     }
   }
 
-  /* always cleanup */ 
-  curl_easy_cleanup(curl);
 }
 
 static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers) {
@@ -162,6 +154,7 @@ static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers)
   /* Check for errors */ 
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest head %s",curl_easy_strerror(res));
+    http_code = 500;
   } else {
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
@@ -197,6 +190,7 @@ static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *header
   /* Check for errors */ 
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest head %s",curl_easy_strerror(res));
+    http_code = 500;
   } else {
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
@@ -427,9 +421,9 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
   const apr_array_header_t *ahead;
   apr_table_entry_t *elts;
   int i,nCanonicalHeaders=0,cnt=0;
-  assert(tile->tileset->cache->type = MAPCACHE_CACHE_REST);
+  assert(tile->tileset->cache->type == MAPCACHE_CACHE_REST);
   mapcache_cache_rest *rest = (mapcache_cache_rest*)tile->tileset->cache;
-  assert(rest->provider = MAPCACHE_REST_PROVIDER_S3);
+  assert(rest->provider == MAPCACHE_REST_PROVIDER_AZURE);
   mapcache_cache_azure *azure = (mapcache_cache_azure*)tile->tileset->cache;
   time_t now = time(NULL);
   struct tm *tnow = gmtime(&now);
@@ -527,9 +521,9 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   apr_table_entry_t *elts;
 
   sha1[64]=sha2[64]=0;
-  assert(tile->tileset->cache->type = MAPCACHE_CACHE_REST);
+  assert(tile->tileset->cache->type == MAPCACHE_CACHE_REST);
   mapcache_cache_rest *rest = (mapcache_cache_rest*)tile->tileset->cache;
-  assert(rest->provider = MAPCACHE_REST_PROVIDER_S3);
+  assert(rest->provider == MAPCACHE_REST_PROVIDER_S3);
   mapcache_cache_s3 *s3 = (mapcache_cache_s3*)tile->tileset->cache;
 
   if(!strcmp(method,"PUT")) {
@@ -728,8 +722,56 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_tile *tile)
   return MAPCACHE_SUCCESS;
 }
 
+static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_tile *tiles, int ntiles) {
+  mapcache_cache_rest *rcache = (mapcache_cache_rest*)tiles[0].tileset->cache;
+  char *url;
+  apr_table_t *headers;
+  CURL *curl = curl_easy_init();
+  int i;
+
+  if(!curl) {
+    ctx->set_error(ctx,500,"failed to create curl handle");
+    return;
+  }
+
+  for(i=0; i<ntiles; i++) {
+    if(i)
+      curl_easy_reset(curl);
+    mapcache_tile *tile = tiles + i;
+    _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
+    headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+
+    if(!tile->encoded_data) {
+      tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+      if(GC_HAS_ERROR(ctx)) {
+        goto multi_put_cleanup;
+      }
+    }
+
+    apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
+    if(tile->tileset->format)
+      apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
+
+    if(rcache->rest.add_headers) {
+      rcache->rest.add_headers(ctx,tile,url,headers);
+    }
+    if(rcache->rest.set_tile.add_headers) {
+      rcache->rest.set_tile.add_headers(ctx,tile,url,headers);
+    }
+    _put_request(ctx, curl, tile->encoded_data, url, headers);
+    if(GC_HAS_ERROR(ctx)) {
+      goto multi_put_cleanup;
+    }
+  }
+
+multi_put_cleanup:
+  /* always cleanup */ 
+  curl_easy_cleanup(curl);
+
+}
+
 /**
- * \brief write tile data to disk
+ * \brief write tile data to rest backend
  *
  * writes the content of mapcache_tile::data to disk.
  * \returns MAPCACHE_FAILURE if there is no data to write, or if the tile isn't locked
@@ -739,27 +781,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_tile *tile)
  */
 static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_tile *tile)
 {
-  mapcache_cache_rest *rcache = (mapcache_cache_rest*)tile->tileset->cache;
-  char *url;
-  apr_table_t *headers;
-  _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
-  headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
-  if(!tile->encoded_data) {
-    tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
-    GC_CHECK_ERROR(ctx);
-  }
-  
-  apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
-  if(tile->tileset->format)
-    apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
-
-  if(rcache->rest.add_headers) {
-    rcache->rest.add_headers(ctx,tile,url,headers);
-  }
-  if(rcache->rest.set_tile.add_headers) {
-    rcache->rest.set_tile.add_headers(ctx,tile,url,headers);
-  }
-  _put_request(ctx, tile->encoded_data, url, headers);
+  return _mapcache_cache_rest_multi_set(ctx, tile, 1);
 }
 
 
@@ -914,6 +936,7 @@ void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache)
   cache->cache.tile_get = _mapcache_cache_rest_get;
   cache->cache.tile_exists = _mapcache_cache_rest_has_tile;
   cache->cache.tile_set = _mapcache_cache_rest_set;
+  cache->cache.tile_multi_set = _mapcache_cache_rest_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_rest_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_rest_configuration_parse_xml;
 }

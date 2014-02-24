@@ -554,6 +554,7 @@ mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
   tile->x = src->x;
   tile->y = src->y;
   tile->z = src->z;
+  tile->allow_redirect = src->allow_redirect;
   return tile;
 }
 
