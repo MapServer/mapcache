@@ -105,6 +105,40 @@ char* relative_path(mapcache_context *ctx, char* tilename, char* blankname)
 }
 
 /**
+ * \brief changes the file extension of a given filename
+ *
+ * \param filename string in which the extension should be replaced
+ * \param newext new extension which the resulting filename will get
+ */
+char *replace_file_extension(apr_pool_t *pool, char *filename, char *newext)
+{
+  char *dot  = NULL;
+  char *base = NULL;
+
+  assert(filename);
+  assert(newext);
+
+  /* skip dot if provided */
+  if(*newext == '.')
+    newext++;
+
+  assert(*newext);
+
+  dot = strrchr(filename, '.');
+  if(!dot)
+    /* filename did not contain a file extension,
+       this should never happen...
+       but if so: append the new file extension */
+    return apr_pstrcat(pool, filename, ".", newext, NULL);
+
+  /* get filename without extension (but including the dot) */
+  base = apr_pstrndup(pool, filename, dot - filename + 1);
+
+  /* append new file extension */
+  return apr_pstrcat(pool, base, newext, NULL);
+}
+
+/**
  * \brief returns base path for given tile
  *
  * \param tile the tile to get base path from
@@ -273,74 +307,6 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
     *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
   }
 
-  if(!*path) {
-    ctx->set_error(ctx,500, "failed to allocate tile key");
-  }
-}
-
-static void _mapcache_cache_disk_tilecache_tile_keytfw(mapcache_context *ctx, mapcache_tile *tile, char **path)
-{
-  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
-  if(dcache->base_directory) {
-    char *start;
-    _mapcache_cache_disk_base_tile_key(ctx, tile, &start);
-    *path = apr_psprintf(ctx->pool,"%s/%02d/%03d/%03d/%03d/%03d/%03d/%03d.%s",
-                         start,
-                         tile->z,
-                         tile->x / 1000000,
-                         (tile->x / 1000) % 1000,
-                         tile->x % 1000,
-                         tile->y / 1000000,
-                         (tile->y / 1000) % 1000,
-                         tile->y % 1000,
-                         "wld");
-  } else {
-    *path = dcache->filename_template;
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
-                                      "wld");
-    if(strstr(*path,"{x}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
-                                        apr_psprintf(ctx->pool,"%d",tile->x));
-    else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
-                                        apr_psprintf(ctx->pool,"%d",
-                                            tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1));
-    if(strstr(*path,"{y}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
-                                        apr_psprintf(ctx->pool,"%d",tile->y));
-    else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
-                                        apr_psprintf(ctx->pool,"%d",
-                                            tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1));
-    if(strstr(*path,"{z}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
-                                        apr_psprintf(ctx->pool,"%d",tile->z));
-    else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
-                                        apr_psprintf(ctx->pool,"%d",
-                                            tile->grid_link->grid->nlevels - tile->z - 1));
-    if(tile->dimensions) {
-      char *dimstring="";
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
-      while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-        char *dimval = apr_pstrdup(ctx->pool,entry->val);
-        char *iter = dimval;
-        while(*iter) {
-          /* replace dangerous characters by '#' */
-          if(*iter == '.' || *iter == '/') {
-            *iter = '#';
-          }
-          iter++;
-        }
-        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
-      }
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
-    }
-  }
   if(!*path) {
     ctx->set_error(ctx,500, "failed to allocate tile key");
   }
@@ -628,7 +594,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
                            dstminx,
                            dstminy);
 
-        _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+        path = replace_file_extension(ctx->pool, filename, "wld");
 
         if((ret = apr_file_open(&f2, path,
                                 APR_FOPEN_CREATE|APR_FOPEN_WRITE,
@@ -761,7 +727,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
                        dstminx,
                        dstminy);
 
-    _mapcache_cache_disk_tilecache_tile_keytfw(ctx, tile, &path);
+    path = replace_file_extension(ctx->pool, filename, "wld");
 
     retry_count_create_file = 0;
     /*
