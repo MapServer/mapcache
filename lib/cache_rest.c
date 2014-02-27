@@ -93,6 +93,9 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 #endif
 
   _set_headers(ctx, curl, headers);
+
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+
   /* we want to use our own read function */ 
   curl_easy_setopt(curl, CURLOPT_READFUNCTION, buffer_read_callback);
 
@@ -150,6 +153,8 @@ static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers)
   }
 
   _set_headers(ctx, curl, headers);
+  
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
   /* specify target URL, and note that this URL should include a file
    *        name, not only a directory */ 
@@ -187,6 +192,8 @@ static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *header
 
   _set_headers(ctx, curl, headers);
 
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+
   /* specify target URL, and note that this URL should include a file
    *        name, not only a directory */ 
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -223,6 +230,8 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, char *url, apr_table
   }
 
   _set_headers(ctx, curl, headers);
+
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
   data = mapcache_buffer_create(4000, ctx->pool);
 
