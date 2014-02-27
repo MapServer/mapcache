@@ -84,6 +84,14 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
   response = mapcache_buffer_create(10,ctx->pool);
 
+#if LIBCURL_VERSION_NUM < 0x071700
+  /* 
+   * hack around a bug in curl <= 7.22 where the content-length is added
+   * a second time even if ti was present in the manually set headers
+   */
+  apr_table_unset(headers, "Content-Length");
+#endif
+
   _set_headers(ctx, curl, headers);
   /* we want to use our own read function */ 
   curl_easy_setopt(curl, CURLOPT_READFUNCTION, buffer_read_callback);
@@ -103,7 +111,7 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
   /* provide the size of the upload, we specicially typecast the value
    *        to curl_off_t since we must be sure to use the correct data size */ 
-  curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE,(curl_off_t)buffer->size);
+  curl_easy_setopt(curl, CURLOPT_INFILESIZE, buffer->size);
   
   /* send all data to this function  */
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffer_write_callback);
