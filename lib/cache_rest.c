@@ -34,6 +34,7 @@
 #include <ctype.h>
 #include <curl/curl.h>
 #include <apr_base64.h>
+#include <apr_md5.h>
 
 typedef struct {
   mapcache_buffer *buffer;
@@ -431,6 +432,85 @@ static void header_gnome_sort(char **headers, int size)
     }
 }
 
+static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char* method, mapcache_tile *tile, char *url, apr_table_t *headers)
+{
+  char *stringToSign, **aheaders, *resource = url, x_amz_date[64];
+  const char *head;
+  const apr_array_header_t *ahead;
+  apr_table_entry_t *elts;
+  int i,nCanonicalHeaders=0,cnt=0;
+  assert(tile->tileset->cache->type == MAPCACHE_CACHE_REST);
+  mapcache_cache_rest *rest = (mapcache_cache_rest*)tile->tileset->cache;
+  assert(rest->provider == MAPCACHE_REST_PROVIDER_GOOGLE);
+  mapcache_cache_google *google = (mapcache_cache_google*)tile->tileset->cache;
+  time_t now = time(NULL);
+  struct tm *tnow = gmtime(&now);
+  unsigned char sha[65];
+  char b64[150];
+  sha[64]=0;
+
+  strftime(x_amz_date, 64 , "%a, %d %b %Y %H:%M:%S GMT", tnow);
+  apr_table_set(headers,"x-amz-date",x_amz_date);
+
+  if(!strcmp(method,"PUT")) {
+    assert(tile->encoded_data);
+    apr_md5(sha,tile->encoded_data->buf,tile->encoded_data->size);
+    apr_base64_encode(b64, (char*)sha, 16);
+    apr_table_set(headers, "Content-MD5", b64);
+  }
+
+  head = apr_table_get(headers, "Content-MD5");
+  if(!head) head = "";
+  stringToSign=apr_pstrcat(ctx->pool, method, "\n", head, "\n", NULL);
+  head = apr_table_get(headers, "Content-Type");
+  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  
+  /* Date: header, left empty as we are using x-amz-date */
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, "\n", NULL);
+
+  ahead = apr_table_elts(headers);
+  aheaders = apr_pcalloc(ctx->pool, ahead->nelts * sizeof(char*));
+  elts = (apr_table_entry_t *) ahead->elts;
+
+  for (i = 0; i < ahead->nelts; i++) {
+    if(!strncmp(elts[i].key,"x-amz-",6)) {
+      char *k = aheaders[nCanonicalHeaders] = apr_pstrdup(ctx->pool, elts[i].key);
+      while(*k) {
+        *k = tolower(*k);
+        k++;
+      }
+      nCanonicalHeaders++;
+    }
+  }
+  header_gnome_sort(aheaders, nCanonicalHeaders);
+
+  for(i=0; i<nCanonicalHeaders; i++) {
+    stringToSign = apr_pstrcat(ctx->pool, stringToSign, aheaders[i],":",apr_table_get(headers,aheaders[i]),"\n",NULL);
+  }
+  
+  /* find occurence of third "/" in url */
+  while(*resource) {
+    if(*resource == '/') cnt++;
+    if(cnt == 3) break;
+    resource++;
+  }
+  if(!*resource) {
+    ctx->set_error(ctx,500,"invalid google url provided");
+    return;
+  }
+  resource = url_encode(resource);
+
+  stringToSign = apr_pstrcat(ctx->pool, stringToSign, resource, NULL);
+
+  free(resource);
+
+  hmac_sha1(stringToSign, strlen(stringToSign), (unsigned char*)google->secret, strlen(google->secret), sha);
+
+  apr_base64_encode(b64, (char*)sha, 20);
+
+
+  apr_table_set( headers, "Authorization", apr_pstrcat(ctx->pool,"AWS ", google->access, ":", b64, NULL));
+}
 static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char* method, mapcache_tile *tile, char *url, apr_table_t *headers)
 {
   char *stringToSign, **aheaders, *canonical_headers="", *canonical_resource=NULL, *resource = url, x_ms_date[64];
@@ -653,6 +733,18 @@ static void _mapcache_cache_azure_head_headers_add(mapcache_context *ctx, mapcac
 static void _mapcache_cache_azure_delete_headers_add(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers) {
   _mapcache_cache_azure_headers_add(ctx, "DELETE", tile, url, headers);
 }
+static void _mapcache_cache_google_put_headers_add(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers) {
+  _mapcache_cache_google_headers_add(ctx, "PUT", tile, url, headers);
+}
+static void _mapcache_cache_google_get_headers_add(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers) {
+  _mapcache_cache_google_headers_add(ctx, "GET", tile, url, headers);
+}
+static void _mapcache_cache_google_head_headers_add(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers) {
+  _mapcache_cache_google_headers_add(ctx, "HEAD", tile, url, headers);
+}
+static void _mapcache_cache_google_delete_headers_add(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers) {
+  _mapcache_cache_google_headers_add(ctx, "DELETE", tile, url, headers);
+}
 
 
 static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_tile *tile)
@@ -862,6 +954,26 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
 
 }
 
+static void _mapcache_cache_google_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) 
+{
+  ezxml_t cur_node;
+  mapcache_cache_google *google = (mapcache_cache_google*)cache;
+  _mapcache_cache_rest_configuration_parse_xml(ctx, node, cache, config);
+  GC_CHECK_ERROR(ctx);
+  if ((cur_node = ezxml_child(node,"access")) != NULL) {
+    google->access = apr_pstrdup(ctx->pool, cur_node->txt);
+  } else {
+    ctx->set_error(ctx,400,"google cache (%s) is missing required <access> child", cache->name);
+    return;
+  }
+  if ((cur_node = ezxml_child(node,"secret")) != NULL) {
+    google->secret = apr_pstrdup(ctx->pool, cur_node->txt);
+  } else {
+    ctx->set_error(ctx,400,"google cache (%s) is missing required <secret> child", cache->name);
+    return;
+  }
+}
+
 static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) 
 {
   ezxml_t cur_node;
@@ -1011,6 +1123,27 @@ mapcache_cache* mapcache_cache_azure_create(mapcache_context *ctx)
   cache->cache.rest.delete_tile.add_headers = _mapcache_cache_azure_delete_headers_add;
   return (mapcache_cache*)cache;
 }
+
+/**
+ * \brief creates and initializes a mapcache_google_cache
+ */
+mapcache_cache* mapcache_cache_google_create(mapcache_context *ctx)
+{
+  mapcache_cache_google *cache = apr_pcalloc(ctx->pool,sizeof(mapcache_cache_google));
+  if(!cache) {
+    ctx->set_error(ctx, 500, "failed to allocate google cache");
+    return NULL;
+  }
+  mapcache_cache_rest_init(ctx,&cache->cache);
+  cache->cache.provider = MAPCACHE_REST_PROVIDER_GOOGLE;
+  cache->cache.cache.configuration_parse_xml = _mapcache_cache_google_configuration_parse_xml;
+  cache->cache.rest.get_tile.add_headers = _mapcache_cache_google_get_headers_add;
+  cache->cache.rest.has_tile.add_headers = _mapcache_cache_google_head_headers_add;
+  cache->cache.rest.set_tile.add_headers = _mapcache_cache_google_put_headers_add;
+  cache->cache.rest.delete_tile.add_headers = _mapcache_cache_google_delete_headers_add;
+  return (mapcache_cache*)cache;
+}
+
 
 
 /* vim: ts=2 sts=2 et sw=2

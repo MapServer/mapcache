@@ -355,3 +355,59 @@ void sha_hex_encode(unsigned char *sha, unsigned int sha_size) {
     memcpy(sha+2*i,hex,2);
   }
 }
+
+
+#define HMAC_IPAD 0x36
+#define HMAC_OPAD 0x5c
+#define HMAC_BLOCKSIZE 64
+#include <apr_sha1.h>
+
+static void mxor(void *dst, const void *src, size_t len) {
+    char const *s = src;
+    char *d = dst;
+    for (; len > 0; len--)
+        *d++ ^= *s++;
+    return;
+}
+
+void hmac_sha1(const char *message, unsigned int message_len,
+          const unsigned char *key, unsigned int key_size,
+          void *mac) {
+
+  apr_sha1_ctx_t inner;
+  apr_sha1_ctx_t outer;
+  unsigned char keypad[HMAC_BLOCKSIZE];
+  unsigned char inner_digest[APR_SHA1_DIGESTSIZE];
+  unsigned char long_digest[APR_SHA1_DIGESTSIZE];
+
+  /* Shorten the key down to the blocksize, anything more is useless */
+  if (key_size > HMAC_BLOCKSIZE) {
+    apr_sha1_ctx_t context;
+    apr_sha1_init(&context);
+    apr_sha1_update_binary(&context, key, key_size);
+    apr_sha1_final(long_digest, &context);
+    key = long_digest;
+    key_size = APR_SHA1_DIGESTSIZE;
+  }
+
+  /* Prepare and mask the inner portion of the key */
+  memset(keypad, HMAC_IPAD, HMAC_BLOCKSIZE);
+  mxor(keypad, key, key_size);
+
+  /* Compute the inner hash */
+  apr_sha1_init(&inner);
+  apr_sha1_update_binary(&inner, keypad, HMAC_BLOCKSIZE);
+  apr_sha1_update(&inner, message, message_len);
+  apr_sha1_final(inner_digest, &inner);
+
+  /* Prepare and mask the outer portion of the key */
+  memset(keypad, HMAC_OPAD, HMAC_BLOCKSIZE);
+  mxor(keypad, key, key_size);
+
+  /* Compute the outer hash */
+  apr_sha1_init(&outer);
+  apr_sha1_update_binary(&outer, keypad, HMAC_BLOCKSIZE);
+  apr_sha1_update_binary(&outer, inner_digest, APR_SHA1_DIGESTSIZE);
+  apr_sha1_final(mac, &outer);
+}
+
