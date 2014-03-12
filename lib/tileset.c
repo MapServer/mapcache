@@ -816,6 +816,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     /* aquire a lock on the metatile */
     mt = mapcache_tileset_metatile_get(ctx, tile);
     isLocked = mapcache_lock_or_wait_for_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+    GC_CHECK_ERROR(ctx);
 
 
     if(isLocked == MAPCACHE_TRUE) {
@@ -826,8 +827,16 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 #endif
       /* this will query the source to create the tiles, and save them to the cache */
       mapcache_tileset_render_metatile(ctx, mt);
-
-      mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+      
+      if(GC_HAS_ERROR(ctx)) {
+        /* temporarily clear error state so we don't mess up with error handling in the locker */
+        void *error;
+        ctx->pop_errors(ctx,&error);
+        mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+        ctx->push_errors(ctx,error);
+      } else {
+        mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+      }
     }
     GC_CHECK_ERROR(ctx);
 

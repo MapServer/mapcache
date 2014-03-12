@@ -78,7 +78,6 @@
 
 #define MAPCACHE_USERAGENT "mod-mapcache/"MAPCACHE_VERSION
 
-#define MAPCACHE_LOCKFILE_PREFIX "_gc_lock"
 
 
 
@@ -201,6 +200,18 @@ struct mapcache_context {
    * \memberof mapcache_context
    */
   void (*clear_errors)(mapcache_context * ctx);
+  
+  /**
+   * \brief clear current error and store it in mapcache_error
+   * \memberof mapcache_context
+   */
+  void (*pop_errors)(mapcache_context * ctx, void **error);
+  
+  /**
+   * \brief restore error status from mapcache_error
+   * \memberof mapcache_context
+   */
+  void (*push_errors)(mapcache_context * ctx, void *error);
 
 
   /**
@@ -1038,6 +1049,53 @@ typedef enum {
   MAPCACHE_MODE_MIRROR_SPLIT
 } mapcache_mode;
 
+typedef enum {
+  MAPCACHE_LOCKER_DISK,
+  MAPCACHE_LOCKER_MEMCACHE
+} mapcache_lock_mode;
+
+typedef struct mapcache_locker mapcache_locker;
+
+struct mapcache_locker{
+  int (*lock_or_wait)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  void (*unlock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  void (*clear_all_locks)(mapcache_context *ctx, mapcache_locker *self);
+  void (*parse_xml)(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_locker *self, ezxml_t node);
+  mapcache_lock_mode type;
+};
+
+typedef struct {
+  mapcache_locker locker;
+
+  /**
+   * directory where lock files will be placed.
+   * Must be readable and writable by the apache user.
+   * Must be placed on a network mounted shared directory if multiple mapcache instances
+   * need to be synchronized
+   */
+  const char *dir;
+  double retry; /* time in seconds to wait before rechecking for lockfile presence */
+} mapcache_locker_disk;
+
+mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx);
+
+#ifdef USE_MEMCACHE
+typedef struct {
+  char *host;
+  int port;
+} mapcache_locker_memcache_server;
+
+typedef struct {
+  mapcache_locker locker;
+  int nservers;
+  mapcache_locker_memcache_server *servers;
+  int timeout; /* in seconds, passed and honoured by memcache, not mapcache */
+  double retry; /* in seconds */
+} mapcache_locker_memcache;
+
+mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);
+#endif
+
 /**
  * a configuration that will be served
  */
@@ -1095,18 +1153,7 @@ struct mapcache_cfg {
 
   apr_table_t *metadata;
 
-  /**
-   * directory where lock files will be placed.
-   * Must be readable and writable by the apache user.
-   * Must be placed on a network mounted shared directory if multiple mapcache instances
-   * need to be synchronized
-   */
-  const char *lockdir;
-
-  /**
-   * time in nanoseconds to wait before rechecking for lockfile presence
-   */
-  apr_interval_time_t lock_retry_interval; /* time in nanoseconds to wait before rechecking for lockfile presence */
+  mapcache_locker *locker;
 
   int threaded_fetching;
 

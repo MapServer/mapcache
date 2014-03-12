@@ -239,6 +239,46 @@ void _mapcache_context_clear_error_default(mapcache_context *ctx)
 }
 
 
+struct _error_log {
+  int _errcode;
+  char *_errmsg;
+  apr_table_t *exceptions;
+};
+
+void _mapcache_context_pop_errors(mapcache_context *ctx, void **error)
+{
+  struct _error_log *e = (struct _error_log*)apr_pcalloc(ctx->pool, sizeof(struct _error_log));
+  e->_errcode = ctx->_errcode;
+  e->_errmsg = ctx->_errmsg;
+  e->exceptions = ctx->exceptions;
+  ctx->_errcode = 0;
+  ctx->_errmsg = NULL;
+  ctx->exceptions = NULL;
+  *error = e;
+}
+
+
+void _mapcache_context_push_errors(mapcache_context *ctx, void *error)
+{
+  struct _error_log *e = (struct _error_log*)error;
+  ctx->_errcode = e->_errcode;
+  if(e->_errmsg) {
+    if(ctx->_errmsg) {
+      ctx->_errmsg = apr_psprintf(ctx->pool,"%s\n%s",ctx->_errmsg,e->_errmsg);
+    } else {
+      ctx->_errmsg = e->_errmsg;
+    }
+  }
+  if(e->exceptions) {
+    if(ctx->exceptions) {
+      apr_table_overlap(ctx->exceptions, e->exceptions, APR_OVERLAP_TABLES_SET);
+    } else {
+      ctx->exceptions = e->exceptions;
+    }
+  }
+}
+
+
 void mapcache_context_init(mapcache_context *ctx)
 {
   ctx->_errcode = 0;
@@ -248,6 +288,8 @@ void mapcache_context_init(mapcache_context *ctx)
   ctx->set_error = _mapcache_context_set_error_default;
   ctx->set_exception = _mapcache_context_set_exception_default;
   ctx->clear_errors = _mapcache_context_clear_error_default;
+  ctx->pop_errors = _mapcache_context_pop_errors;
+  ctx->push_errors = _mapcache_context_push_errors;
 }
 
 void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
@@ -270,6 +312,8 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
   dst->threadlock = src->threadlock;
   dst->process_pool = src->process_pool;
   dst->supports_redirects = src->supports_redirects;
+  dst->pop_errors = src->pop_errors;
+  dst->push_errors = src->push_errors;
 }
 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to)

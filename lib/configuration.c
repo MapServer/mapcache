@@ -35,46 +35,16 @@
 
 void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, mapcache_cfg *config, int cgi)
 {
-  apr_dir_t *lockdir;
-  apr_status_t rv;
-  char errmsg[120];
   char *url;
 
   mapcache_configuration_parse_xml(ctx,filename,config);
 
-
   GC_CHECK_ERROR(ctx);
 
-  if(!config->lockdir || !strlen(config->lockdir)) {
-    config->lockdir = apr_pstrdup(ctx->pool, "/tmp");
+  if(!cgi && config->locker->clear_all_locks) {
+    config->locker->clear_all_locks(ctx, config->locker);
+    GC_CHECK_ERROR(ctx);
   }
-  rv = apr_dir_open(&lockdir,config->lockdir,ctx->pool);
-  if(rv != APR_SUCCESS) {
-    ctx->set_error(ctx,500, "failed to open lock directory %s: %s"
-                   ,config->lockdir,apr_strerror(rv,errmsg,120));
-    return;
-  }
-
-  /* only remove lockfiles if we're not in cgi mode */
-  if(!cgi) {
-    apr_finfo_t finfo;
-    while ((apr_dir_read(&finfo, APR_FINFO_DIRENT|APR_FINFO_TYPE|APR_FINFO_NAME, lockdir)) == APR_SUCCESS) {
-      if(finfo.filetype == APR_REG) {
-        if(!strncmp(finfo.name, MAPCACHE_LOCKFILE_PREFIX, strlen(MAPCACHE_LOCKFILE_PREFIX))) {
-          ctx->log(ctx,MAPCACHE_WARN,"found old lockfile %s/%s, deleting it",config->lockdir,
-                   finfo.name);
-          rv = apr_file_remove(apr_psprintf(ctx->pool,"%s/%s",config->lockdir, finfo.name),ctx->pool);
-          if(rv != APR_SUCCESS) {
-            ctx->set_error(ctx,500, "failed to remove lockfile %s: %s",finfo.name,apr_strerror(rv,errmsg,120));
-            return;
-          }
-
-        }
-
-      }
-    }
-  }
-  apr_dir_close(lockdir);
 
   /* if we were suppplied with an onlineresource, make sure it ends with a / */
   if(NULL != (url = (char*)apr_table_get(config->metadata,"url"))) {
@@ -254,8 +224,6 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   }
   mapcache_configuration_add_grid(cfg,grid,"g");
 
-  /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
-  cfg->lock_retry_interval = 10000;
 
   cfg->loglevel = MAPCACHE_WARN;
   cfg->autoreload = 0;

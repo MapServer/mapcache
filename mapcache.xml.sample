@@ -949,12 +949,33 @@
    <errors>report</errors>
 
    
+   
+   <locker type="disk">  <!-- this is the default -->
    <!--
         location to put lockfiles (to block other clients while a metatile is being rendered.
         defaults to /tmp
         this location should be writable by the apache user
    -->
-   <lock_dir>/tmp</lock_dir>
+     <directory>/tmp</directory>
+     <retry>0.01</retry> <!-- check back every .01 seconds -->
+   </locker>
+
+   <lock_dir>/tmp</lock_dir>  <!-- deprecated, use <locker type="disk"> -->
+
+
+   <locker type="memcache">
+     <server>
+       <host>localhost</host>
+       <port>11211</port>
+     </server>
+     <server>
+       <host>memcache-host</host>
+       <port>11212</port>
+     </server>
+     <retry>0.3</retry> <!-- check back every .3 seconds if the lock has been released -->
+   </locker>
+
+
 
    <!-- use multiple threads when fetching multiple tiles (used for wms tile assembling -->
    <threaded_fetching>true</threaded_fetching>

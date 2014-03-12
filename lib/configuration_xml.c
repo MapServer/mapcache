@@ -1088,20 +1088,49 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     }
   }
 
-  if((node = ezxml_child(doc,"lock_dir")) != NULL) {
-    config->lockdir = apr_pstrdup(ctx->pool, node->txt);
-  } else {
-    config->lockdir = apr_pstrdup(ctx->pool,"/tmp");
-  }
-
-  if((node = ezxml_child(doc,"lock_retry")) != NULL) {
-    char *endptr;
-    config->lock_retry_interval = (unsigned int)strtol(node->txt,&endptr,10);
-    if(*endptr != 0 || config->lock_retry_interval < 0) {
-      ctx->set_error(ctx, 400, "failed to parse lock_retry microseconds \"%s\". Expecting a positive integer",
-                     node->txt);
-      return;
+  if((node = ezxml_child(doc,"locker")) != NULL) {
+    const char *ltype = ezxml_attr(node, "type");
+    if(!ltype) ltype = "disk";
+    if(!strcmp(ltype,"disk")) {
+      config->locker = mapcache_locker_disk_create(ctx);
+    } else if(!strcmp(ltype,"memcache")) {
+#ifdef USE_MEMCACHE
+      config->locker = mapcache_locker_memcache_create(ctx);
+#else
+      ctx->set_error(ctx,400,"<locker>: type \"memcache\" cannot be used as memcache support is not compiled in");
+      goto cleanup;
+#endif
+    } else {
+      ctx->set_error(ctx,400,"<locker>: unknown type \"%s\" (allowed are disk and memcache)",ltype);
+      goto cleanup;
     }
+    config->locker->parse_xml(ctx, config, config->locker, node);
+
+  } else {
+    /* backwards compatibility */
+    int micro_retry;
+    mapcache_locker_disk *ldisk;
+    config->locker = mapcache_locker_disk_create(ctx);
+    ldisk = (mapcache_locker_disk*)config->locker;
+    if((node = ezxml_child(doc,"lock_dir")) != NULL) {
+      ldisk->dir = apr_pstrdup(ctx->pool, node->txt);
+    } else {
+      ldisk->dir = apr_pstrdup(ctx->pool,"/tmp");
+    }
+
+    if((node = ezxml_child(doc,"lock_retry")) != NULL) {
+      char *endptr;
+      micro_retry = strtol(node->txt,&endptr,10);
+      if(*endptr != 0 || micro_retry <= 0) {
+        ctx->set_error(ctx, 400, "failed to parse lock_retry microseconds \"%s\". Expecting a positive integer",
+            node->txt);
+        return;
+      }
+    } else {
+      /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
+      micro_retry = 10000;
+    }
+    ldisk->retry = micro_retry / 1000000.0;
   }
 
   if((node = ezxml_child(doc,"threaded_fetching")) != NULL) {
