@@ -348,6 +348,15 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       ezxml_set_txt(ezxml_add_child(layer,"ows:Abstract",0),abstract);
     }
 
+    if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
+      ezxml_t bbox = ezxml_add_child(layer,"ows:WGS84BoundingBox",0);
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),
+                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.minx, tileset->wgs84bbox.miny));
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),
+                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.maxx, tileset->wgs84bbox.maxy));
+    }
+
+
     ezxml_set_txt(ezxml_add_child(layer,"ows:Identifier",0),tileset->name);
 
     style = ezxml_add_child(layer,"Style",0);
@@ -390,13 +399,6 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       }
     }
 
-    if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
-      ezxml_t bbox = ezxml_add_child(layer,"ows:WGS84BoundingBox",0);
-      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),
-                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.minx, tileset->wgs84bbox.miny));
-      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),
-                    apr_psprintf(ctx->pool,"%f %f",tileset->wgs84bbox.maxx, tileset->wgs84bbox.maxy));
-    }
 
     for(i=0; i<tileset->grid_links->nelts; i++) {
       mapcache_grid_link *grid_link = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
