@@ -319,13 +319,13 @@ struct sqlite_time_conn {
 static apr_status_t _sqlite_time_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
-  int flags;  
+  int flags;
   mapcache_timedimension_sqlite *dim = (mapcache_timedimension_sqlite*) params;
   struct sqlite_time_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_time_conn));
   *conn_ = conn;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   ret = sqlite3_open_v2(dim->dbfile, &conn->handle, flags, NULL);
-  
+
   if (ret != SQLITE_OK) {
     return APR_EGENERAL;
   }
@@ -348,12 +348,12 @@ static struct sqlite_time_conn* _sqlite_time_get_conn(mapcache_context *ctx, map
   struct sqlite_time_conn *conn = NULL;
   apr_reslist_t *pool = NULL;
   if(!time_connection_pools || NULL == (pool = apr_hash_get(time_connection_pools,dim->timedimension.key, APR_HASH_KEY_STRING)) ) {
-    
+
 #ifdef APR_HAS_THREADS
     if(ctx->threadlock)
       apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
 #endif
-    
+
     if(!time_connection_pools) {
       time_connection_pools = apr_hash_make(ctx->process_pool);
     }
@@ -507,14 +507,14 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
     }
     stmt = conn->prepared_statement;
   }
-  
+
   _bind_sqlite_timedimension_params(ctx,stmt,conn->handle,tileset,grid,extent,start,end);
   if(GC_HAS_ERROR(ctx)) {
     sqlite3_reset(stmt);
     _sqlite_time_release_conn(ctx, sdim, conn);
     return NULL;
   }
-  
+
   time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
   do {
     ret = sqlite3_step(stmt);
@@ -554,7 +554,7 @@ typedef enum {
 void _mapcache_timedimension_sqlite_parse_xml(mapcache_context *ctx, mapcache_timedimension *dim, ezxml_t node) {
   mapcache_timedimension_sqlite *sdim = (mapcache_timedimension_sqlite*)dim;
   ezxml_t child;
-  
+
   child = ezxml_child(node,"dbfile");
   if(child && child->txt && *child->txt) {
     sdim->dbfile = apr_pstrdup(ctx->pool,child->txt);
@@ -611,7 +611,7 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
     ctx->set_error(ctx,400,"failed to parse time %s",value);
     return NULL;
   }
-  
+
   if(*valueptr == '/') {
     /* we have a second (end) time */
     valueptr++;
@@ -664,6 +664,7 @@ mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool) {
   dim->timedimension.get_entries_for_interval = _mapcache_timedimension_sqlite_get_entries;
   dim->timedimension.get_all_entries = _mapcache_timedimension_sqlite_get_all_entries;
   dim->timedimension.configuration_parse_xml = _mapcache_timedimension_sqlite_parse_xml;
+  dim->timedimension.delay = 100; //default value in hundreths of a second
   return (mapcache_timedimension*)dim;
 }
 #endif

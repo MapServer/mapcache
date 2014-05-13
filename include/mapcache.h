@@ -1202,7 +1202,7 @@ struct mapcache_grid_link {
   mapcache_extent *restricted_extent;
   mapcache_extent_i *grid_limits;
   int minz,maxz;
-  
+
   /**
    * tiles above this zoom level will not be stored to the cache, but will be
    * dynamically generated (either by reconstructing from lower level tiles, or
@@ -1508,7 +1508,7 @@ struct mapcache_image_format {
   char *extension; /**< the extension to use when saving a file with this format */
   char *mime_type;
   mapcache_buffer * (*write)(mapcache_context *ctx, mapcache_image *image, mapcache_image_format * format);
-  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image **images, int numimages, mapcache_image_format * format);
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image *images, int numimages, mapcache_image_format * format, int delay);
   /**< pointer to a function that returns a mapcache_buffer containing the given image encoded
    * in the specified format
    */
@@ -1611,7 +1611,7 @@ int _mapcache_imageio_classify(mapcache_image *rb, unsigned char *pixels,
 
 struct mapcache_image_format_gif {
   mapcache_image_format format;
-  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image **images, int numimages, mapcache_image_format * format);
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image *images, int numimages, mapcache_image_format * format, int delay);
   int *animate;
 };
 mapcache_image_format* mapcache_imageio_create_gif_format(apr_pool_t *pool, char *name);
@@ -1771,11 +1771,12 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
 struct mapcache_timedimension {
   mapcache_timedimension_assembly_type assembly_type;
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, 
+  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset,
         mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
   apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
   char *default_value;
   char *key; /* TIME, hardcoded */
+  int delay;
 };
 
 #ifdef USE_SQLITE

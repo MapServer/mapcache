@@ -49,6 +49,7 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 
 void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset) {
   const char *attr = NULL;
+  int delay;
   if(tileset->timedimension) {
     ctx->set_error(ctx,400,"tileset \"%s\" can only have a single <timedimension>", tileset->name);
     return;
@@ -66,7 +67,7 @@ void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *t
       ctx->set_error(ctx,400,"unknown \"type\" attribute \"%s\" for %s's <timedimension>. Expecting one of (sqlite)",attr,tileset->name);
       return;
     }
-    
+
   } else {
     ctx->set_error(ctx,400,"missing \"type\" attribute for %s's <timedimension>",tileset->name);
     return;
@@ -77,7 +78,7 @@ void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *t
   } else {
     tileset->timedimension->key = apr_pstrdup(ctx->pool,"TIME");
   }
-  
+
   attr = ezxml_attr(node,"default");
   if(attr && *attr) {
     tileset->timedimension->default_value = apr_pstrdup(ctx->pool,attr);
@@ -85,6 +86,25 @@ void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *t
     ctx->set_error(ctx,400,"no \"default\" attribute for <timedimension> %s",tileset->timedimension->key);
     return;
   }
+
+  attr = ezxml_attr(node, "animate");
+  if (attr && *attr){
+    if(!strcasecmp(attr, "true")) {
+      tileset->timedimension->assembly_type = MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE;
+      attr = ezxml_attr(node, "delay");
+      if (attr && *attr) {
+        delay = atoi(attr);
+        if (delay > 0)
+          tileset->timedimension->delay = delay;
+        else
+          ctx->set_error(ctx,400, "the \"delay \" attribute for <timedimension> %s must be an integer bigger than 0", tileset->timedimension->key);
+      }
+    }
+  } else {
+  ctx->set_error(ctx,400,"no \"animate\" attribute for <timedimension> %s", tileset->timedimension->key);
+}
+
+
   tileset->timedimension->configuration_parse_xml(ctx,tileset->timedimension,node);
 }
 
@@ -701,7 +721,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       ctx->set_error(ctx, 400, "invalid grid maxzoom/minzoom %d/%d", gridlink->minz,gridlink->maxz);
       return;
     }
-    
+
     sTolerance = (char*)ezxml_attr(cur_node,"max-cached-zoom");
     /* RFC97 implementation: check for a maximum zoomlevel to cache */
     if(sTolerance) {
@@ -712,14 +732,14 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                        sTolerance);
         return;
       }
-      
+
       if(tolerance > gridlink->maxz) {
         ctx->set_error(ctx, 400, "failed to parse grid max-cached-zoom %s (max cached zoom is greater than grid's max zoom)",
                        sTolerance);
         return;
       }
       gridlink->max_cached_zoom = tolerance;
-      
+
       /* default to reassembling */
       gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_REASSEMBLE;
       sTolerance = (char*)ezxml_attr(cur_node,"out-of-zoom-strategy");
@@ -750,7 +770,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     parseDimensions(ctx, cur_node, tileset);
     GC_CHECK_ERROR(ctx);
   }
-  
+
   if ((cur_node = ezxml_child(node,"timedimension")) != NULL) {
     parseTimeDimension(ctx, cur_node, tileset);
     GC_CHECK_ERROR(ctx);
