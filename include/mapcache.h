@@ -526,7 +526,6 @@ typedef enum {
 typedef enum {
   MAPCACHE_GETMAP_ERROR,
   MAPCACHE_GETMAP_ASSEMBLE,
-  MAPCACHE_GETMAP_ANIMATE,
   MAPCACHE_GETMAP_FORWARD
 } mapcache_getmap_strategy;
 
