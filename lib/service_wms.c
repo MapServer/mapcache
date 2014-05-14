@@ -850,7 +850,7 @@ proxies:
         /* if we have a getmap or multiple tiles, we must check that assembling is allowed */
         (((*request)->type == MAPCACHE_REQUEST_GET_MAP || (
             (*request)->type == MAPCACHE_REQUEST_GET_TILE && ((mapcache_request_get_tile*)(*request))->ntiles > 1)) &&
-         (wms_service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE || wms_service->getmap_strategy == MAPCACHE_GETMAP_ANIMATE))
+         wms_service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE)
       )) {
     /* if we're here, then we have succesfully parsed the request and can treat it ourselves, i.e. from cached tiles */
     return;
