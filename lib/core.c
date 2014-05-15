@@ -480,7 +480,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
     else
       basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
     if(GC_HAS_ERROR(ctx)) return NULL;
-    // Check if animate and if GIF, would be better in assemble but no way to check the format there
   } else if(!ctx->config->non_blocking && req_map->getmap_strategy == MAPCACHE_GETMAP_FORWARD) {
     int i;
     basemap = req_map->maps[0];
