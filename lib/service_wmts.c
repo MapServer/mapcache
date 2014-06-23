@@ -701,7 +701,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           continue;
         }
       }
-      if(tileset->timedimension) {
+      if(!timedim && tileset->timedimension) {
         timedim = key;
         continue;
       }

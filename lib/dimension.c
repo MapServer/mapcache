@@ -612,9 +612,14 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
     return NULL;
   }
   
-  if(*valueptr == '/') {
+  if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
     /* we have a second (end) time */
-    valueptr++;
+    if (*valueptr == '/') {
+      valueptr++;
+    }
+    else {
+      valueptr += 2;
+    }
     valueptr = mapcache_ogc_strptime(valueptr,&tm_end,&tie);
     if(!valueptr) {
       ctx->set_error(ctx,400,"failed to parse end time in %s",value);
