@@ -612,9 +612,9 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
     return NULL;
   }
   
-  if(*valueptr == '/' || (*(valueptr+1) == '-' && *(valueptr+2) == '-')) {
+  if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
     /* we have a second (end) time */
-    if (*valueptr == '-') {
+    if (*valueptr == '/') {
       valueptr++;
     }
     else {
