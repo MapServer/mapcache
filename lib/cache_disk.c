@@ -297,6 +297,24 @@ static void _mapcache_cache_disk_arcgis_tile_key(mapcache_context *ctx, mapcache
   }
 }
 
+static void _mapcache_cache_disk_worldwind_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+{
+  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
+  if(dcache->base_directory) {
+    *path = apr_psprintf(ctx->pool,"%s/%d/%04d/%04d_%04d.%s" ,
+                         dcache->base_directory,
+                         tile->z,
+                         tile->y,
+                         tile->y,
+                         tile->x,
+                         tile->tileset->format?tile->tileset->format->extension:"png");
+  }
+
+  if(!*path) {
+    ctx->set_error(ctx,500, "failed to allocate tile key");
+  }
+}
+
 
 static int _mapcache_cache_disk_has_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
@@ -350,6 +368,7 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_tile *tile)
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
+  ctx->log(ctx,MAPCACHE_DEBUG,"checking for tile %s",filename);
   if((rv=apr_file_open(&f, filename,
 #ifndef NOMMAP
                        APR_FOPEN_READ, APR_UREAD | APR_GREAD,
@@ -643,6 +662,8 @@ static void _mapcache_cache_disk_configuration_parse_xml(mapcache_context *ctx, 
     dcache->tile_key = _mapcache_cache_disk_tilecache_tile_key;
   } else if(!strcmp(layout,"arcgis")) {
     dcache->tile_key = _mapcache_cache_disk_arcgis_tile_key;
+  } else if(!strcmp(layout,"worldwind")) {
+    dcache->tile_key = _mapcache_cache_disk_worldwind_tile_key;
   } else if (!strcmp(layout,"template")) {
     dcache->tile_key = _mapcache_cache_disk_template_tile_key;
     template_layout = MAPCACHE_TRUE;
