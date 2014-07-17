@@ -406,6 +406,17 @@
 
       -->
       <pragma name="key">value</pragma>
+      <!-- queries
+            SQL to be sent to sqlite backend for operations on tiles. The default queries that are
+            sent are listed below
+      --> 
+      <queries>
+        <create>create table if not exists tiles(tileset text, grid text, x integer, y integer, z integer, data blob, dim text, ctime datetime, primary key(tileset,grid,x,y,z,dim))</create>
+        <exists>select 1 from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid</exists>
+        <get>select data,strftime("%s",ctime) from tiles where tileset=:tileset and grid=:grid and x=:x and y=:y and z=:z and dim=:dim</get>
+        <set>insert or replace into tiles(tileset,grid,x,y,z,data,dim,ctime) values (:tileset,:grid,:x,:y,:z,:data,:dim,datetime('now'))</set>
+        <delete>delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid</delete>
+      </queries>
    </cache>
    <!--
    <cache name="mbtiles" type="mbtiles">

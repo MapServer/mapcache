@@ -808,6 +808,24 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
       cur_node = cur_node->next;
     }
   }
+  if ((cur_node = ezxml_child(node, "queries")) != NULL) {
+    ezxml_t query_node;
+    if ((query_node = ezxml_child(cur_node, "exists")) != NULL) {
+      dcache->exists_stmt.sql = apr_pstrdup(ctx->pool,query_node->txt);
+    }
+    if ((query_node = ezxml_child(cur_node, "get")) != NULL) {
+      dcache->get_stmt.sql = apr_pstrdup(ctx->pool,query_node->txt);
+    }
+    if ((query_node = ezxml_child(cur_node, "set")) != NULL) {
+      dcache->set_stmt.sql = apr_pstrdup(ctx->pool,query_node->txt);
+    }
+    if ((query_node = ezxml_child(cur_node, "delete")) != NULL) {
+      dcache->delete_stmt.sql = apr_pstrdup(ctx->pool,query_node->txt);
+    }
+    if ((query_node = ezxml_child(cur_node, "create")) != NULL) {
+      dcache->create_stmt.sql = apr_pstrdup(ctx->pool,query_node->txt);
+    }
+  }
   if (!dcache->dbfile) {
     ctx->set_error(ctx, 500, "sqlite cache \"%s\" is missing <dbfile> entry", cache->name);
     return;
