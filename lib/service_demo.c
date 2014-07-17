@@ -178,7 +178,8 @@ static char *demo_layer_wmts =
   "        units:\"%s\",\n"
   "        maxExtent: new OpenLayers.Bounds(%f,%f,%f,%f),\n"
   "        projection: new OpenLayers.Projection(\"%s\".toUpperCase()),\n"
-  "        sphericalMercator: %s\n"
+  "        sphericalMercator: %s\n,"
+  "        tileSize: new OpenLayers.Size(%d,%d)\n"
   "      }\n"
   "    );\n"
   "    map.addLayer(%s_wmts_layer);\n\n";
@@ -865,6 +866,8 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
                                 grid->extent.maxy,
                                 grid->srs,
                                 smerc,
+                                grid->tile_sx,
+                                grid->tile_sy,
                                 ol_layer_name);
         caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
       } else {
