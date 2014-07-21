@@ -73,6 +73,16 @@
    </grid>
 
    <!--
+   <grid name="worldwind">
+     <extent>-180 -90 180 90</extent>
+     <srs>EPSG:4326</srs>
+     <units>dd</units>
+     <size>512 512</size>
+     <resolutions>0.0703125000000000 0.0351562500000000 0.0175781250000000 8.78906250000000e-3 4.39453125000000e-3 2.19726562500000e-3 1.09863281250000e-3 5.49316406250000e-4 2.74658203125000e-4 1.37329101562500e-4 6.86645507812500e-5 3.43322753906250e-5 1.71661376953125e-5 8.58306884765625e-6 4.29153442382812e-6 2.14576721191406e-6 1.07288360595703e-6 5.36441802978516e-7</resolutions>
+   </grid>
+   -->
+
+   <!--
          there are three preconfigured grids you can use in <tileset>s without having to
          explicitely define them here:
          <grid name="WGS84">
