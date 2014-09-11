@@ -532,7 +532,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   if(basemap->raw_image) {
     format = req_map->getmap_format; /* always defined, defaults to JPEG */
-    if(req_map->maps[0]->tileset->timedimension->assembly_type == MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE)
+    if(req_map->maps[0]->tileset->timedimension && req_map->maps[0]->tileset->timedimension->assembly_type == MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE)
       if (format->write_frames)
         response->data = format->write_frames(ctx, basemap->raw_image, req_map->nmaps, format, req_map->maps[0]->tileset->timedimension->delay);
       else
