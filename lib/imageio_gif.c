@@ -31,6 +31,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <gif_lib.h>
+#include "pam.h"
 
 
 void mapcache_imageio_gif_write_data_to_buffer(GifFileType  * _gif, unsigned char *_buf, int _len)

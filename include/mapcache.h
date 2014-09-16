@@ -1601,12 +1601,6 @@ typedef struct {
   unsigned char r,g,b;
 } rgbPixel;
 
-int _mapcache_imageio_quantize_image(mapcache_image *rb,
-                                     unsigned int *reqcolors, rgbaPixel *palette,
-                                     unsigned int *maxval,
-                                     rgbaPixel *forced_palette, int num_forced_palette_entries);
-int _mapcache_imageio_classify(mapcache_image *rb, unsigned char *pixels,
-                               rgbaPixel *palette, int numPaletteEntries);
 
 struct mapcache_image_format_gif {
   mapcache_image_format format;
