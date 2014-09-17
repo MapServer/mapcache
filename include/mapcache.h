@@ -86,6 +86,7 @@ typedef struct mapcache_image_format mapcache_image_format;
 typedef struct mapcache_image_format_mixed mapcache_image_format_mixed;
 typedef struct mapcache_image_format_png mapcache_image_format_png;
 typedef struct mapcache_image_format_png_q mapcache_image_format_png_q;
+typedef struct mapcache_image_format_gif mapcache_image_format_gif;
 typedef struct mapcache_image_format_jpeg mapcache_image_format_jpeg;
 typedef struct mapcache_cfg mapcache_cfg;
 typedef struct mapcache_tileset mapcache_tileset;
@@ -843,7 +844,7 @@ void mapcache_service_dispatch_request(mapcache_context *ctx,
 /** @{ */
 
 typedef enum {
-  GC_UNKNOWN, GC_PNG, GC_JPEG
+  GC_UNKNOWN, GC_PNG, GC_JPEG, GC_GIF
 } mapcache_image_format_type;
 
 typedef enum {
@@ -1200,7 +1201,7 @@ struct mapcache_grid_link {
   mapcache_extent *restricted_extent;
   mapcache_extent_i *grid_limits;
   int minz,maxz;
-  
+
   /**
    * tiles above this zoom level will not be stored to the cache, but will be
    * dynamically generated (either by reconstructing from lower level tiles, or
@@ -1506,6 +1507,7 @@ struct mapcache_image_format {
   char *extension; /**< the extension to use when saving a file with this format */
   char *mime_type;
   mapcache_buffer * (*write)(mapcache_context *ctx, mapcache_image *image, mapcache_image_format * format);
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image *images, int numimages, mapcache_image_format * format, int delay);
   /**< pointer to a function that returns a mapcache_buffer containing the given image encoded
    * in the specified format
    */
@@ -1590,6 +1592,27 @@ mapcache_image_format* mapcache_imageio_create_png_format(apr_pool_t *pool, char
 mapcache_image_format* mapcache_imageio_create_png_q_format(apr_pool_t *pool, char *name, mapcache_compression_type compression, int ncolors);
 
 /** @} */
+
+typedef struct {
+  unsigned char b,g,r,a;
+} rgbaPixel;
+
+typedef struct {
+  unsigned char r,g,b;
+} rgbPixel;
+
+
+struct mapcache_image_format_gif {
+  mapcache_image_format format;
+  mapcache_buffer * (*write_frames)(mapcache_context *ctx, mapcache_image *images, int numimages, mapcache_image_format * format, int delay);
+  int *animate;
+};
+mapcache_image_format* mapcache_imageio_create_gif_format(apr_pool_t *pool, char *name);
+mapcache_buffer* _mapcache_imageio_gif_encode(mapcache_context *ctx, mapcache_image *img, mapcache_image_format *format);
+
+
+mapcache_image_format* mapcache_imageio_create_jpeg_format(apr_pool_t *pool, char *name, int quality,
+    mapcache_photometric photometric);
 
 /**\defgroup imageio_jpg JPEG Image IO
  * \ingroup imageio */
@@ -1741,11 +1764,12 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
 struct mapcache_timedimension {
   mapcache_timedimension_assembly_type assembly_type;
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, 
+  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset,
         mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
   apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
   char *default_value;
   char *key; /* TIME, hardcoded */
+  int delay;
 };
 
 #ifdef USE_SQLITE

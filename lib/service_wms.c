@@ -200,7 +200,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     layerxml = ezxml_add_child(toplayer,"Layer",0);
     ezxml_set_attr(layerxml, "cascaded", "1");
     ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0");
-    
+
     ezxml_set_txt(ezxml_add_child(layerxml,"Name",0),tileset->name);
     tsxml = ezxml_add_child(vendorxml, "TileSet",0);
 
@@ -336,7 +336,6 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
   mapcache_service_wms *wms_service = (mapcache_service_wms*)this;
 
   *request = NULL;
-
   str = apr_table_get(params,"SERVICE");
   if(!str) {
     /* service is optional if we have a getmap */
@@ -713,7 +712,6 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
                 apr_table_set(map_req->maps[map_req->nmaps-1]->dimensions,tileset->timedimension->key,
                         APR_ARRAY_IDX(timedim_selected,i,char*));
               }
-              
             }
           }
         }

@@ -222,7 +222,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
     if(tile->expires && (tile->expires < expires || expires == 0)) {
       expires = tile->expires;
     }
-    
+
     if(tile->nodata) {
       /* treat the special case where the cache explicitely stated that the
        tile was empty, and we don't have any vertical merging to do */
@@ -233,8 +233,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       }
       continue;
     }
-    
-    /* treat the most common case: 
+
+    /* treat the most common case:
      - we have a single tile request (i.e. isempty is true)
      - the cache returned the encoded image
      */
@@ -271,7 +271,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       mapcache_image_merge(ctx, base, tile->raw_image);
     } else {
       /* we don't need to merge onto an existing tile and don't have access to the tile's encoded data.
-       * 
+       *
        * we don't encode the tile's raw image data just yet because we might need to merge another one on top
        * of it later.
        */
@@ -307,7 +307,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
   }
-  
+
   /* compute the content-type */
   mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,response->data);
   if(t == GC_PNG)
@@ -329,79 +329,142 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   return response;
 }
 
-mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps, int nmaps, mapcache_resample_mode mode)
+mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **pmaps, int nmaps, mapcache_resample_mode mode)
 {
   mapcache_tile ***maptiles;
   int *nmaptiles;
   mapcache_tile **tiles;
+  mapcache_map **maps = apr_pcalloc(ctx->pool, nmaps*sizeof(mapcache_map*));
+  mapcache_image *animatedframes = NULL;
   mapcache_map *basemap = NULL;
   int ntiles = 0;
-  int i;
+  int i, frame, frameidx, numframes = 0, nummaps = 0, currentframe = 0;
   maptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_tile**));
   nmaptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(int));
-  for(i=0; i<nmaps; i++) {
-    mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
-                                   &maps[i]->extent, maps[i]->width, maps[i]->height,
-                                   &(nmaptiles[i]), &(maptiles[i]));
-    ntiles += nmaptiles[i];
-  }
-  tiles = apr_pcalloc(ctx->pool,ntiles * sizeof(mapcache_tile*));
-  ntiles = 0;
-  for(i=0; i<nmaps; i++) {
-    int j;
-    for(j=0; j<nmaptiles[i]; j++) {
-      tiles[ntiles] = maptiles[i][j];
-      tiles[ntiles]->dimensions = maps[i]->dimensions;
-      ntiles++;
+
+  /*
+   * If we need to assemble and animated map, we find out how many frames it has
+   * and setup the image buffer.
+   */
+  if (pmaps[0]->tileset->timedimension &&
+      pmaps[0]->tileset->timedimension->assembly_type == MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE)
+  {
+    for (i = 0; i < nmaps; ++i)
+    {
+      if(apr_table_get(pmaps[i]->dimensions, pmaps[i]->tileset->timedimension->key) != NULL)
+        numframes++;
     }
+    animatedframes = mapcache_image_create_with_data(ctx, pmaps[0]->width * numframes, pmaps[0]->height);
+  } else {
+    numframes = 1;
   }
-  mapcache_prefetch_tiles(ctx,tiles,ntiles);
-  if(GC_HAS_ERROR(ctx)) return NULL;
-  for(i=0; i<nmaps; i++) {
-    int j,hasdata = 0;
-    for(j=0; j<nmaptiles[i]; j++) {
-      mapcache_tile *tile = maptiles[i][j];
-      if(tile->nodata) {
-        continue;
+
+  /*
+   * If the map is animated this will assemble the map for each frame
+   * if it is a non-animated map, this will run only once
+   */
+  for (frame = 0; frame < numframes; ++frame)
+  {
+    if (animatedframes)
+    {
+      basemap = NULL;
+      frameidx = 0;
+      nummaps = 0;
+      for (i = 0; i < nmaps; ++i)
+      {
+        if(apr_table_get(pmaps[i]->dimensions, pmaps[i]->tileset->timedimension->key) != NULL) {
+          if (frameidx == currentframe)
+          {
+            frameidx = 999999;
+            currentframe++;
+          } else {
+            frameidx++;
+            continue;
+          }
+        }
+        maps[nummaps] = pmaps[i];
+        nummaps++;
       }
-      hasdata++;
-      /* update the map modification time if it is older than the tile mtime */
-      if(tile->mtime>maps[i]->mtime) {
-        maps[i]->mtime = tile->mtime;
+    }
+    else
+      {
+      nummaps = nmaps;
+      maps = pmaps;
       }
 
-      /* set the map expiration delay to the tile expiration delay,
-       * either if the map hasn't got an expiration delay yet
-       * or if the tile expiration is shorter than the map expiration
-       */
-      if(!maps[i]->expires || tile->expires<maps[i]->expires) {
-        maps[i]->expires = tile->expires;
+    for(i=0; i<nummaps; i++) {
+      mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
+          &maps[i]->extent, maps[i]->width, maps[i]->height,
+          &(nmaptiles[i]), &(maptiles[i]));
+      ntiles += nmaptiles[i];
+    }
+    tiles = apr_pcalloc(ctx->pool,ntiles * sizeof(mapcache_tile*));
+    ntiles = 0;
+    for(i=0; i<nummaps; i++) {
+      int j;
+      for(j=0; j<nmaptiles[i]; j++) {
+        tiles[ntiles] = maptiles[i][j];
+        tiles[ntiles]->dimensions = maps[i]->dimensions;
+        ntiles++;
       }
     }
-    if(hasdata) {
-      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
-                           &maps[i]->extent, maps[i]->width, maps[i]->height,
-                           nmaptiles[i], maptiles[i],
-                           mode);
-      if(!basemap) {
-        basemap = maps[i];
+    mapcache_prefetch_tiles(ctx,tiles,ntiles);
+    if(GC_HAS_ERROR(ctx)) return NULL;
+    for(i=0; i<nummaps; i++) {
+      int j,hasdata = 0;
+      for(j=0; j<nmaptiles[i]; j++) {
+        mapcache_tile *tile = maptiles[i][j];
+        if(tile->nodata) {
+          continue;
+        }
+        hasdata++;
+        /* update the map modification time if it is older than the tile mtime */
+        if(tile->mtime>maps[i]->mtime) {
+          maps[i]->mtime = tile->mtime;
+        }
+
+        /* set the map expiration delay to the tile expiration delay,
+         * either if the map hasn't got an expiration delay yet
+         * or if the tile expiration is shorter than the map expiration
+         */
+        if(!maps[i]->expires || tile->expires<maps[i]->expires) {
+          maps[i]->expires = tile->expires;
+        }
+      }
+      if(hasdata) {
+        maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
+            &maps[i]->extent, maps[i]->width, maps[i]->height,
+            nmaptiles[i], maptiles[i],
+            mode);
+        if(!basemap) {
+          basemap = maps[i];
+        } else {
+          mapcache_image_merge(ctx,basemap->raw_image,maps[i]->raw_image);
+          if(GC_HAS_ERROR(ctx)) return NULL;
+          if(maps[i]->mtime > basemap->mtime) basemap->mtime = maps[i]->mtime;
+          if(!basemap->expires || maps[i]->expires<basemap->expires) basemap->expires = maps[i]->expires;
+          apr_pool_cleanup_run(ctx->pool, maps[i]->raw_image->data, (void*)free) ;
+          maps[i]->raw_image = NULL;
+        }
       } else {
-        mapcache_image_merge(ctx,basemap->raw_image,maps[i]->raw_image);
-        if(GC_HAS_ERROR(ctx)) return NULL;
-        if(maps[i]->mtime > basemap->mtime) basemap->mtime = maps[i]->mtime;
-        if(!basemap->expires || maps[i]->expires<basemap->expires) basemap->expires = maps[i]->expires;
-        apr_pool_cleanup_run(ctx->pool, maps[i]->raw_image->data, (void*)free) ;
-        maps[i]->raw_image = NULL;
+        maps[i]->nodata = 1;
       }
-    } else {
-      maps[i]->nodata = 1;
     }
+    if(!basemap) {
+      ctx->set_error(ctx,404,
+          "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
+      return NULL;
+    }
+
+    if(basemap->raw_image && animatedframes)
+      memcpy(animatedframes->data+frame*(animatedframes->w/numframes)*animatedframes->h*4,
+          basemap->raw_image->data, basemap->raw_image->w*basemap->raw_image->h*4);
+    if(GC_HAS_ERROR(ctx)) return NULL;
+
   }
-  if(!basemap) {
-    ctx->set_error(ctx,404,
-                  "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
-    return NULL;
-  }
+  if (animatedframes)
+    basemap->raw_image = animatedframes;
+
   return basemap;
 }
 
@@ -469,7 +532,13 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   if(basemap->raw_image) {
     format = req_map->getmap_format; /* always defined, defaults to JPEG */
-    response->data = format->write(ctx,basemap->raw_image,format);
+    if(req_map->maps[0]->tileset->timedimension && req_map->maps[0]->tileset->timedimension->assembly_type == MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE)
+      if (format->write_frames)
+        response->data = format->write_frames(ctx, basemap->raw_image, req_map->nmaps, format, req_map->maps[0]->tileset->timedimension->delay);
+      else
+        ctx->set_error(ctx,500,"Asked for animated time dimension with a non-animated format");
+    else
+      response->data = format->write(ctx,basemap->raw_image,format);
     if(GC_HAS_ERROR(ctx)) {
       return NULL;
     }

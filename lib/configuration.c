@@ -170,6 +170,9 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
           mapcache_imageio_create_png_q_format(pool,"PNG8",MAPCACHE_COMPRESSION_FAST,256),
           "PNG8");
   mapcache_configuration_add_image_format(cfg,
+          mapcache_imageio_create_gif_format(pool,"GIF"),
+          "GIF");
+  mapcache_configuration_add_image_format(cfg,
           mapcache_imageio_create_jpeg_format(pool,"JPEG",90,MAPCACHE_PHOTOMETRIC_YCBCR),
           "JPEG");
   mapcache_configuration_add_image_format(cfg,
