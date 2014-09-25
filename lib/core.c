@@ -397,11 +397,25 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
       maps[i]->nodata = 1;
     }
   }
-  if(!basemap) {
+
+  /* if only empty tiles are hit, return an empty image with the correct 
+   * dimensions instead of returning an error.
+  */
+  if(!basemap && ntiles > 0) {
+    maps[0]->raw_image = mapcache_image_create_with_data(ctx,maps[0]->width,maps[0]->height);
+    if(ntiles == 0) {
+      maps[0]->raw_image->has_alpha = MC_ALPHA_YES;
+      maps[0]->raw_image->is_blank = MC_EMPTY_YES;
+    }
+    basemap = maps[0];
+  }
+
+  if (!basemap) {
     ctx->set_error(ctx,404,
                   "no tiles containing image data could be retrieved to create map (not in cache, and/or no source configured)");
     return NULL;
   }
+
   return basemap;
 }
 
