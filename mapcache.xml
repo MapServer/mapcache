@@ -3,27 +3,47 @@
 <!-- see the accompanying mapcache.xml.sample for a fully commented configuration file -->
 
 <mapcache>
-   <cache name="disk" type="disk">
-      <base>/tmp</base>
-      <symlink_blank/>
+   <cache name="s3" type="s3">
+     <url>https://foo.s3.amazonaws.com/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>foo.s3.amazonaws.com</Host>
+     </headers>
+     <id>foo</id>
+     <secret>foo/sdsvd</secret>
+     <region>eu-west-1</region>
+     <operation type="put">
+       <headers>
+         <x-amz-storage-class>REDUCED_REDUNDANCY</x-amz-storage-class>
+         <x-amz-acl>public-read</x-amz-acl>
+       </headers>
+   </operation>
+   </cache>
+   <cache name="azure" type="azure">
+     <url>https://foo.blob.core.windows.net/tiles/{tileset}/{grid}/{z}/{x}/{y}/{ext}</url>
+     <headers>
+       <Host>foo.blob.core.windows.net</Host>
+     </headers>
+     <id>foo</id>
+     <secret>foobarcccccccccccccccccccccyA==</secret>
+     <container>tiles</container>
    </cache>
 
    <source name="vmap0" type="wms">
       <getmap>
          <params>
             <FORMAT>image/png</FORMAT>
-            <LAYERS>basic</LAYERS>
+            <LAYERS>nexrad_base_reflect</LAYERS>
          </params>
       </getmap>
       
       <http>
-         <url>http://vmap0.tiles.osgeo.org/wms/vmap0</url>
+         <url>http://server/cgi-bin/wms/nexrad/n0r.cgi</url>
       </http>
    </source>
    
    <tileset name="test">
       <source>vmap0</source>
-      <cache>disk</cache>
+      <cache>azure</cache>
       <grid>WGS84</grid>
       <grid>g</grid>
       <format>PNG</format>
