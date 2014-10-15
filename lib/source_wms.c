@@ -40,6 +40,7 @@
 void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
 {
   mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
+  mapcache_http *http;
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
                  map->extent.minx,map->extent.miny,map->extent.maxx,map->extent.maxy));
@@ -68,7 +69,9 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
   }
 
   map->encoded_data = mapcache_buffer_create(30000,ctx->pool);
-  mapcache_http_do_request_with_params(ctx,wms->http,params,map->encoded_data,NULL,NULL);
+  http = mapcache_http_clone(ctx, wms->http);
+  http->url = mapcache_http_build_url(ctx,http->url,params);
+  mapcache_http_do_request(ctx,http,map->encoded_data,NULL,NULL);
   GC_CHECK_ERROR(ctx);
 
   if(!mapcache_imageio_is_valid_format(ctx,map->encoded_data)) {
@@ -81,6 +84,7 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
 void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_feature_info *fi)
 {
   mapcache_map *map = (mapcache_map*)fi;
+  mapcache_http *http;
   mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
 
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
@@ -107,7 +111,9 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_feature_info *fi
   }
 
   fi->data = mapcache_buffer_create(30000,ctx->pool);
-  mapcache_http_do_request_with_params(ctx,wms->http,params,fi->data,NULL,NULL);
+  http = mapcache_http_clone(ctx, wms->http);
+  http->url = mapcache_http_build_url(ctx,http->url,params);
+  mapcache_http_do_request(ctx,http,fi->data,NULL,NULL);
   GC_CHECK_ERROR(ctx);
 
 }

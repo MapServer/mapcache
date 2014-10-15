@@ -212,6 +212,69 @@ static mapcache_context_apache_server* apache_server_context_create(server_rec *
   return ctx;
 }
 
+/* read post body. code taken from "The apache modules book, Nick Kew" */
+static void read_post_body(mapcache_context_apache_request *ctx, mapcache_request_proxy *p) {
+  request_rec *r = ctx->request;
+  mapcache_context *mctx = (mapcache_context*)ctx;
+  int bytes,eos;
+  apr_bucket_brigade *bb, *bbin;
+  apr_bucket *b;
+  apr_status_t rv;
+  const char *clen = apr_table_get(r->headers_in, "Content-Length");
+  if(clen) {
+    bytes = strtol(clen, NULL, 0);
+    if(bytes >= p->rule->max_post_len) {
+      mctx->set_error(mctx, HTTP_REQUEST_ENTITY_TOO_LARGE, "post request too big");
+      return;
+    }
+  } else {
+    bytes = p->rule->max_post_len;
+  } 
+
+  bb = apr_brigade_create(mctx->pool, r->connection->bucket_alloc);
+  bbin = apr_brigade_create(mctx->pool, r->connection->bucket_alloc);
+  p->post_len = 0;
+
+  do {
+    rv = ap_get_brigade(r->input_filters, bbin, AP_MODE_READBYTES, APR_BLOCK_READ, bytes);
+    if(rv != APR_SUCCESS) {
+      mctx->set_error(mctx, 500, "failed to read form input");
+      return;
+    }
+    for(b = APR_BRIGADE_FIRST(bbin); b != APR_BRIGADE_SENTINEL(bbin); b = APR_BUCKET_NEXT(b)) {
+      if(APR_BUCKET_IS_EOS(b)) {
+        eos = 1;
+      }
+    }
+    if(!APR_BUCKET_IS_METADATA(b)) {
+      if(b->length != (apr_size_t)(-1)) {
+        p->post_len += b->length;
+        if(p->post_len > p->rule->max_post_len) {
+          apr_bucket_delete(b);
+        }
+      }
+    }
+    if(p->post_len <= p->rule->max_post_len) {
+      APR_BUCKET_REMOVE(b);
+      APR_BRIGADE_INSERT_TAIL(bb, b);
+    }
+  } while (!eos);
+
+  if(p->post_len > p->rule->max_post_len) {
+    mctx->set_error(mctx, HTTP_REQUEST_ENTITY_TOO_LARGE, "request too big");
+    return;
+  }
+
+  p->post_buf = apr_palloc(mctx->pool, p->post_len+1);
+
+  rv = apr_brigade_flatten(bb, p->post_buf, &(p->post_len));
+  if(rv != APR_SUCCESS) {
+    mctx->set_error(mctx, 500, "error (flatten) reading form data");
+    return;
+  }
+  p->post_buf[p->post_len] = 0;
+}
+
 static int write_http_response(mapcache_context_apache_request *ctx, mapcache_http_response *response)
 {
   request_rec *r = ctx->request;
@@ -268,7 +331,7 @@ static int mod_mapcache_request_handler(request_rec *r)
   if (!r->handler || strcmp(r->handler, "mapcache")) {
     return DECLINED;
   }
-  if (r->method_number != M_GET) {
+  if (r->method_number != M_GET && r->method_number != M_POST) {
     return HTTP_METHOD_NOT_ALLOWED;
   }
 
@@ -317,7 +380,45 @@ static int mod_mapcache_request_handler(request_rec *r)
     mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
     http_response = mapcache_core_get_tile(global_ctx,req_tile);
   } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
+    const char *buf;
     mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
+    if(r->method_number == M_POST) {
+      read_post_body(apache_ctx, req_proxy);
+      if(GC_HAS_ERROR(global_ctx)) {
+        return write_http_response(apache_ctx, mapcache_core_respond_to_error(global_ctx));
+      }
+      if(!req_proxy->headers) {
+        req_proxy->headers = apr_table_make(global_ctx->pool, 2);
+      }
+      apr_table_set(req_proxy->headers, "Content-Type", r->content_type);
+      if((buf = apr_table_get(r->headers_in,"X-Forwarded-For"))) {
+#if (AP_SERVER_MAJORVERSION_NUMBER == 2) && (AP_SERVER_MINORVERSION_NUMBER < 4)
+        apr_table_set(req_proxy->headers, "X-Forwarded-For", apr_psprintf(global_ctx->pool,"%s, %s", buf, r->connection->remote_ip));
+#else
+        apr_table_set(req_proxy->headers, "X-Forwarded-For", apr_psprintf(global_ctx->pool,"%s, %s", buf, r->connection->client_ip));
+#endif
+      } else {
+#if (AP_SERVER_MAJORVERSION_NUMBER == 2) && (AP_SERVER_MINORVERSION_NUMBER < 4)
+        apr_table_set(req_proxy->headers, "X-Forwarded-For", r->connection->remote_ip);
+#else
+        apr_table_set(req_proxy->headers, "X-Forwarded-For", r->connection->client_ip);
+#endif
+      }
+      if ((buf = apr_table_get(r->headers_in, "Host"))) {
+        const char *buf2;
+        if((buf2 = apr_table_get(r->headers_in,"X-Forwarded-Host"))) {
+          apr_table_set(req_proxy->headers, "X-Forwarded-Host", apr_psprintf(global_ctx->pool,"%s, %s",buf2,buf));
+        } else {
+          apr_table_set(req_proxy->headers, "X-Forwarded-Host", buf);
+        }
+      }
+      
+      if ((buf = apr_table_get(r->headers_in, "X-Forwarded-Server"))) {
+        apr_table_set(req_proxy->headers, "X-Forwarded-Server", apr_psprintf(global_ctx->pool, "%s, %s", buf, r->server->server_hostname));
+      } else {
+        apr_table_set(req_proxy->headers, "X-Forwarded-Server", r->server->server_hostname);
+      }
+    }
     http_response = mapcache_core_proxy_request(global_ctx, req_proxy);
   } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
     mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;

@@ -536,16 +536,21 @@ mapcache_http_response *mapcache_core_proxy_request(mapcache_context *ctx, mapca
   mapcache_http *http;
   mapcache_http_response *response = mapcache_http_response_create(ctx->pool);
   response->data = mapcache_buffer_create(30000,ctx->pool);
-  http = req_proxy->http;
+  http = mapcache_http_clone(ctx, req_proxy->rule->http);
   if(req_proxy->pathinfo) {
-    http = mapcache_http_clone(ctx,http);
     if( (*(req_proxy->pathinfo)) == '/' ||
         http->url[strlen(http->url)-1] == '/')
       http->url = apr_pstrcat(ctx->pool,http->url,req_proxy->pathinfo,NULL);
     else
       http->url = apr_pstrcat(ctx->pool,http->url,"/",req_proxy->pathinfo,NULL);
   }
-  mapcache_http_do_request_with_params(ctx,http,req_proxy->params,response->data,response->headers,&response->code);
+  http->url = mapcache_http_build_url(ctx,http->url,req_proxy->params);
+  http->post_body = req_proxy->post_buf;
+  http->post_len = req_proxy->post_len;
+  if(req_proxy->headers) {
+    apr_table_overlap(http->headers, req_proxy->headers, APR_OVERLAP_TABLES_SET);
+  }
+  mapcache_http_do_request(ctx,http, response->data,response->headers,&response->code);
   if(response->code !=0 && GC_HAS_ERROR(ctx)) {
     /* the http request was successful, but the server returned an error */
     ctx->clear_errors(ctx);

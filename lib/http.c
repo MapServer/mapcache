@@ -122,6 +122,10 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
     curl_headers = curl_slist_append(curl_headers, "User-Agent: "MAPCACHE_USERAGENT);
   }
   curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, curl_headers);
+
+  if(req->post_body && req->post_len>0) {
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, req->post_body);
+  }
   /* get it! */
   ret = curl_easy_perform(curl_handle);
   if(http_code)
@@ -134,14 +138,6 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   }
   /* cleanup curl stuff */
   curl_easy_cleanup(curl_handle);
-}
-
-void mapcache_http_do_request_with_params(mapcache_context *ctx, mapcache_http *req, apr_table_t *params,
-    mapcache_buffer *data, apr_table_t *headers, long *http_code)
-{
-  mapcache_http *request = mapcache_http_clone(ctx,req);
-  request->url = mapcache_http_build_url(ctx,req->url,params);
-  mapcache_http_do_request(ctx,request,data,headers, http_code);
 }
 
 /* calculate the length of the string formed by key=value&, and add it to cnt */

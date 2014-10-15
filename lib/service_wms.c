@@ -876,7 +876,7 @@ proxies:
         *request = (mapcache_request*)req_proxy;
         (*request)->service = this;
         (*request)->type = MAPCACHE_REQUEST_PROXY;
-        req_proxy->http = rule->http;
+        req_proxy->rule = rule;
         req_proxy->params = params;
         if(rule->append_pathinfo) {
           req_proxy->pathinfo = pathinfo;
@@ -916,32 +916,42 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
 
   for( rule_node = ezxml_child(node,"forwarding_rule"); rule_node; rule_node = rule_node->next) {
     mapcache_forwarding_rule *rule;
-    ezxml_t http_node;
-    ezxml_t pathinfo_node;
-    ezxml_t param_node;
+    ezxml_t node;
     char *name = (char*)ezxml_attr(rule_node,"name");
     if(!name) name = "(null)";
     rule = apr_pcalloc(ctx->pool, sizeof(mapcache_forwarding_rule));
     rule->name = apr_pstrdup(ctx->pool,name);
     rule->match_params = apr_array_make(ctx->pool,1,sizeof(mapcache_dimension*));
+    rule->max_post_len = 10485760; /* 10 megabytes by default */ 
 
-    pathinfo_node = ezxml_child(rule_node,"append_pathinfo");
-    if(pathinfo_node && !strcasecmp(pathinfo_node->txt,"true")) {
+    node = ezxml_child(rule_node,"append_pathinfo");
+    if(node && !strcasecmp(node->txt,"true")) {
       rule->append_pathinfo = 1;
     } else {
       rule->append_pathinfo = 0;
     }
-    http_node = ezxml_child(rule_node,"http");
-    if(!http_node) {
+    
+    node = ezxml_child(rule_node,"max_post_length");
+    if(node) {
+      char *endptr;
+      rule->max_post_len= (size_t)strtol(node->txt,&endptr,10);
+      if(*endptr != 0 || rule->max_post_len <= 0) {
+        ctx->set_error(ctx,500,"rule \"%s\" cannot have a negative or null <max_post_length>",name);
+        return;
+      }
+    }
+    
+    node = ezxml_child(rule_node,"http");
+    if(!node) {
       ctx->set_error(ctx,500,"rule \"%s\" does not contain an <http> block",name);
       return;
     }
-    rule->http = mapcache_http_configuration_parse_xml(ctx,http_node);
+    rule->http = mapcache_http_configuration_parse_xml(ctx,node);
     GC_CHECK_ERROR(ctx);
 
-    for(param_node = ezxml_child(rule_node,"param"); param_node; param_node = param_node->next) {
-      char *name = (char*)ezxml_attr(param_node,"name");
-      char *type = (char*)ezxml_attr(param_node,"type");
+    for(node = ezxml_child(rule_node,"param"); node; node = node->next) {
+      char *name = (char*)ezxml_attr(node,"name");
+      char *type = (char*)ezxml_attr(node,"type");
 
       mapcache_dimension *dimension = NULL;
 
@@ -966,7 +976,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
 
       dimension->name = apr_pstrdup(ctx->pool,name);
 
-      dimension->configuration_parse_xml(ctx,dimension,param_node);
+      dimension->configuration_parse_xml(ctx,dimension,node);
       GC_CHECK_ERROR(ctx);
 
       APR_ARRAY_PUSH(rule->match_params,mapcache_dimension*) = dimension;

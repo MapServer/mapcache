@@ -315,6 +315,8 @@ mapcache_http* mapcache_http_clone(mapcache_context *ctx, mapcache_http *orig);
 struct mapcache_http {
   char *url; /**< the base url to request */
   apr_table_t *headers; /**< additional headers to add to the http request, eg, Referer */
+  char *post_body;
+  size_t post_len;
   int connection_timeout;
   int timeout;
   /* TODO: authentication */
@@ -742,18 +744,22 @@ struct mapcache_request_get_capabilities_demo {
   mapcache_service *service;
 };
 
-struct mapcache_request_proxy {
-  mapcache_request request;
-  mapcache_http *http;
-  apr_table_t *params;
-  const char *pathinfo;
-};
-
 struct mapcache_forwarding_rule {
   char *name;
   mapcache_http *http;
   apr_array_header_t *match_params;  /* actually those are mapcache_dimensions */
   int append_pathinfo;
+  size_t max_post_len;
+};
+
+struct mapcache_request_proxy {
+  mapcache_request request;
+  mapcache_forwarding_rule *rule;
+  apr_table_t *params;
+  apr_table_t *headers;
+  const char *pathinfo;
+  char *post_buf;
+  size_t post_len;
 };
 
 
@@ -1027,8 +1033,6 @@ int mapcache_image_has_alpha(mapcache_image *img);
 /** \defgroup http HTTP Request handling*/
 /** @{ */
 void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcache_buffer *data, apr_table_t *headers, long *http_code);
-void mapcache_http_do_request_with_params(mapcache_context *ctx, mapcache_http *req, apr_table_t *params,
-    mapcache_buffer *data, apr_table_t *headers, long *http_code);
 char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params);
 apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args);
 /** @} */
