@@ -272,6 +272,21 @@ mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
   return (mapcache_dimension*)dimension;
 }
 
+mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
+{
+#ifdef USE_SQLITE
+  mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
+  dimension->dimension.type = MAPCACHE_DIMENSION_SQLITE;
+  dimension->sqlite_db = NULL;
+  dimension->dimension.validate = _mapcache_dimension_sqlite_validate;
+  dimension->dimension.configuration_parse_xml = _mapcache_dimension_sqlite_parse_xml;
+  dimension->dimension.print_ogc_formatted_values = _mapcache_dimension_sqlite_print;
+  return (mapcache_dimension*)dimension;
+#else
+  return NULL;
+#endif
+}
+
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool)
 {
   mapcache_dimension_time *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_time));

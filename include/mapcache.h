@@ -1753,7 +1753,8 @@ typedef enum {
   MAPCACHE_DIMENSION_VALUES,
   MAPCACHE_DIMENSION_REGEX,
   MAPCACHE_DIMENSION_INTERVALS,
-  MAPCACHE_DIMENSION_TIME
+  MAPCACHE_DIMENSION_TIME,
+  MAPCACHE_DIMENSION_SQLITE
 } mapcache_dimension_type;
 
 struct mapcache_dimension {
@@ -1762,6 +1763,7 @@ struct mapcache_dimension {
   char *unit;
   apr_table_t *metadata;
   char *default_value;
+  int skip_validation;
 
   /**
    * \brief validate the given value
@@ -1793,6 +1795,11 @@ struct mapcache_dimension_values {
   int case_sensitive;
 };
 
+struct mapcache_dimension_sqlite {
+  mapcache_dimension dimension;
+  char *sqlite_db;
+};
+
 struct mapcache_dimension_regex {
   mapcache_dimension dimension;
   char *regex_string;
@@ -1816,6 +1823,7 @@ struct mapcache_dimension_time {
 };
 
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
