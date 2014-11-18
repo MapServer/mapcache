@@ -639,17 +639,28 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           const char *value;
           if(tileset->dimensions) {
             for(i=0; i<tileset->dimensions->nelts; i++) {
+              char *dim_name;
               mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-              if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
+              if(!strcasecmp(dimension->name,"TIME") || !strcasecmp(dimension->name,"ELEVATION")) {
+                dim_name = dimension->name;
+              } else {
+                dim_name = apr_pstrcat(ctx->pool, "dim_", dimension->name, NULL);
+              }
+              if((value = (char*)apr_table_get(params,dim_name)) != NULL) {
                 char *tmpval = apr_pstrdup(ctx->pool,value);
-                int ok = dimension->validate(ctx,dimension,&tmpval);
-                GC_CHECK_ERROR(ctx);
+                int ok;
+                if(dimension->skip_validation) {
+                  ok = MAPCACHE_SUCCESS;
+                } else {
+                  ok = dimension->validate(ctx,dimension,&tmpval);
+                  GC_CHECK_ERROR(ctx);
+                }
                 if(ok == MAPCACHE_SUCCESS)
                   apr_table_setn(dimtable,dimension->name,tmpval);
                 else {
                   errcode = 400;
                   errmsg = apr_psprintf(ctx->pool, "dimension \"%s\" value \"%s\" fails to validate",
-                                        dimension->name, value);
+                                        dim_name, value);
                   goto proxies;
                 }
               }
