@@ -228,8 +228,9 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
 
     if(tileset->dimensions) {
       for(i=0; i<tileset->dimensions->nelts; i++) {
-        const char **value;
-        char *dimval;
+        apr_array_header_t *values;
+        int value_idx;
+        char *dimval = NULL;
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
         ezxml_t dimxml = ezxml_add_child(layerxml,"Dimension",0);
         ezxml_set_attr(dimxml,"name",dimension->name);
@@ -238,12 +239,14 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         if(dimension->unit) {
           ezxml_set_attr(dimxml,"units",dimension->unit);
         }
-        value = dimension->print_ogc_formatted_values(ctx,dimension);
-        dimval = apr_pstrdup(ctx->pool,*value);
-        value++;
-        while(*value) {
-          dimval = apr_pstrcat(ctx->pool,dimval,",",*value,NULL);
-          value++;
+        values = dimension->print_ogc_formatted_values(ctx,dimension);
+        for(value_idx=0;value_idx<values->nelts;value_idx++) {
+          char *idval = APR_ARRAY_IDX(values,value_idx,char*);
+          if(dimval) {
+            dimval = apr_pstrcat(ctx->pool,dimval,",",idval,NULL);
+          } else {
+            dimval = apr_pstrdup(ctx->pool,idval);
+          }
         }
         ezxml_set_txt(dimxml,dimval);
       }

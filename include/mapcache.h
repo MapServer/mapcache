@@ -143,6 +143,7 @@ typedef struct mapcache_dimension_time mapcache_dimension_time;
 typedef struct mapcache_timedimension mapcache_timedimension;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
+typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
@@ -1780,7 +1781,7 @@ struct mapcache_dimension {
    *
    * \returns a list of character strings that will be included in the capabilities <dimension> element
    */
-  const char** (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
+  apr_array_header_t*  (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
 
   /**
    * \brief parse the value given in the configuration
@@ -1798,6 +1799,8 @@ struct mapcache_dimension_values {
 struct mapcache_dimension_sqlite {
   mapcache_dimension dimension;
   char *sqlite_db;
+  char *validate_query;
+  char *list_query;
 };
 
 struct mapcache_dimension_regex {
