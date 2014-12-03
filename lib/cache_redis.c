@@ -162,9 +162,10 @@ static void _mapcache_cache_redis_set(mapcache_context *ctx,
     return;
   }
   redisReply *reply = redisCommand(conn,
-                                   "SET %s %b",
+                                   "SETEX %s %d %b",
                                    key,
                                    data,
+                                   expires,
                                    tile->encoded_data->size + sizeof(apr_time_t));
   
   if(IS_REDIS_ERROR_STATUS(reply)) {
@@ -172,14 +173,6 @@ static void _mapcache_cache_redis_set(mapcache_context *ctx,
                    tile->x, tile->y, tile->z, cache->cache.name);
   }
 
-  freeReplyObject(reply);
-
-  reply = redisCommand(conn, "EXPIRE %s %d", key, expires);
-  if(IS_REDIS_ERROR_STATUS(reply)) {
-    ctx->set_error(ctx, 500, "failed to expire tile %d %d %d to redis cache %s",
-                   tile->x, tile->y, tile->z, cache->cache.name);
-  }
-  
   freeReplyObject(reply);
   
   redisFree(conn);
