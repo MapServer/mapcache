@@ -32,6 +32,8 @@
 
 #include "mapcache.h"
 #include <apr_strings.h>
+#include <limits.h>
+#include <errno.h>
 
 #define REDIS_GET_CACHE(t) ((mapcache_cache_redis*)t->tileset->cache)
 #define REDIS_GET_TILE_KEY(c, t) (mapcache_util_get_tile_key(c, t, NULL, " \r\n\t\f\e\a\b", "#"))
@@ -204,9 +206,11 @@ static void _mapcache_cache_redis_configuration_parse_xml(mapcache_context *ctx,
     ctx->set_error(ctx, 400, "cache %s: redis cache with no <port>", cache->name);
     return;
   } else {
-    char *endptr;
-    int iport = (int)strtol(xport->txt, &endptr, 10);
-    if(*endptr != 0) {
+    unsigned long int iport = strtoul(xport->txt, NULL, 10);
+    if(iport == ULONG_MAX && errno == ERANGE) {
+      ctx->set_error(ctx, 400, "port value %s too large to be parsed for redis cache %s", xport->txt, cache->name);
+      return;
+    } else if(iport == 0) {
       ctx->set_error(ctx, 400, "failed to parse port value %s for redis cache %s", xport->txt, cache->name);
       return;
     }

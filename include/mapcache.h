@@ -610,7 +610,7 @@ typedef struct mapcache_cache_redis mapcache_cache_redis;
 struct mapcache_cache_redis {
   mapcache_cache cache;
   char *host;
-  unsigned int port;
+  unsigned long int port;
 };
 
 /**
