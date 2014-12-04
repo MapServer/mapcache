@@ -608,9 +608,9 @@ typedef struct mapcache_cache_redis mapcache_cache_redis;
  * \implements mapcache_cache
  */
 struct mapcache_cache_redis {
+  mapcache_cache cache;
   char *host;
   unsigned int port;
-  mapcache_cache cache;
 };
 
 /**
