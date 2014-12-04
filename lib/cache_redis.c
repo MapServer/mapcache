@@ -109,6 +109,7 @@ static int _mapcache_cache_redis_get(mapcache_context *ctx,
     freeReplyObject(reply);
     return MAPCACHE_CACHE_MISS;
   }
+  tile->encoded_data->buf = apr_pcalloc(ctx->pool, reply->len);
   memcpy(tile->encoded_data->buf, reply->str, reply->len);
   tile->encoded_data->size = reply->len;
   if(tile->encoded_data->size == 0) {
