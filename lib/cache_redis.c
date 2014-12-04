@@ -164,8 +164,8 @@ static void _mapcache_cache_redis_set(mapcache_context *ctx,
   redisReply *reply = redisCommand(conn,
                                    "SETEX %s %d %b",
                                    key,
-                                   data,
                                    expires,
+                                   data,
                                    tile->encoded_data->size + sizeof(apr_time_t));
   
   if(IS_REDIS_ERROR_STATUS(reply)) {
