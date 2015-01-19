@@ -118,9 +118,8 @@ static apr_status_t _bdb_reslist_free_connection(void *conn_, void *params, apr_
 
 
 
-static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile, int readonly) {
+static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_cache_bdb *cache, mapcache_tile* tile, int readonly) {
   apr_status_t rv;
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
 
   struct bdb_env *benv;
   apr_hash_t *pool_container;
@@ -198,7 +197,7 @@ static struct bdb_env* _bdb_get_conn(mapcache_context *ctx, mapcache_tile* tile,
   return benv;
 }
 
-static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct bdb_env *benv)
+static void _bdb_release_conn(mapcache_context *ctx, mapcache_cache_bdb *cache, mapcache_tile *tile, struct bdb_env *benv)
 {
   apr_reslist_t *pool;
   apr_hash_t *pool_container;
@@ -207,7 +206,7 @@ static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct
   } else {
     pool_container = rw_connection_pools;
   }
-  pool = apr_hash_get(pool_container,tile->tileset->cache->name, APR_HASH_KEY_STRING);
+  pool = apr_hash_get(pool_container,cache->cache.name, APR_HASH_KEY_STRING);
   if(GC_HAS_ERROR(ctx)) {
     apr_reslist_invalidate(pool,(void*)benv);
   } else {
@@ -215,13 +214,13 @@ static void _bdb_release_conn(mapcache_context *ctx, mapcache_tile *tile, struct
   }
 }
 
-static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   int ret;
   DBT key;
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-  struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
+  struct bdb_env *benv = _bdb_get_conn(ctx,cache,tile,1);
   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FALSE;
   memset(&key, 0, sizeof(DBT));
   key.data = skey;
@@ -237,17 +236,17 @@ static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_tile *ti
     ctx->set_error(ctx,500,"bdb backend failure on tile_exists: %s",db_strerror(ret));
     ret= MAPCACHE_FALSE;
   }
-  _bdb_release_conn(ctx,tile,benv);
+  _bdb_release_conn(ctx,cache,tile,benv);
   return ret;
 }
 
-static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   DBT key;
   int ret;
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-  struct bdb_env *benv = _bdb_get_conn(ctx,tile,0);
+  struct bdb_env *benv = _bdb_get_conn(ctx,cache,tile,0);
   GC_CHECK_ERROR(ctx);
   memset(&key, 0, sizeof(DBT));
   key.data = skey;
@@ -260,15 +259,15 @@ static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_tile *til
     if(ret)
       ctx->set_error(ctx,500,"bdb backend sync failure on tile_delete: %s",db_strerror(ret));
   }
-  _bdb_release_conn(ctx,tile,benv);
+  _bdb_release_conn(ctx,cache,tile,benv);
 }
 
-static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   DBT key,data;
   int ret;
-  struct bdb_env *benv = _bdb_get_conn(ctx,tile,1);
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
+  struct bdb_env *benv = _bdb_get_conn(ctx,cache,tile,1);
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FAILURE;
   memset(&key, 0, sizeof(DBT));
@@ -298,19 +297,19 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_tile *tile)
     ctx->set_error(ctx,500,"bdb backend failure on tile_get: %s",db_strerror(ret));
     ret = MAPCACHE_FAILURE;
   }
-  _bdb_release_conn(ctx,tile,benv);
+  _bdb_release_conn(ctx,cache,tile,benv);
   return ret;
 }
 
 
-static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   DBT key,data;
   int ret;
   apr_time_t now;
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tile->tileset->cache;
+  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-  struct bdb_env *benv = _bdb_get_conn(ctx,tile,0);
+  struct bdb_env *benv = _bdb_get_conn(ctx,cache,tile,0);
   GC_CHECK_ERROR(ctx);
   now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
@@ -348,16 +347,16 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_tile *tile)
     if(ret)
       ctx->set_error(ctx,500,"bdb backend sync failure on tile_set: %s",db_strerror(ret));
   }
-  _bdb_release_conn(ctx,tile,benv);
+  _bdb_release_conn(ctx,cache,tile,benv);
 }
 
-static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *tiles, int ntiles)
+static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tiles, int ntiles)
 {
   DBT key,data;
   int ret,i;
   apr_time_t now;
-  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)tiles[0].tileset->cache;
-  struct bdb_env *benv = _bdb_get_conn(ctx,&tiles[0],0);
+  mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
+  struct bdb_env *benv = _bdb_get_conn(ctx,cache,&tiles[0],0);
   GC_CHECK_ERROR(ctx);
   now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
@@ -404,7 +403,7 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_tile *t
     if(ret)
       ctx->set_error(ctx,500,"bdb backend sync failure on sync in tile_multiset: %s",db_strerror(ret));
   }
-  _bdb_release_conn(ctx,&tiles[0],benv);
+  _bdb_release_conn(ctx,cache,&tiles[0],benv);
 }
 
 

@@ -62,10 +62,9 @@
  * \param r
  * \private \memberof mapcache_cache_tiff
  */
-static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_cache_tiff *cache, mapcache_tile *tile, char **path)
 {
-  mapcache_cache_tiff *dcache = (mapcache_cache_tiff*)tile->tileset->cache;
-  *path = dcache->filename_template;
+  *path = cache->filename_template;
 
   /*
    * generic template substitutions
@@ -91,23 +90,23 @@ static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_tile *
 
   while(strstr(*path,"{z}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
-                                      apr_psprintf(ctx->pool,dcache->z_fmt,tile->z));
+                                      apr_psprintf(ctx->pool,cache->z_fmt,tile->z));
   /*
    * x and y replacing, when the tiff files are numbered with an increasing
    * x,y scheme (adjacent tiffs have x-x'=1 or y-y'=1
    */
   while(strstr(*path,"{div_x}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{div_x}",
-                                      apr_psprintf(ctx->pool,dcache->div_x_fmt,tile->x/dcache->count_x));
+                                      apr_psprintf(ctx->pool,cache->div_x_fmt,tile->x/cache->count_x));
   while(strstr(*path,"{div_y}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{div_y}",
-                                      apr_psprintf(ctx->pool,dcache->div_y_fmt,tile->y/dcache->count_y));
+                                      apr_psprintf(ctx->pool,cache->div_y_fmt,tile->y/cache->count_y));
   while(strstr(*path,"{inv_div_y}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_div_y}",
-                                      apr_psprintf(ctx->pool,dcache->inv_div_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y));
+                                      apr_psprintf(ctx->pool,cache->inv_div_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/cache->count_y));
   while(strstr(*path,"{inv_div_x}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_div_x}",
-                                      apr_psprintf(ctx->pool,dcache->inv_div_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x));
+                                      apr_psprintf(ctx->pool,cache->inv_div_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/cache->count_x));
 
   /*
    * x and y replacing, when the tiff files are numbered with the index
@@ -116,25 +115,24 @@ static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_tile *
    */
   while(strstr(*path,"{x}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
-                                      apr_psprintf(ctx->pool,dcache->x_fmt,tile->x/dcache->count_x*dcache->count_x));
+                                      apr_psprintf(ctx->pool,cache->x_fmt,tile->x/cache->count_x*cache->count_x));
   while(strstr(*path,"{y}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
-                                      apr_psprintf(ctx->pool,dcache->y_fmt,tile->y/dcache->count_y*dcache->count_y));
+                                      apr_psprintf(ctx->pool,cache->y_fmt,tile->y/cache->count_y*cache->count_y));
   while(strstr(*path,"{inv_y}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
-                                      apr_psprintf(ctx->pool,dcache->inv_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y*dcache->count_y));
+                                      apr_psprintf(ctx->pool,cache->inv_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/cache->count_y*cache->count_y));
   while(strstr(*path,"{inv_x}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
-                                      apr_psprintf(ctx->pool,dcache->inv_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/dcache->count_x*dcache->count_y));
+                                      apr_psprintf(ctx->pool,cache->inv_x_fmt,(tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1)/cache->count_x*cache->count_y));
   if(!*path) {
     ctx->set_error(ctx,500, "failed to allocate tile key");
   }
 }
 
 #ifdef DEBUG
-static void check_tiff_format(mapcache_context *ctx, mapcache_tile *tile, TIFF *hTIFF, const char *filename)
+static void check_tiff_format(mapcache_context *ctx, mapcache_cache_tiff *cache, mapcache_tile *tile, TIFF *hTIFF, const char *filename)
 {
-  mapcache_cache_tiff *dcache = (mapcache_cache_tiff*)tile->tileset->cache;
   uint32 imwidth,imheight,tilewidth,tileheight;
   int16 planarconfig,orientation;
   uint16 compression;
@@ -192,8 +190,8 @@ static void check_tiff_format(mapcache_context *ctx, mapcache_tile *tile, TIFF *
    *   configured for the cache
    */
   level = tile->grid_link->grid->levels[tile->z];
-  ntilesx = MAPCACHE_MIN(dcache->count_x, level->maxx);
-  ntilesy = MAPCACHE_MIN(dcache->count_y, level->maxy);
+  ntilesx = MAPCACHE_MIN(cache->count_x, level->maxx);
+  ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
   if( tilewidth != tile->grid_link->grid->tile_sx ||
       tileheight != tile->grid_link->grid->tile_sy ||
       imwidth != tile->grid_link->grid->tile_sx * ntilesx ||
@@ -213,13 +211,12 @@ static void check_tiff_format(mapcache_context *ctx, mapcache_tile *tile, TIFF *
 }
 #endif
 
-static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *filename;
   TIFF *hTIFF;
-  mapcache_cache_tiff *dcache;
-  _mapcache_cache_tiff_tile_key(ctx, tile, &filename);
-  dcache = (mapcache_cache_tiff*)tile->tileset->cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
+  _mapcache_cache_tiff_tile_key(ctx, cache, tile, &filename);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FALSE;
   }
@@ -253,8 +250,8 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_tile *t
       }
 #endif
       level = tile->grid_link->grid->levels[tile->z];
-      ntilesx = MAPCACHE_MIN(dcache->count_x, level->maxx);
-      ntilesy = MAPCACHE_MIN(dcache->count_y, level->maxy);
+      ntilesx = MAPCACHE_MIN(cache->count_x, level->maxx);
+      ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
 
       /* x offset of the tile along a row */
       tiff_offx = tile->x % ntilesx;
@@ -286,7 +283,7 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_tile *t
     return MAPCACHE_FALSE;
 }
 
-static void _mapcache_cache_tiff_delete(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_tiff_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   ctx->set_error(ctx,500,"TIFF cache tile deleting not implemented");
 }
@@ -299,14 +296,13 @@ static void _mapcache_cache_tiff_delete(mapcache_context *ctx, mapcache_tile *ti
  * \private \memberof mapcache_cache_tiff
  * \sa mapcache_cache::tile_get()
  */
-static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *filename;
   TIFF *hTIFF = NULL;
   int rv;
-  mapcache_cache_tiff *dcache;
-  _mapcache_cache_tiff_tile_key(ctx, tile, &filename);
-  dcache = (mapcache_cache_tiff*)tile->tileset->cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
+  _mapcache_cache_tiff_tile_key(ctx, cache, tile, &filename);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FALSE;
   }
@@ -359,8 +355,8 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_tile *tile)
        * file for lower zoom levels
        */
       level = tile->grid_link->grid->levels[tile->z];
-      ntilesx = MAPCACHE_MIN(dcache->count_x, level->maxx);
-      ntilesy = MAPCACHE_MIN(dcache->count_y, level->maxy);
+      ntilesx = MAPCACHE_MIN(cache->count_x, level->maxx);
+      ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
 
       /* x offset of the tile along a row */
       tiff_offx = tile->x % ntilesx;
@@ -508,7 +504,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_tile *tile)
  * \private \memberof mapcache_cache_tiff
  * \sa mapcache_cache::tile_set()
  */
-static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
 #ifdef USE_TIFF_WRITE
   char *filename;
@@ -516,7 +512,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_tile *tile)
   int rv;
   int create;
   char errmsg[120];
-  mapcache_cache_tiff *dcache;
+  mapcache_cache_tiff *cache;
   mapcache_image_format_jpeg *format;
   char *hackptr1,*hackptr2;
   int tilew;
@@ -530,9 +526,9 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_tile *tile)
   int tiff_offx, tiff_offy; /* the x and y offset of the tile inside the tiff image */
   int tiff_off; /* the index of the tile inside the list of tiles of the tiff image */
 
-  _mapcache_cache_tiff_tile_key(ctx, tile, &filename);
-  dcache = (mapcache_cache_tiff*)tile->tileset->cache;
-  format = (mapcache_image_format_jpeg*) dcache->format;
+  cache = (mapcache_cache_tiff*)pcache;
+  _mapcache_cache_tiff_tile_key(ctx, cache, tile, &filename);
+  format = (mapcache_image_format_jpeg*) cache->format;
   if(GC_HAS_ERROR(ctx)) {
     return;
   }
@@ -615,8 +611,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_tile *tile)
    * file for lower zoom levels
    */
   level = tile->grid_link->grid->levels[tile->z];
-  ntilesx = MAPCACHE_MIN(dcache->count_x, level->maxx);
-  ntilesy = MAPCACHE_MIN(dcache->count_y, level->maxy);
+  ntilesx = MAPCACHE_MIN(cache->count_x, level->maxx);
+  ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
   if(create) {
 #ifdef USE_GEOTIFF
     double  adfPixelScale[3], adfTiePoints[6], bbox[4];
@@ -679,8 +675,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_tile *tile)
 
 
       /* top left tile x,y */
-      x = (tile->x / dcache->count_x)*(dcache->count_x);
-      y = (tile->y / dcache->count_y)*(dcache->count_y) + ntilesy - 1;
+      x = (tile->x / cache->count_x)*(cache->count_x);
+      y = (tile->y / cache->count_y)*(cache->count_y) + ntilesy - 1;
 
       mapcache_grid_get_extent(ctx, tile->grid_link->grid,
                                x,y,tile->z,bbox);
@@ -747,10 +743,10 @@ close_tiff:
 /**
  * \private \memberof mapcache_cache_tiff
  */
-static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config)
+static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *pcache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
-  mapcache_cache_tiff *dcache = (mapcache_cache_tiff*)cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
   ezxml_t xcount;
   ezxml_t ycount;
   ezxml_t xformat;
@@ -758,59 +754,59 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
   mapcache_image_format *pformat;
   if ((cur_node = ezxml_child(node,"template")) != NULL) {
     char *fmt;
-    dcache->filename_template = apr_pstrdup(ctx->pool,cur_node->txt);
+    cache->filename_template = apr_pstrdup(ctx->pool,cur_node->txt);
     fmt = (char*)ezxml_attr(cur_node,"x_fmt");
     if(fmt && *fmt) {
-      dcache->x_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->x_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"y_fmt");
     if(fmt && *fmt) {
-      dcache->y_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"z_fmt");
     if(fmt && *fmt) {
-      dcache->z_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->z_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"inv_x_fmt");
     if(fmt && *fmt) {
-      dcache->inv_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->inv_x_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"inv_y_fmt");
     if(fmt && *fmt) {
-      dcache->inv_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->inv_y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"div_x_fmt");
     if(fmt && *fmt) {
-      dcache->div_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->div_x_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"div_y_fmt");
     if(fmt && *fmt) {
-      dcache->div_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->div_y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"inv_div_x_fmt");
     if(fmt && *fmt) {
-      dcache->inv_div_x_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->inv_div_x_fmt = apr_pstrdup(ctx->pool,fmt);
     }
     fmt = (char*)ezxml_attr(cur_node,"inv_div_y_fmt");
     if(fmt && *fmt) {
-      dcache->inv_div_y_fmt = apr_pstrdup(ctx->pool,fmt);
+      cache->inv_div_y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
   }
   xcount = ezxml_child(node,"xcount");
   if(xcount && xcount->txt && *xcount->txt) {
     char *endptr;
-    dcache->count_x = (int)strtol(xcount->txt,&endptr,10);
+    cache->count_x = (int)strtol(xcount->txt,&endptr,10);
     if(*endptr != 0) {
-      ctx->set_error(ctx,400,"failed to parse xcount value %s for tiff cache %s", xcount->txt,cache->name);
+      ctx->set_error(ctx,400,"failed to parse xcount value %s for tiff cache %s", xcount->txt,pcache->name);
       return;
     }
   }
   ycount = ezxml_child(node,"ycount");
   if(ycount && ycount->txt && *ycount->txt) {
     char *endptr;
-    dcache->count_y = (int)strtol(ycount->txt,&endptr,10);
+    cache->count_y = (int)strtol(ycount->txt,&endptr,10);
     if(*endptr != 0) {
-      ctx->set_error(ctx,400,"failed to parse ycount value %s for tiff cache %s", ycount->txt,cache->name);
+      ctx->set_error(ctx,400,"failed to parse ycount value %s for tiff cache %s", ycount->txt,pcache->name);
       return;
     }
   }
@@ -824,31 +820,31 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
               config,format_name);
   if(!pformat) {
     ctx->set_error(ctx,500,"TIFF cache %s references unknown image format %s",
-                   cache->name, format_name);
+                   pcache->name, format_name);
     return;
   }
   if(pformat->type != GC_JPEG) {
     ctx->set_error(ctx,500,"TIFF cache %s can only reference a JPEG image format",
-                   cache->name);
+                   pcache->name);
     return;
   }
-  dcache->format = (mapcache_image_format_jpeg*)pformat;
+  cache->format = (mapcache_image_format_jpeg*)pformat;
 }
 
 /**
  * \private \memberof mapcache_cache_tiff
  */
-static void _mapcache_cache_tiff_configuration_post_config(mapcache_context *ctx, mapcache_cache *cache,
+static void _mapcache_cache_tiff_configuration_post_config(mapcache_context *ctx, mapcache_cache *pcache,
     mapcache_cfg *cfg)
 {
-  mapcache_cache_tiff *dcache = (mapcache_cache_tiff*)cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
   /* check all required parameters are configured */
-  if((!dcache->filename_template || !strlen(dcache->filename_template))) {
-    ctx->set_error(ctx, 400, "tiff cache %s has no template pattern",dcache->cache.name);
+  if((!cache->filename_template || !strlen(cache->filename_template))) {
+    ctx->set_error(ctx, 400, "tiff cache %s has no template pattern",cache->cache.name);
     return;
   }
-  if(dcache->count_x <= 0 || dcache->count_y <= 0) {
-    ctx->set_error(ctx, 400, "tiff cache %s has invalid count (%d,%d)",dcache->count_x,dcache->count_y);
+  if(cache->count_x <= 0 || cache->count_y <= 0) {
+    ctx->set_error(ctx, 400, "tiff cache %s has invalid count (%d,%d)",cache->count_x,cache->count_y);
     return;
   }
 }

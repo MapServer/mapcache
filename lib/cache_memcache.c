@@ -32,13 +32,13 @@
 
 #include "mapcache.h"
 
-static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *key;
   char *tmpdata;
   int rv;
   size_t tmpdatasize;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FALSE;
@@ -53,12 +53,12 @@ static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_til
   return MAPCACHE_TRUE;
 }
 
-static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *key;
   int rv;
   char errmsg[120];
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   GC_CHECK_ERROR(ctx);
   rv = apr_memcache_delete(cache->memcache,key,0);
@@ -75,11 +75,11 @@ static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_tile
  * \private \memberof mapcache_cache_memcache
  * \sa mapcache_cache::tile_get()
  */
-static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *key;
   int rv;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
@@ -113,7 +113,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_tile *ti
  * \private \memberof mapcache_cache_memcache
  * \sa mapcache_cache::tile_set()
  */
-static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *key;
   int rv;
@@ -121,7 +121,7 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_tile *t
   int expires = 86400;
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   GC_CHECK_ERROR(ctx);
 

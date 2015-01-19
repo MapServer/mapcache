@@ -111,10 +111,10 @@ char* relative_path(mapcache_context *ctx, char* tilename, char* blankname)
  * \param path pointer to a char* that will contain the filename
  * \private \memberof mapcache_cache_disk
  */
-static void _mapcache_cache_disk_base_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_disk_base_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path)
 {
   *path = apr_pstrcat(ctx->pool,
-                      ((mapcache_cache_disk*)tile->tileset->cache)->base_directory,"/",
+                      cache->base_directory,"/",
                       tile->tileset->name,"/",
                       tile->grid_link->grid->name,
                       NULL);
@@ -129,11 +129,11 @@ static void _mapcache_cache_disk_base_tile_key(mapcache_context *ctx, mapcache_t
   }
 }
 
-static void _mapcache_cache_disk_blank_tile_key(mapcache_context *ctx, mapcache_tile *tile, unsigned char *color, char **path)
+static void _mapcache_cache_disk_blank_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, unsigned char *color, char **path)
 {
   /* not implemented for template caches, as symlink_blank will never be set */
   *path = apr_psprintf(ctx->pool,"%s/%s/%s/blanks/%02X%02X%02X%02X.%s",
-                       ((mapcache_cache_disk*)tile->tileset->cache)->base_directory,
+                       cache->base_directory,
                        tile->tileset->name,
                        tile->grid_link->grid->name,
                        color[0],
@@ -154,12 +154,11 @@ static void _mapcache_cache_disk_blank_tile_key(mapcache_context *ctx, mapcache_
  * \param r
  * \private \memberof mapcache_cache_disk
  */
-static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path)
 {
-  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
-  if(dcache->base_directory) {
+  if(cache->base_directory) {
     char *start;
-    _mapcache_cache_disk_base_tile_key(ctx, tile, &start);
+    _mapcache_cache_disk_base_tile_key(ctx, cache, tile, &start);
     *path = apr_psprintf(ctx->pool,"%s/%02d/%03d/%03d/%03d/%03d/%03d/%03d.%s",
                          start,
                          tile->z,
@@ -171,7 +170,7 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
                          tile->y % 1000,
                          tile->tileset->format?tile->tileset->format->extension:"png");
   } else {
-    *path = dcache->filename_template;
+    *path = cache->filename_template;
     *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
     *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
     *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
@@ -222,11 +221,10 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
   }
 }
 
-static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path)
 {
-  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
 
-  *path = dcache->filename_template;
+  *path = cache->filename_template;
   *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
   *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
   *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
@@ -278,12 +276,11 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
   }
 }
 
-static void _mapcache_cache_disk_arcgis_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_disk_arcgis_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path)
 {
-  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
-  if(dcache->base_directory) {
+  if(cache->base_directory) {
     char *start;
-    _mapcache_cache_disk_base_tile_key(ctx, tile, &start);
+    _mapcache_cache_disk_base_tile_key(ctx, cache, tile, &start);
     *path = apr_psprintf(ctx->pool,"%s/L%02d/R%08x/C%08x.%s" ,
                          start,
                          tile->z,
@@ -297,12 +294,11 @@ static void _mapcache_cache_disk_arcgis_tile_key(mapcache_context *ctx, mapcache
   }
 }
 
-static void _mapcache_cache_disk_worldwind_tile_key(mapcache_context *ctx, mapcache_tile *tile, char **path)
+static void _mapcache_cache_disk_worldwind_tile_key(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path)
 {
-  mapcache_cache_disk *dcache = (mapcache_cache_disk*)tile->tileset->cache;
-  if(dcache->base_directory) {
+  if(cache->base_directory) {
     *path = apr_psprintf(ctx->pool,"%s/%d/%04d/%04d_%04d.%s" ,
-                         dcache->base_directory,
+                         cache->base_directory,
                          tile->z,
                          tile->y,
                          tile->y,
@@ -316,12 +312,13 @@ static void _mapcache_cache_disk_worldwind_tile_key(mapcache_context *ctx, mapca
 }
 
 
-static int _mapcache_cache_disk_has_tile(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_disk_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *filename;
   apr_finfo_t finfo;
   int rv;
-  ((mapcache_cache_disk*)tile->tileset->cache)->tile_key(ctx, tile, &filename);
+  mapcache_cache_disk *cache = (mapcache_cache_disk*)pcache;
+  cache->tile_key(ctx, cache, tile, &filename);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FALSE;
   }
@@ -333,12 +330,13 @@ static int _mapcache_cache_disk_has_tile(mapcache_context *ctx, mapcache_tile *t
   }
 }
 
-static void _mapcache_cache_disk_delete(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_disk_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   apr_status_t ret;
   char errmsg[120];
   char *filename;
-  ((mapcache_cache_disk*)tile->tileset->cache)->tile_key(ctx, tile, &filename);
+  mapcache_cache_disk *cache = (mapcache_cache_disk*)pcache;
+  cache->tile_key(ctx, cache, tile, &filename);
   GC_CHECK_ERROR(ctx);
 
   ret = apr_file_remove(filename,ctx->pool);
@@ -355,7 +353,7 @@ static void _mapcache_cache_disk_delete(mapcache_context *ctx, mapcache_tile *ti
  * \private \memberof mapcache_cache_disk
  * \sa mapcache_cache::tile_get()
  */
-static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_tile *tile)
+static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   char *filename;
   apr_file_t *f;
@@ -363,8 +361,9 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_tile *tile)
   apr_status_t rv;
   apr_size_t size;
   apr_mmap_t *tilemmap;
+  mapcache_cache_disk *cache = (mapcache_cache_disk*)pcache;
 
-  ((mapcache_cache_disk*)tile->tileset->cache)->tile_key(ctx, tile, &filename);
+  cache->tile_key(ctx, cache, tile, &filename);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
@@ -437,14 +436,15 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_tile *tile)
  * \private \memberof mapcache_cache_disk
  * \sa mapcache_cache::tile_set()
  */
-static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
+static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   apr_size_t bytes;
   apr_file_t *f;
   apr_status_t ret;
   char errmsg[120];
   char *filename, *hackptr1, *hackptr2=NULL;
-  const int creation_retry = ((mapcache_cache_disk*)tile->tileset->cache)->creation_retry;
+  mapcache_cache_disk *cache = (mapcache_cache_disk*)pcache;
+  const int creation_retry = cache->creation_retry;
   int retry_count_create_file = 0;
 
 #ifdef DEBUG
@@ -459,7 +459,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
   }
 #endif
 
-  ((mapcache_cache_disk*)tile->tileset->cache)->tile_key(ctx, tile, &filename);
+  cache->tile_key(ctx, cache, tile, &filename);
   GC_CHECK_ERROR(ctx);
 
   /* find the location of the last '/' in the string */
@@ -490,14 +490,14 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
 
 
 #ifdef HAVE_SYMLINK
-  if(((mapcache_cache_disk*)tile->tileset->cache)->symlink_blank) {
+  if(cache->symlink_blank) {
     if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
     }
     if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       char *blankname;
-      _mapcache_cache_disk_blank_tile_key(ctx,tile,tile->raw_image->data,&blankname);
+      _mapcache_cache_disk_blank_tile_key(ctx,cache,tile,tile->raw_image->data,&blankname);
       if(apr_file_open(&f, blankname, APR_FOPEN_READ, APR_OS_DEFAULT, ctx->pool) != APR_SUCCESS) {
         if(!tile->encoded_data) {
           tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
@@ -505,7 +505,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_tile *tile)
         }
         /* create the blank file */
         char *blankdirname = apr_psprintf(ctx->pool, "%s/%s/%s/blanks",
-                                          ((mapcache_cache_disk*)tile->tileset->cache)->base_directory,
+                                          cache->base_directory,
                                           tile->tileset->name,
                                           tile->grid_link->grid->name);
         if(APR_SUCCESS != (ret = apr_dir_make_recursive(

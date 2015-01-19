@@ -71,7 +71,7 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
 {
 
   /* check we have all we want */
-  if(tileset->cache == NULL) {
+  if(tileset->_cache == NULL) {
     /* TODO: we should allow tilesets with no caches */
     ctx->set_error(ctx, 400, "tileset \"%s\" has no cache configured.", tileset->name);
     return;
@@ -459,12 +459,12 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
-  if(mt->map.tileset->cache->tile_multi_set) {
-    mt->map.tileset->cache->tile_multi_set(ctx, mt->tiles, mt->ntiles);
+  if(mt->map.tileset->_cache->tile_multi_set) {
+    mt->map.tileset->_cache->tile_multi_set(ctx, mt->map.tileset->_cache, mt->tiles, mt->ntiles);
   } else {
     for(i=0; i<mt->ntiles; i++) {
       mapcache_tile *tile = &(mt->tiles[i]);
-      mt->map.tileset->cache->tile_set(ctx, tile);
+      mt->map.tileset->_cache->tile_set(ctx, mt->map.tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
     }
   }
@@ -504,7 +504,7 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
   dst->grid_links = src->grid_links;
   dst->config = src->config;
   dst->name = src->name;
-  dst->cache = src->cache;
+  dst->_cache = src->_cache;
   dst->source = src->source;
   dst->watermark = src->watermark;
   dst->wgs84bbox = src->wgs84bbox;
@@ -769,7 +769,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     mapcache_tileset_outofzoom_get(ctx, tile);
     return;
   }
-  ret = tile->tileset->cache->tile_get(ctx, tile);
+  ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
@@ -841,7 +841,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     GC_CHECK_ERROR(ctx);
 
     /* the previous step has successfully finished, we can now query the cache to return the tile content */
-    ret = tile->tileset->cache->tile_get(ctx, tile);
+    ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
     GC_CHECK_ERROR(ctx);
 
     if(ret != MAPCACHE_SUCCESS) {
@@ -866,7 +866,7 @@ void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, in
 {
   int i;
   /*delete the tile itself*/
-  tile->tileset->cache->tile_delete(ctx,tile);
+  tile->tileset->_cache->tile_delete(ctx,tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(whole_metatile) {
@@ -875,7 +875,7 @@ void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, in
       mapcache_tile *subtile = &mt->tiles[i];
       /* skip deleting the actual tile */
       if(subtile->x == tile->x && subtile->y == tile->y) continue;
-      subtile->tileset->cache->tile_delete(ctx,subtile);
+      subtile->tileset->_cache->tile_delete(ctx,subtile->tileset->_cache,subtile);
       /* silently pass failure if the tile was not found */
       if(ctx->get_error(ctx) == 404) {
         ctx->clear_errors(ctx);

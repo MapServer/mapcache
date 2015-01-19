@@ -208,6 +208,7 @@ int trypop_queue(struct seed_cmd *cmd)
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
+  { "cache", 'C', TRUE, "override cache used by selected tileset (useful for selectively seeding fallback/multitier caches)"},
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
 #endif
@@ -310,12 +311,12 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   int action = MAPCACHE_CMD_SKIP;
   int intersects = -1;
-  int tile_exists = force?0:tileset->cache->tile_exists(ctx,tile);
+  int tile_exists = force?0:tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
 
   /* if the tile exists and a time limit was specified, check the tile modification date */
   if(tile_exists) {
     if(age_limit) {
-      if(tileset->cache->tile_get(ctx,tile) == MAPCACHE_SUCCESS) {
+      if(tileset->_cache->tile_get(ctx,tileset->_cache, tile) == MAPCACHE_SUCCESS) {
         if(tile->mtime && tile->mtime<age_limit) {
           /* the tile modification time is older than the specified limit */
 #ifdef USE_CLIPPERS
@@ -331,7 +332,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
               /* if we are in mode transfer, delete it from the dst tileset */
               if (mode == MAPCACHE_CMD_TRANSFER) {
                 tile->tileset = tileset_transfer;
-                if (tileset_transfer->cache->tile_exists(ctx,tile)) {
+                if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
                   mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
                 }
                 tile->tileset = tileset;
@@ -357,7 +358,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         /* the tile exists in the source tileset,
            check if the tile exists in the destination cache */
         tile->tileset = tileset_transfer;
-        if (tileset_transfer->cache->tile_exists(ctx,tile)) {
+        if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
           action = MAPCACHE_CMD_SKIP;
         } else {
           action = MAPCACHE_CMD_TRANSFER;
@@ -605,7 +606,7 @@ void seed_worker()
         mapcache_tile *subtile = &mt->tiles[i];
         mapcache_tileset_tile_get(&seed_ctx, subtile);
         subtile->tileset = tileset_transfer;
-        tileset_transfer->cache->tile_set(&seed_ctx, subtile);
+        subtile->tileset->_cache->tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
@@ -765,6 +766,7 @@ int main(int argc, const char **argv)
   const char *tileset_name=NULL;
   const char *tileset_transfer_name=NULL;
   const char *grid_name = NULL;
+  const char *cache_override = NULL;
   int *zooms = NULL;//[2];
   mapcache_extent *extent = NULL;//[4];
   int optch;
@@ -816,6 +818,9 @@ int main(int argc, const char **argv)
         break;
       case 'c':
         configfile = optarg;
+        break;
+      case 'C':
+        cache_override = optarg;
         break;
       case 'g':
         grid_name = optarg;
@@ -1114,6 +1119,14 @@ int main(int argc, const char **argv)
       }
     }
 
+    if(cache_override) {
+      mapcache_cache *co = mapcache_configuration_get_cache(cfg, cache_override);
+      if(!co) {
+        return usage(argv[0], "overrided cache\"%s\" to not found in configuration", cache_override);
+      } else {
+        tileset->_cache = co;
+      }
+    }
 
   }
 

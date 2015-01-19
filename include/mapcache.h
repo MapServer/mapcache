@@ -102,6 +102,9 @@ typedef struct mapcache_source_wms mapcache_source_wms;
 typedef struct mapcache_source_gdal mapcache_source_gdal;
 #endif
 typedef struct mapcache_cache_disk mapcache_cache_disk;
+typedef struct mapcache_cache_composite mapcache_cache_composite;
+typedef struct mapcache_cache_fallback mapcache_cache_fallback;
+typedef struct mapcache_cache_multitier mapcache_cache_multitier;
 typedef struct mapcache_cache_rest mapcache_cache_rest;
 typedef struct mapcache_cache_s3 mapcache_cache_s3;
 typedef struct mapcache_cache_azure mapcache_cache_azure;
@@ -237,7 +240,7 @@ struct mapcache_context {
 void mapcache_context_init(mapcache_context *ctx);
 void mapcache_context_copy(mapcache_context *src, mapcache_context *dst);
 
-#define GC_CHECK_ERROR_RETURN(ctx) (if(((mapcache_context*)ctx)->_errcode) return MAPCACHE_FAILURE;)
+#define GC_CHECK_ERROR_RETURN(ctx) if(((mapcache_context*)ctx)->_errcode) return MAPCACHE_FAILURE;
 #define GC_CHECK_ERROR(ctx) if(((mapcache_context*)ctx)->_errcode) return;
 #define GC_HAS_ERROR(ctx) (((mapcache_context*)ctx)->_errcode > 0)
 
@@ -390,6 +393,7 @@ typedef enum {
 #ifdef USE_TIFF
   ,MAPCACHE_CACHE_TIFF
 #endif
+  ,MAPCACHE_CACHE_COMPOSITE
 } mapcache_cache_type;
 
 /** \interface mapcache_cache
@@ -407,23 +411,23 @@ struct mapcache_cache {
    * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
    * \memberof mapcache_cache
    */
-  int (*tile_get)(mapcache_context *ctx, mapcache_tile * tile);
+  int (*tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * delete tile from cache
    *
    * \memberof mapcache_cache
    */
-  void (*tile_delete)(mapcache_context *ctx, mapcache_tile * tile);
+  void (*tile_delete)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
-  int (*tile_exists)(mapcache_context *ctx, mapcache_tile * tile);
+  int (*tile_exists)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * set tile content to cache
    * \memberof mapcache_cache
    */
-  void (*tile_set)(mapcache_context *ctx, mapcache_tile * tile);
-  void (*tile_multi_set)(mapcache_context *ctx, mapcache_tile *tiles, int ntiles);
+  void (*tile_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  void (*tile_multi_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
   void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
@@ -444,7 +448,31 @@ struct mapcache_cache_disk {
    * Set filename for a given tile
    * \memberof mapcache_cache_disk
    */
-  void (*tile_key)(mapcache_context *ctx, mapcache_tile *tile, char **path);
+  void (*tile_key)(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path);
+};
+
+typedef struct mapcache_cache_composite_cache_link mapcache_cache_composite_cache_link;
+struct mapcache_cache_composite_cache_link {
+  mapcache_cache *cache;
+  int minzoom;
+  int maxzoom;
+  apr_array_header_t *grids;
+  apr_array_header_t *dimensions; //TODO
+};
+
+struct mapcache_cache_composite {
+  mapcache_cache cache;
+  apr_array_header_t *cache_links;
+};
+
+struct mapcache_cache_fallback {
+  mapcache_cache cache;
+  apr_array_header_t *caches;
+};
+
+struct mapcache_cache_multitier {
+  mapcache_cache cache;
+  apr_array_header_t *caches;
 };
 
 
@@ -478,7 +506,7 @@ struct mapcache_rest_operation {
   apr_table_t *headers;
   mapcache_rest_method method;
   char *tile_url;
-  void (*add_headers)(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers);
+  void (*add_headers)(mapcache_context *ctx, mapcache_cache_rest *pcache, mapcache_tile *tile, char *url, apr_table_t *headers);
 };
 
 typedef struct mapcache_rest_configuration mapcache_rest_configuration;
@@ -490,7 +518,7 @@ struct mapcache_rest_configuration {
   mapcache_rest_operation set_tile;
   mapcache_rest_operation multi_set_tile;
   mapcache_rest_operation delete_tile;
-  void (*add_headers)(mapcache_context *ctx, mapcache_tile *tile, char *url, apr_table_t *headers);
+  void (*add_headers)(mapcache_context *ctx, mapcache_cache_rest *pcache, mapcache_tile *tile, char *url, apr_table_t *headers);
 };
 
 /**\class mapcache_cache_rest
@@ -548,6 +576,8 @@ struct mapcache_cache_sqlite_stmt {
   char *sql;
 };
 
+struct sqlite_conn;
+
 struct mapcache_cache_sqlite {
   mapcache_cache cache;
   char *dbfile;
@@ -557,15 +587,27 @@ struct mapcache_cache_sqlite {
   mapcache_cache_sqlite_stmt set_stmt;
   mapcache_cache_sqlite_stmt delete_stmt;
   apr_table_t *pragmas;
-  void (*bind_stmt)(mapcache_context*ctx, void *stmt, mapcache_tile *tile);
+  void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
+  struct sqlite_conn* (*get_conn)(mapcache_context *ctx, mapcache_cache_sqlite *cache, mapcache_tile *tile, int read_only);
+  void (*release_conn)(mapcache_context *ctx, mapcache_cache_sqlite *cache, mapcache_tile *tile, struct sqlite_conn *conn);
   int n_prepared_statements;
   int detect_blank;
+};
+
+typedef struct mapcache_cache_multi_sqlite mapcache_cache_multi_sqlite;
+
+struct mapcache_cache_multi_sqlite {
+    mapcache_cache_sqlite sqlite;
+    char *filename_template;
+    char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+    int count_x, count_y;
 };
 
 /**
  * \memberof mapcache_cache_sqlite
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx);
+mapcache_cache* mapcache_cache_multi_sqlite_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 #endif
 
@@ -1246,6 +1288,10 @@ mapcache_cache* mapcache_cache_google_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx);
 #endif
 
+mapcache_cache* mapcache_cache_composite_create(mapcache_context *ctx);
+mapcache_cache* mapcache_cache_fallback_create(mapcache_context *ctx);
+mapcache_cache* mapcache_cache_multitier_create(mapcache_context *ctx);
+
 
 /** \defgroup tileset Tilesets*/
 /** @{ */
@@ -1407,7 +1453,7 @@ struct mapcache_tileset {
   /**
    * the cache in which the tiles should be stored
    */
-  mapcache_cache *cache;
+  mapcache_cache *_cache;
 
   /**
    * the source from which tiles should be requested

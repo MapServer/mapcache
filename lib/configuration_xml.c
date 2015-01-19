@@ -498,6 +498,12 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   }
   if(!strcmp(type,"disk")) {
     cache = mapcache_cache_disk_create(ctx);
+  } else if(!strcmp(type,"fallback")) {
+    cache = mapcache_cache_fallback_create(ctx);
+  } else if(!strcmp(type,"multitier")) {
+    cache = mapcache_cache_multitier_create(ctx);
+  } else if(!strcmp(type,"composite")) {
+    cache = mapcache_cache_composite_create(ctx);
   } else if(!strcmp(type,"rest")) {
     cache = mapcache_cache_rest_create(ctx);
   } else if(!strcmp(type,"s3")) {
@@ -772,7 +778,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      " but it is not configured", name, cur_node->txt);
       return;
     }
-    tileset->cache = cache;
+    tileset->_cache = cache;
   }
 
   if ((cur_node = ezxml_child(node,"source")) != NULL) {
