@@ -538,6 +538,7 @@
       <quality>75</quality>  
 
       <photometric>RGB</photometric>   <!-- RGB | YCBCR -->
+      <optimize>true</optimize>  <!-- true | false | arithmetic -->
    </format>
    <format name="PNG_BEST" type ="PNG">
       <compression>best</compression>
