@@ -1360,6 +1360,15 @@ typedef enum {
   MAPCACHE_PHOTOMETRIC_YCBCR
 } mapcache_photometric;
 
+/**
+ * optimization settings (mostly) for jpeg
+ */
+typedef enum {
+  MAPCACHE_OPTIMIZE_NO,
+  MAPCACHE_OPTIMIZE_YES,
+  MAPCACHE_OPTIMIZE_ARITHMETIC
+} mapcache_optimization;
+
 /**\interface mapcache_image_format
  * \brief an image format
  * \sa mapcache_image_format_jpeg
@@ -1468,10 +1477,11 @@ struct mapcache_image_format_jpeg {
   mapcache_image_format format;
   int quality; /**< JPEG quality, 1-100 */
   mapcache_photometric photometric;
+  mapcache_optimization optimize;
 };
 
 mapcache_image_format* mapcache_imageio_create_jpeg_format(apr_pool_t *pool, char *name, int quality,
-    mapcache_photometric photometric);
+    mapcache_photometric photometric, mapcache_optimization optimize);
 
 /**
  * @param r
