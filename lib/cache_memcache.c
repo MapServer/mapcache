@@ -80,27 +80,33 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_tile *ti
   char *key;
   int rv;
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
+  mapcache_buffer *encoded_data;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
-  tile->encoded_data = mapcache_buffer_create(0,ctx->pool);
-  rv = apr_memcache_getp(cache->memcache,ctx->pool,key,(char**)&tile->encoded_data->buf,&tile->encoded_data->size,NULL);
+  encoded_data = mapcache_buffer_create(0,ctx->pool);
+  rv = apr_memcache_getp(cache->memcache,ctx->pool,key,(char**)&encoded_data->buf,&encoded_data->size,NULL);
   if(rv != APR_SUCCESS) {
     return MAPCACHE_CACHE_MISS;
   }
-  if(tile->encoded_data->size == 0) {
+  if(encoded_data->size == 0) {
     ctx->set_error(ctx,500,"memcache cache returned 0-length data for tile %d %d %d\n",tile->x,tile->y,tile->z);
     return MAPCACHE_FAILURE;
   }
   /* extract the tile modification time from the end of the data returned */
   memcpy(
     &tile->mtime,
-    &(((char*)tile->encoded_data->buf)[tile->encoded_data->size-sizeof(apr_time_t)]),
+    &(((char*)encoded_data->buf)[encoded_data->size-sizeof(apr_time_t)]),
     sizeof(apr_time_t));
-  ((char*)tile->encoded_data->buf)[tile->encoded_data->size+sizeof(apr_time_t)]='\0';
-  tile->encoded_data->avail = tile->encoded_data->size;
-  tile->encoded_data->size -= sizeof(apr_time_t);
+  ((char*)encoded_data->buf)[encoded_data->size+sizeof(apr_time_t)]='\0';
+  encoded_data->avail = encoded_data->size;
+  encoded_data->size -= sizeof(apr_time_t);
+  if(((char*)encoded_data->buf)[0] == '#' && encoded_data->size == 5) {
+    tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy ,encoded_data->buf,&tile->nodata);
+  } else {
+    tile->encoded_data = encoded_data;
+  }
   return MAPCACHE_SUCCESS;
 }
 
@@ -119,26 +125,41 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_tile *t
   int rv;
   /* set expiration to one day if not configured */
   int expires = 86400;
+  mapcache_buffer *encoded_data = NULL;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   GC_CHECK_ERROR(ctx);
 
+  if(cache->detect_blank) {
+    if(!tile->raw_image) {
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+    }
+    if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+      encoded_data = mapcache_buffer_create(5,ctx->pool);
+      mapcache_buffer_append(encoded_data,1,"#");
+      mapcache_buffer_append(encoded_data,4,tile->raw_image);
+    }
+  }
   if(!tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
     GC_CHECK_ERROR(ctx);
   }
+  if(!encoded_data) {
+    encoded_data = tile->encoded_data;
+  }
 
   /* concatenate the current time to the end of the memcache data so we can extract it out
    * when we re-get the tile */
-  char *data = calloc(1,tile->encoded_data->size+sizeof(apr_time_t));
+  char *data = calloc(1,encoded_data->size+sizeof(apr_time_t));
   apr_time_t now = apr_time_now();
   apr_pool_cleanup_register(ctx->pool, data, (void*)free, apr_pool_cleanup_null);
-  memcpy(data,tile->encoded_data->buf,tile->encoded_data->size);
-  memcpy(&(data[tile->encoded_data->size]),&now,sizeof(apr_time_t));
+  memcpy(data,encoded_data->buf,encoded_data->size);
+  memcpy(&(data[encoded_data->size]),&now,sizeof(apr_time_t));
 
-  rv = apr_memcache_set(cache->memcache,key,data,tile->encoded_data->size+sizeof(apr_time_t),expires,0);
+  rv = apr_memcache_set(cache->memcache,key,data,encoded_data->size+sizeof(apr_time_t),expires,0);
   if(rv != APR_SUCCESS) {
     ctx->set_error(ctx,500,"failed to store tile %d %d %d to memcache cache %s",
                    tile->x,tile->y,tile->z,cache->cache.name);
@@ -164,6 +185,12 @@ static void _mapcache_cache_memcache_configuration_parse_xml(mapcache_context *c
   if(APR_SUCCESS != apr_memcache_create(ctx->pool, servercount, 0, &dcache->memcache)) {
     ctx->set_error(ctx,400,"cache %s: failed to create memcache backend", cache->name);
     return;
+  }
+  dcache->detect_blank = 0;
+  if ((cur_node = ezxml_child(node, "detect_blank")) != NULL) {
+    if(!strcasecmp(cur_node->txt,"true")) {
+      dcache->detect_blank = 1;
+    }
   }
   for(cur_node = ezxml_child(node,"server"); cur_node; cur_node = cur_node->next) {
     ezxml_t xhost = ezxml_child(cur_node,"host");

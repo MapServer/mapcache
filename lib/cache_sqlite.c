@@ -311,8 +311,7 @@ static void _bind_sqlite_params(mapcache_context *ctx, void *vstmt, mapcache_til
   paramidx = sqlite3_bind_parameter_index(stmt, ":data");
   if (paramidx) {
     int written = 0;
-    if(((mapcache_cache_sqlite*)tile->tileset->cache)->detect_blank && tile->grid_link->grid->tile_sx == 256 &&
-            tile->grid_link->grid->tile_sy == 256) {
+    if(((mapcache_cache_sqlite*)tile->tileset->cache)->detect_blank) {
       if(!tile->raw_image) {
         tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
         GC_CHECK_ERROR(ctx);
@@ -636,7 +635,7 @@ static int _mapcache_cache_sqlite_get(mapcache_context *ctx, mapcache_tile *tile
     const void *blob = sqlite3_column_blob(stmt, 0);
     int size = sqlite3_column_bytes(stmt, 0);
     if(size>0 && ((char*)blob)[0] == '#') {
-      tile->encoded_data = mapcache_empty_png_decode(ctx,blob,&tile->nodata);
+      tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy ,blob,&tile->nodata);
     } else {
       tile->encoded_data = mapcache_buffer_create(size, ctx->pool);
       memcpy(tile->encoded_data->buf, blob, size);
