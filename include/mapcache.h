@@ -87,6 +87,9 @@ typedef struct mapcache_image_format_mixed mapcache_image_format_mixed;
 typedef struct mapcache_image_format_png mapcache_image_format_png;
 typedef struct mapcache_image_format_png_q mapcache_image_format_png_q;
 typedef struct mapcache_image_format_jpeg mapcache_image_format_jpeg;
+#ifdef USE_GIF
+typedef struct mapcache_image_format_gif mapcache_image_format_gif;
+#endif // USE_GIF
 typedef struct mapcache_cfg mapcache_cfg;
 typedef struct mapcache_tileset mapcache_tileset;
 typedef struct mapcache_cache mapcache_cache;
@@ -928,6 +931,9 @@ void mapcache_service_dispatch_request(mapcache_context *ctx,
 
 typedef enum {
   GC_UNKNOWN, GC_PNG, GC_JPEG
+#ifdef USE_GIF
+, GC_GIF
+#endif // USE_GIF
 } mapcache_image_format_type;
 
 typedef enum {
@@ -1742,6 +1748,30 @@ void mapcache_imageio_decode_to_image(mapcache_context *ctx, mapcache_buffer *bu
 
 
 /** @} */
+
+#ifdef USE_GIF
+/**\defgroup imageio_gif GIF Image IO
+ * \ingroup imageio */
+/** @{ */
+
+/**
+ * @param r
+ * @param buffer
+ * @return
+ */
+mapcache_image* _mapcache_imageio_gif_decode(mapcache_context *ctx, mapcache_buffer *buffer);
+
+/**
+ * @param r
+ * @param buffer
+ * @return
+ */
+void _mapcache_imageio_gif_decode_to_image(mapcache_context *ctx, mapcache_buffer *buffer,
+      mapcache_image *image);
+
+/** @} */
+
+#endif // USE_GIF
 
 typedef struct {
   double start;
