@@ -144,6 +144,11 @@ void mapcache_http_do_request_with_params(mapcache_context *ctx, mapcache_http *
   mapcache_http_do_request(ctx,request,data,headers, http_code);
 }
 
+typedef struct header_cb_struct{
+  apr_pool_t *pool;
+  char *str;
+} header_cb_struct;
+
 /* calculate the length of the string formed by key=value&, and add it to cnt */
 #ifdef _WIN32
 static int _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
@@ -156,6 +161,28 @@ static APR_DECLARE_NONSTD(int) _mapcache_key_value_strlen_callback(void *cnt, co
   return 1;
 }
 
+/* Converts an integer value to its hex character*/
+char to_hex(char code) {
+  static char hex[] = "0123456789abcdef";
+  return hex[code & 15];
+}
+
+/* Returns a url-encoded version of str */
+char *url_encode(apr_pool_t *p, const char *str) {
+  char *buf = apr_pcalloc(p, strlen(str) * 3 + 1), *pbuf = buf;
+  while (*str) {
+    if (isalnum(*str) || *str == '-' || *str == '_' || *str == '.' || *str == '~') 
+      *pbuf++ = *str;
+    else if (*str == ' ') 
+      *pbuf++ = '+';
+    else 
+      *pbuf++ = '%', *pbuf++ = to_hex(*str >> 4), *pbuf++ = to_hex(*str & 15);
+    str++;
+  }
+  *pbuf = '\0';
+  return buf;
+}
+
 #ifdef _WIN32
 static int _mapcache_key_value_append_callback(void *cnt, const char *key, const char *value)
 {
@@ -163,13 +190,15 @@ static int _mapcache_key_value_append_callback(void *cnt, const char *key, const
 static APR_DECLARE_NONSTD(int) _mapcache_key_value_append_callback(void *cnt, const char *key, const char *value)
 {
 #endif
-#define _mystr *((char**)cnt)
-  _mystr = apr_cpystrn(_mystr,key,MAX_STRING_LEN);
-  *((_mystr)++) = '=';
+#define _mystr (((header_cb_struct*)cnt)->str)
+  header_cb_struct *hcs = (header_cb_struct*)cnt;
+  hcs->str = apr_pstrcat(hcs->pool, hcs->str, key, "=", NULL);
   if(value && *value) {
-    _mystr = apr_cpystrn(_mystr,value,MAX_STRING_LEN);
+    hcs->str = apr_pstrcat(hcs->pool, hcs->str, url_encode(hcs->pool, value), "&", NULL);
   }
-  *((_mystr)++) = '&';
+  else {
+    hcs->str = apr_pstrcat(hcs->pool, hcs->str, "&", NULL);
+  }
   return 1;
 #undef _mystr
 }
@@ -230,38 +259,30 @@ int _mapcache_unescape_url(char *url)
 
 
 
-char* mapcache_http_build_url(mapcache_context *r, char *base, apr_table_t *params)
+char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params)
 {
   if(!apr_is_empty_table(params)) {
     int stringLength = 0, baseLength;
-    char *builtUrl,*builtUrlPtr;
+    header_cb_struct hcs;
     char charToAppend=0;
     baseLength = strlen(base);
-
-    /*calculate the length of the param string we are going to build */
-    apr_table_do(_mapcache_key_value_strlen_callback, (void*)&stringLength, params, NULL);
+    hcs.pool = ctx->pool;
+    hcs.str = base;
 
     if(strchr(base,'?')) {
       /* base already contains a '?' , shall we be adding a '&' to the end */
       if(base[baseLength-1] != '?' && base[baseLength-1] != '&') {
-        charToAppend = '&';
+        hcs.str = apr_pstrcat(ctx->pool, hcs.str, "&", NULL);
       }
     } else {
       /* base does not contain a '?', we will be adding it */
-      charToAppend='?';
+      hcs.str = apr_pstrcat(ctx->pool, hcs.str, "?", NULL);
     }
 
-    /* add final \0 and eventual separator to add ('?' or '&') */
-    stringLength += baseLength + ((charToAppend)?2:1);
-
-    builtUrl = builtUrlPtr = apr_palloc(r->pool, stringLength);
-
-    builtUrlPtr = apr_cpystrn(builtUrlPtr,base,MAX_STRING_LEN);
-    if(charToAppend)
-      *(builtUrlPtr++)=charToAppend;
-    apr_table_do(_mapcache_key_value_append_callback, (void*)&builtUrlPtr, params, NULL);
-    *(builtUrlPtr-1) = '\0'; /*replace final '&' by a \0 */
-    return builtUrl;
+    apr_table_do(_mapcache_key_value_append_callback, (void*)&hcs, params, NULL);
+    baseLength = strlen(hcs.str);
+    hcs.str[baseLength-1] = '\0';
+    return hcs.str;
   } else {
     return base;
   }
