@@ -350,10 +350,11 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
   int i;
   maptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_tile**));
   nmaptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(int));
+  mapcache_grid_link **effectively_used_grid_links = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_grid_link*));
   for(i=0; i<nmaps; i++) {
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
                                    &maps[i]->extent, maps[i]->width, maps[i]->height,
-                                   &(nmaptiles[i]), &(maptiles[i]));
+                                   &(nmaptiles[i]), &(maptiles[i]), &(effectively_used_grid_links[i]));
     ntiles += nmaptiles[i];
   }
   tiles = apr_pcalloc(ctx->pool,ntiles * sizeof(mapcache_tile*));
@@ -390,7 +391,7 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
       }
     }
     if(hasdata) {
-      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
+      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,effectively_used_grid_links[i],
                            &maps[i]->extent, maps[i]->width, maps[i]->height,
                            nmaptiles[i], maptiles[i],
                            mode);

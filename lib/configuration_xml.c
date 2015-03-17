@@ -648,6 +648,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
     gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
+    gridlink->intermediate_grids = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
@@ -682,6 +683,11 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                        sTolerance);
         return;
       }
+    }
+    sTolerance = (char*)ezxml_attr(cur_node,"use_wms_intermediate_resolutions");
+    if(sTolerance && !strcmp(sTolerance,"true")) {
+      mapcache_grid_link *intermediate_gridlink = apr_pcalloc(ctx->pool,sizeof(mapcache_grid_link));
+      APR_ARRAY_PUSH(gridlink->intermediate_grids,mapcache_grid_link*) = intermediate_gridlink;
     }
 
 
@@ -756,6 +762,40 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     /* compute wgs84 bbox if it wasn't supplied already */
     if(!havewgs84bbox && !strcasecmp(grid->srs,"EPSG:4326")) {
       tileset->wgs84bbox = *extent;
+    }
+
+    if(gridlink->intermediate_grids->nelts > 0) {
+      double factor = 0.5, unitheight,unitwidth;
+      int i;
+      mapcache_grid_link *igl = APR_ARRAY_IDX(gridlink->intermediate_grids, 0, mapcache_grid_link*);
+      igl->restricted_extent = gridlink->restricted_extent;
+      igl->minz = gridlink->minz;
+      igl->max_cached_zoom = gridlink->max_cached_zoom - 1;
+      igl->maxz = gridlink->maxz - 1;
+      igl->outofzoom_strategy = gridlink->outofzoom_strategy;
+      igl->grid = mapcache_grid_create(ctx->pool);
+      igl->grid->extent = gridlink->grid->extent;
+      igl->grid->name = apr_psprintf(ctx->pool,"%s_intermediate_%g",gridlink->grid->name,factor);
+      igl->grid->nlevels = gridlink->grid->nlevels - 1;
+      igl->grid->origin = gridlink->grid->origin;
+      igl->grid->srs = gridlink->grid->srs;
+      igl->grid->srs_aliases = gridlink->grid->srs_aliases;
+      igl->grid->unit = gridlink->grid->unit;
+      igl->grid->tile_sx = gridlink->grid->tile_sx + gridlink->grid->tile_sx * factor;
+      igl->grid->tile_sy = gridlink->grid->tile_sy + gridlink->grid->tile_sy * factor;
+      igl->grid->levels = (mapcache_grid_level**)apr_pcalloc(ctx->pool, igl->grid->nlevels*sizeof(mapcache_grid_level*));
+      for(i=0; i<igl->grid->nlevels; i++) {
+        mapcache_grid_level *level = (mapcache_grid_level*)apr_pcalloc(ctx->pool,sizeof(mapcache_grid_level));
+        level->resolution = gridlink->grid->levels[i]->resolution + (gridlink->grid->levels[i+1]->resolution - gridlink->grid->levels[i]->resolution) * factor;
+        unitheight = igl->grid->tile_sy * level->resolution;
+        unitwidth = igl->grid->tile_sx * level->resolution;
+        
+        level->maxy = ceil((igl->grid->extent.maxy-igl->grid->extent.miny - 0.01* unitheight)/unitheight);
+        level->maxx = ceil((igl->grid->extent.maxx-igl->grid->extent.minx - 0.01* unitwidth)/unitwidth);
+        igl->grid->levels[i] = level;
+      }
+      igl->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,igl->grid->nlevels*sizeof(mapcache_extent_i));
+      mapcache_grid_compute_limits(igl->grid,extent,igl->grid_limits,tolerance);
     }
     APR_ARRAY_PUSH(tileset->grid_links,mapcache_grid_link*) = gridlink;
   }

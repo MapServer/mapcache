@@ -176,7 +176,8 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
                                     mapcache_grid_link *grid_link,
                                     mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
-                                    mapcache_tile ***tiles)
+                                    mapcache_tile ***tiles,
+                                    mapcache_grid_link **effectively_used_grid_link)
 {
   double resolution;
   int level;
@@ -185,25 +186,25 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int x,y;
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
-  mapcache_grid_get_closest_level(ctx,grid_link,resolution,&level);
-  
+  *effectively_used_grid_link = mapcache_grid_get_closest_wms_level(ctx,grid_link,resolution,&level);
+
   /* we don't want to assemble tiles that have already been reassembled from a lower level */
-  if(grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > grid_link->max_cached_zoom) {
-    level = grid_link->max_cached_zoom;
+  if((*effectively_used_grid_link)->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > (*effectively_used_grid_link)->max_cached_zoom) {
+    level = (*effectively_used_grid_link)->max_cached_zoom;
   }
 
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
-  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),grid_link->grid_limits[level].maxx),grid_link->grid_limits[level].minx);
-  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),grid_link->grid_limits[level].maxy),grid_link->grid_limits[level].miny);
-  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),grid_link->grid_limits[level].minx),grid_link->grid_limits[level].maxx);
-  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),grid_link->grid_limits[level].miny),grid_link->grid_limits[level].maxy);
+  mapcache_grid_get_xy(ctx,(*effectively_used_grid_link)->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
+  mapcache_grid_get_xy(ctx,(*effectively_used_grid_link)->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
+  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),(*effectively_used_grid_link)->grid_limits[level].maxx),(*effectively_used_grid_link)->grid_limits[level].minx);
+  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),(*effectively_used_grid_link)->grid_limits[level].maxy),(*effectively_used_grid_link)->grid_limits[level].miny);
+  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),(*effectively_used_grid_link)->grid_limits[level].minx),(*effectively_used_grid_link)->grid_limits[level].maxx);
+  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),(*effectively_used_grid_link)->grid_limits[level].miny),(*effectively_used_grid_link)->grid_limits[level].maxy);
   *ntiles = (Mx-mx+1)*(My-my+1);
   i=0;
   *tiles = (mapcache_tile**)apr_pcalloc(ctx->pool, *ntiles*sizeof(mapcache_tile*));
   for(x=mx; x<=Mx; x++) {
     for(y=my; y<=My; y++) {
-      mapcache_tile *tile = mapcache_tileset_tile_create(ctx->pool,tileset, grid_link);
+      mapcache_tile *tile = mapcache_tileset_tile_create(ctx->pool,tileset, (*effectively_used_grid_link));
       tile->x = x;
       tile->y = y;
       tile->z = level;

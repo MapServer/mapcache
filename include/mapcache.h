@@ -1400,6 +1400,8 @@ struct mapcache_grid_link {
 
   int max_cached_zoom;
   mapcache_outofzoom_strategy outofzoom_strategy;
+
+  apr_array_header_t *intermediate_grids;
 };
 
 /**\class mapcache_tileset
@@ -1492,7 +1494,8 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
                                     mapcache_grid_link *grid_link,
                                     mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
-                                    mapcache_tile ***tiles);
+                                    mapcache_tile ***tiles,
+                                    mapcache_grid_link **effectively_used_grid_link);
 
 mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
     mapcache_grid_link *grid_link,
@@ -1529,7 +1532,7 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
  */
 void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset, double *resolution, int *level);
 
-void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
+mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
 void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
