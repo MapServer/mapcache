@@ -102,7 +102,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
   ((char*)encoded_data->buf)[encoded_data->size+sizeof(apr_time_t)]='\0';
   encoded_data->avail = encoded_data->size;
   encoded_data->size -= sizeof(apr_time_t);
-  if(((char*)encoded_data->buf)[0] == '#' && encoded_data->size == 5) {
+  if(((char*)encoded_data->buf)[0] == '#' && encoded_data->size > 1) {
     tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy ,encoded_data->buf,&tile->nodata);
   } else {
     tile->encoded_data = encoded_data;
@@ -126,7 +126,6 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
   /* set expiration to one day if not configured */
   int expires = 86400;
   mapcache_buffer *encoded_data = NULL;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)tile->tileset->cache;
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
@@ -140,11 +139,12 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
     }
     if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       encoded_data = mapcache_buffer_create(5,ctx->pool);
-      mapcache_buffer_append(encoded_data,1,"#");
-      mapcache_buffer_append(encoded_data,4,tile->raw_image);
+      ((char*)encoded_data->buf)[0] = '#';
+      memcpy(((char*)encoded_data->buf)+1,tile->raw_image->data,4);
+      encoded_data->size = 5;
     }
   }
-  if(!tile->encoded_data) {
+  if(!encoded_data && !tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
     GC_CHECK_ERROR(ctx);
   }
