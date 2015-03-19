@@ -641,6 +641,7 @@ typedef struct mapcache_cache_memcache mapcache_cache_memcache;
 struct mapcache_cache_memcache {
   mapcache_cache cache;
   apr_memcache_t *memcache;
+  int detect_blank;
 };
 
 /**
@@ -1068,6 +1069,8 @@ int mapcache_image_blank_color(mapcache_image* image);
  * \brief check if image has some non opaque pixels
  */
 int mapcache_image_has_alpha(mapcache_image *img);
+
+void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const unsigned char *fill_color);
 
 /** @} */
 
@@ -1730,7 +1733,7 @@ struct mapcache_image_format_mixed {
   mapcache_image_format *opaque;
 };
 
-mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, const unsigned char *hex_color, int *is_empty);
+mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, int width, int height, const unsigned char *hex_color, int *is_empty);
 
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
