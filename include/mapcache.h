@@ -1140,6 +1140,7 @@ typedef struct {
   mapcache_locker_memcache_server *servers;
   int timeout; /* in seconds, passed and honoured by memcache, not mapcache */
   double retry; /* in seconds */
+  mapcache_locker *fallback;
 } mapcache_locker_memcache;
 
 mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);

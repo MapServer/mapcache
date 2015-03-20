@@ -53,6 +53,13 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, char *resource)
   return ctx->config->locker->lock_or_wait(ctx, ctx->config->locker, resource);
 }
 
+void mapcache_locker_memcache_clear_all_locks(mapcache_context *ctx, mapcache_locker *self) {
+  mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
+  if(lm->fallback && lm->fallback->clear_all_locks) {
+    lm->fallback->clear_all_locks(ctx, lm->fallback);
+  }
+}
+
 void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker *self) {
   mapcache_locker_disk *ldisk = (mapcache_locker_disk*)self;
   apr_dir_t *lockdir;
@@ -81,6 +88,7 @@ void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker
   }
   apr_dir_close(lockdir);
 }
+
 int mapcache_locker_disk_lock_or_wait(mapcache_context *ctx, mapcache_locker *self, char *resource) {
   char *lockname, errmsg[120];
   mapcache_locker_disk *ldisk;
@@ -228,6 +236,10 @@ void mapcache_locker_memcache_parse_xml(mapcache_context *ctx, mapcache_cfg *cfg
     /* default: retry every .3 seconds */
     lm->retry = 0.3;
   }
+  if((node = ezxml_child(doc,"fallback")) != NULL) {
+    lm->fallback = mapcache_locker_disk_create(ctx);
+    mapcache_locker_disk_parse_xml(ctx, cfg, lm->fallback, node);
+  }
 }
 
 static char* memcache_key_for_resource(mapcache_context *ctx, mapcache_locker_memcache *lm, const char *resource)
@@ -278,6 +290,10 @@ int mapcache_locker_memcache_lock_or_wait(mapcache_context *ctx, mapcache_locker
   char *key = memcache_key_for_resource(ctx, lm, resource);
   apr_memcache_t *memcache = create_memcache(ctx,lm);  
   if(GC_HAS_ERROR(ctx)) {
+    if(lm->fallback) {
+      ctx->clear_errors(ctx);
+      return lm->fallback->lock_or_wait(ctx, lm->fallback, resource);
+    }
     return MAPCACHE_FAILURE;
   }
   rv = apr_memcache_add(memcache,key,"1",1,lm->timeout,0);
@@ -297,10 +313,12 @@ int mapcache_locker_memcache_lock_or_wait(mapcache_context *ctx, mapcache_locker
     apr_pool_destroy(retry_pool);
     return MAPCACHE_FALSE;
   } else {
+    if(lm->fallback) {
+      return lm->fallback->lock_or_wait(ctx, lm->fallback, resource);
+    }
     ctx->set_error(ctx,500,"failed to lock resource %s to memcache locker: %s",resource, apr_strerror(rv,errmsg,120));
     return MAPCACHE_FAILURE;
   }
-
 }
 
 void mapcache_locker_memcache_unlock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
@@ -308,8 +326,18 @@ void mapcache_locker_memcache_unlock(mapcache_context *ctx, mapcache_locker *sel
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = create_memcache(ctx,lm);  
-  GC_CHECK_ERROR(ctx);
+  if(lm->fallback) {
+    lm->fallback->unlock(ctx,lm->fallback,resource);
+    ctx->clear_errors(ctx);
+  }
+  apr_memcache_t *memcache = create_memcache(ctx,lm);
+  if(GC_HAS_ERROR(ctx)) {
+    if(lm->fallback) {
+      ctx->clear_errors(ctx);
+      return;
+    }
+    return;
+  }
   
   rv = apr_memcache_delete(memcache,key,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
@@ -322,7 +350,7 @@ mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx) {
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)apr_pcalloc(ctx->pool, sizeof(mapcache_locker_memcache));
   mapcache_locker *l = (mapcache_locker*)lm;
   l->type = MAPCACHE_LOCKER_MEMCACHE;
-  l->clear_all_locks = NULL;
+  l->clear_all_locks = mapcache_locker_memcache_clear_all_locks;
   l->lock_or_wait = mapcache_locker_memcache_lock_or_wait;
   l->parse_xml = mapcache_locker_memcache_parse_xml;
   l->unlock = mapcache_locker_memcache_unlock;
