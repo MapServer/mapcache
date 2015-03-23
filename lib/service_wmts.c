@@ -915,7 +915,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(
                                        ctx->pool,sizeof(mapcache_request_get_tile));
     
-    req->request.type = MAPCACHE_REQUEST_GET_TILE;
+    ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
     if(timedim) {
       timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
               tileset->timedimension, tileset, grid_link->grid, extent, timedim);

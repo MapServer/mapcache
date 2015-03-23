@@ -294,8 +294,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   if(!response->data) {
     /* we need to encode the raw image data*/
     if(base) {
-      if(req_tile->format) {
-        format = req_tile->format;
+      if(req_tile->image_request.format) {
+        format = req_tile->image_request.format;
       } else {
         format = req_tile->tiles[0]->tileset->format;
         if(!format) {
@@ -480,7 +480,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   }
 
   if(basemap->raw_image) {
-    format = req_map->getmap_format; /* always defined, defaults to JPEG */
+    format = req_map->image_request.format; /* always defined, defaults to JPEG */
     response->data = format->write(ctx,basemap->raw_image,format);
     if(GC_HAS_ERROR(ctx)) {
       return NULL;

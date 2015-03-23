@@ -114,6 +114,7 @@ typedef struct mapcache_cache_tiff mapcache_cache_tiff;
 #endif
 typedef struct mapcache_http mapcache_http;
 typedef struct mapcache_request mapcache_request;
+typedef struct mapcache_request_image mapcache_request_image;
 typedef struct mapcache_request_proxy mapcache_request_proxy;
 typedef struct mapcache_request_get_capabilities mapcache_request_get_capabilities;
 typedef struct mapcache_request_get_capabilities_demo mapcache_request_get_capabilities_demo;
@@ -682,8 +683,13 @@ struct mapcache_request {
   mapcache_service *service;
 };
 
+struct mapcache_request_image {
+    mapcache_request request;
+    mapcache_image_format *format;
+};
+
 struct mapcache_request_get_tile {
-  mapcache_request request;
+  mapcache_request_image image_request;
 
   /**
    * a list of tiles requested by the client
@@ -697,7 +703,6 @@ struct mapcache_request_get_tile {
    * before being returned to the client
    */
   int ntiles;
-  mapcache_image_format *format;
   int allow_redirect;
 };
 
@@ -734,12 +739,11 @@ struct mapcache_request_get_feature_info {
 };
 
 struct mapcache_request_get_map {
-  mapcache_request request;
+  mapcache_request_image image_request;
   mapcache_map **maps;
   int nmaps;
   mapcache_getmap_strategy getmap_strategy;
   mapcache_resample_mode resample_mode;
-  mapcache_image_format *getmap_format;
 };
 
 struct mapcache_request_get_capabilities {
@@ -872,6 +876,7 @@ struct mapcache_service_wms {
   mapcache_getmap_strategy getmap_strategy;
   mapcache_resample_mode resample_mode;
   mapcache_image_format *getmap_format;
+  int allow_format_override; /* can the client specify which image format should be returned */
 };
 
 /**\class mapcache_service_kml

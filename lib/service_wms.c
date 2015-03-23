@@ -483,6 +483,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
       mapcache_grid_link *main_grid_link = NULL;
       mapcache_tileset *main_tileset = NULL;
       mapcache_request_type type;
+      mapcache_image_format *imf;
 
       /* count the number of layers that are requested.
        * if we are in combined-mirror mode, then there is
@@ -545,23 +546,43 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         type = MAPCACHE_REQUEST_GET_MAP;
       }
 
+      imf = wms_service->getmap_format;
+      if(wms_service->allow_format_override) {
+        str = apr_table_get(params,"FORMAT");
+        if(strcmp(str,imf->name) && strcmp(str,imf->mime_type)) {
+          apr_hash_index_t *hi;
+          for (hi = apr_hash_first(ctx->pool, ctx->config->image_formats); hi; hi = apr_hash_next(hi)) {
+            apr_hash_this(hi, NULL, NULL, (void**)&imf);
+            if(!strcmp(imf->name, str) || (imf->mime_type && !strcmp(imf->mime_type, str))) {
+              break;
+            }
+          }
+          if(!hi) { /* did not find any matching format for given mimetype or name */
+            errcode = 404;
+            errmsg = apr_psprintf(ctx->pool,"received wms request with invalid format %s", str);
+            goto proxies;
+          }
+        }
+      }
+
 
       if(type == MAPCACHE_REQUEST_GET_TILE) {
         tile_req = apr_pcalloc(ctx->pool, sizeof(mapcache_request_get_tile));
-        tile_req->request.type = MAPCACHE_REQUEST_GET_TILE;
         tile_req->tiles = apr_pcalloc(ctx->pool, count*sizeof(mapcache_tile*));
-        tile_req->format = wms_service->getmap_format;
+        tile_req->image_request.format = imf;
         *request = (mapcache_request*)tile_req;
+        (*request)->type = MAPCACHE_REQUEST_GET_TILE;
       } else {
         map_req = apr_pcalloc(ctx->pool, sizeof(mapcache_request_get_map));
-        map_req->request.type = MAPCACHE_REQUEST_GET_MAP;
         map_req->maps = apr_pcalloc(ctx->pool, count*sizeof(mapcache_map*));
         map_req->getmap_strategy = wms_service->getmap_strategy;
         map_req->resample_mode = wms_service->resample_mode;
-        map_req->getmap_format = wms_service->getmap_format;
+        map_req->image_request.format = imf;
         *request = (mapcache_request*)map_req;
+        (*request)->type = MAPCACHE_REQUEST_GET_MAP;
       }
       nallocated = count;
+
 
       /*
        * loop through all the layers to verify that they reference the requested grid,
@@ -996,10 +1017,15 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
 
   wms->getmap_format = mapcache_configuration_get_image_format(cfg,"JPEG");
   if ((rule_node = ezxml_child(node,"format")) != NULL) {
+    const char *attr;
     wms->getmap_format = mapcache_configuration_get_image_format(cfg,rule_node->txt);
     if(!wms->getmap_format) {
       ctx->set_error(ctx,400, "unknown <format> %s for wms service", rule_node->txt);
       return;
+    }
+    attr = ezxml_attr(rule_node,"allow_client_override");
+    if(attr && !strcmp(attr,"true")) {
+      wms->allow_format_override = 1;
     }
   }
 
@@ -1074,6 +1100,7 @@ mapcache_service* mapcache_service_wms_create(mapcache_context *ctx)
   service->getmap_strategy = MAPCACHE_GETMAP_ASSEMBLE;
   service->resample_mode = MAPCACHE_RESAMPLE_BILINEAR;
   service->getmap_format = NULL;
+  service->allow_format_override = 0;
   return (mapcache_service*)service;
 }
 

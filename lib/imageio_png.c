@@ -1525,7 +1525,7 @@ mapcache_image_format* mapcache_imageio_create_png_q_format(apr_pool_t *pool, ch
   mapcache_image_format_png_q *format = apr_pcalloc(pool, sizeof(mapcache_image_format_png_q));
   format->format.format.name = name;
   format->format.format.extension = apr_pstrdup(pool,"png");
-  format->format.format.mime_type = apr_pstrdup(pool,"image/png");
+  format->format.format.mime_type = apr_pstrdup(pool,"image/png; mode=8bit");
   format->format.compression_level = compression;
   format->format.format.write = _mapcache_imageio_png_q_encode;
   format->format.format.create_empty_image = _mapcache_imageio_png_create_empty;
