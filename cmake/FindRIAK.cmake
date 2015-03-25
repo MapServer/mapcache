@@ -1,0 +1,14 @@
+
+FIND_PATH(RIAK_INCLUDE_DIR
+    NAMES riack.h
+)
+
+FIND_LIBRARY(RIAK_LIBRARY
+    NAMES riack
+)
+
+set(RIAK_INCLUDE_DIRS ${RIAK_INCLUDE_DIR})
+set(RIAK_LIBRARIES ${RIAK_LIBRARY})
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(RIAK DEFAULT_MSG RIAK_LIBRARY RIAK_INCLUDE_DIR)
+mark_as_advanced(RIAK_LIBRARY RIAK_INCLUDE_DIR)

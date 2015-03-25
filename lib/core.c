@@ -354,6 +354,7 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
                                    &maps[i]->extent, maps[i]->width, maps[i]->height,
                                    &(nmaptiles[i]), &(maptiles[i]));
+    if(GC_HAS_ERROR(ctx)) return NULL;
     ntiles += nmaptiles[i];
   }
   tiles = apr_pcalloc(ctx->pool,ntiles * sizeof(mapcache_tile*));

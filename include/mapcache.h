@@ -66,6 +66,14 @@
 #include <apr_memcache.h>
 #endif
 
+#ifdef USE_COUCHBASE
+#include <libcouchbase/couchbase.h>
+#endif
+
+#ifdef USE_RIAK
+#include <riack.h>
+#endif
+
 #define MAPCACHE_SUCCESS 0
 #define MAPCACHE_FAILURE 1
 #define MAPCACHE_TRUE 1
@@ -75,6 +83,7 @@
 #define MAPCACHE_TILESET_WRONG_EXTENT 4
 #define MAPCACHE_CACHE_MISS 5
 #define MAPCACHE_FILE_LOCKED 6
+#define MAPCACHE_MAX_NUM_TILES 1000
 
 #define MAPCACHE_USERAGENT "mod-mapcache/"MAPCACHE_VERSION
 
@@ -394,6 +403,12 @@ typedef enum {
   ,MAPCACHE_CACHE_TIFF
 #endif
   ,MAPCACHE_CACHE_COMPOSITE
+#ifdef USE_COUCHBASE
+  ,MAPCACHE_CACHE_COUCHBASE
+#endif
+#ifdef USE_RIAK
+  ,MAPCACHE_CACHE_RIAK
+#endif
 } mapcache_cache_type;
 
 /** \interface mapcache_cache
@@ -647,6 +662,50 @@ struct mapcache_cache_memcache {
  * \memberof mapcache_cache_memcache
  */
 mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx);
+#endif
+
+#ifdef USE_COUCHBASE
+typedef struct mapcache_cache_couchbase mapcache_cache_couchbase;
+
+/**\class mapcache_cache_couchbase
+ * \brief a mapcache_cache on couchbase servers
+ * \implements mapcache_cache
+ */
+struct mapcache_cache_couchbase {
+   mapcache_cache cache;
+//   apr_reslist_t *connection_pool;
+   char *host;
+   char *username;
+   char *password;
+   char *bucket;
+   mapcache_context *ctx;
+};
+
+/**
+ * \memberof mapcache_cache_couchbase
+ */
+mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx);
+#endif
+
+#ifdef USE_RIAK
+typedef struct mapcache_cache_riak mapcache_cache_riak;
+
+/**\class mapcache_cache_riak
+ * \brief a mapcache_cache for riak servers
+ * \implements mapcache_cache
+ */
+struct mapcache_cache_riak {
+   mapcache_cache cache;
+   char *host;
+   int port;
+   RIACK_STRING bucket;
+   mapcache_context *ctx;
+};
+
+/**
+ * \memberof mapcache_cache_riak
+ */
+mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx);
 #endif
 
 /** @} */
