@@ -39,6 +39,7 @@
 
 #include <apr_tables.h>
 #include <apr_hash.h>
+#include <apr_reslist.h>
 
 #include "util.h"
 #include "ezxml.h"
@@ -148,6 +149,7 @@ typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
+typedef struct mapcache_connection_pool mapcache_connection_pool;
 
 /** \defgroup utility Utility */
 /** @{ */
@@ -226,7 +228,7 @@ struct mapcache_context {
   const char* (*get_instance_id)(mapcache_context * ctx);
   mapcache_context* (*clone)(mapcache_context *ctx);
   apr_pool_t *pool;
-  apr_pool_t *process_pool;
+  mapcache_connection_pool *connection_pool;
   void *threadlock;
   char *_contenttype;
   char *_errmsg;
@@ -588,8 +590,6 @@ struct mapcache_cache_sqlite {
   mapcache_cache_sqlite_stmt delete_stmt;
   apr_table_t *pragmas;
   void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
-  struct sqlite_conn* (*get_conn)(mapcache_context *ctx, mapcache_cache_sqlite *cache, mapcache_tile *tile, int read_only);
-  void (*release_conn)(mapcache_context *ctx, mapcache_cache_sqlite *cache, mapcache_tile *tile, struct sqlite_conn *conn);
   int n_prepared_statements;
   int detect_blank;
 };
@@ -1085,6 +1085,7 @@ apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args)
 
 struct mapcache_server_cfg {
   apr_hash_t *aliases; /**< list of mapcache configurations aliased to a server uri */
+  mapcache_connection_pool *cp;
 };
 
 
@@ -1950,6 +1951,26 @@ mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool);
 #endif
 
 int mapcache_is_axis_inverted(const char *srs);
+
+typedef struct mapcache_pooled_connection_container mapcache_pooled_connection_container;
+typedef struct mapcache_pooled_connection mapcache_pooled_connection;
+typedef struct mapcache_pooled_connection_private_data mapcache_pooled_connection_private_data;
+
+struct mapcache_pooled_connection {
+    mapcache_pooled_connection_private_data *private;
+    void *connexion;
+};
+
+typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params);
+typedef void (*mapcache_connection_destructor)(void *connection);
+
+apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool);
+mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_context *ctx, char *key,
+        mapcache_connection_constructor constructor,
+        mapcache_connection_destructor destructor,
+        void *params);
+void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection);
+void mapcache_connection_pool_release_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection);
 
 #endif /* MAPCACHE_H_ */
 /* vim: ts=2 sts=2 et sw=2

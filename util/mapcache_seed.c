@@ -791,7 +791,6 @@ int main(int argc, const char **argv)
   (void) signal(SIGINT,handle_sig_int);
   apr_pool_create(&ctx.pool,NULL);
   mapcache_context_init(&ctx);
-  ctx.process_pool = ctx.pool;
   cfg = mapcache_configuration_create(ctx.pool);
   ctx.config = cfg;
   ctx.log= mapcache_context_seeding_log;

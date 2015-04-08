@@ -188,7 +188,6 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
   mapcache_cfg *config = NULL;
 
   ctx->ctx.ctx.pool = r->pool;
-  ctx->ctx.ctx.process_pool = pchild;
 #ifdef APR_HAS_THREADS
   ctx->ctx.ctx.threadlock = thread_mutex;
 #endif
@@ -440,10 +439,17 @@ static int mod_mapcache_request_handler(request_rec *r)
 static int mod_mapcache_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
   mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
+  apr_status_t rv;
   if(!cfg) {
     ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "configuration not found in server context");
     return 1;
   }
+  rv = mapcache_connection_pool_create(&(cfg->cp),p);
+  if(rv!=APR_SUCCESS) {
+    ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+    return 1;
+  }
+  
 
 #ifdef USE_VERSION_STRING
   ap_add_version_component(p, MAPCACHE_USERAGENT);
