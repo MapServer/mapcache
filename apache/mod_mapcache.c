@@ -197,6 +197,7 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
   config = apr_hash_get(cfg->aliases,(void*)r->filename,APR_HASH_KEY_STRING);
   ctx->ctx.ctx.config = config;
   ctx->request = r;
+  ctx->ctx.ctx.connection_pool = cfg->cp;
   init_apache_request_context(ctx);
   return ctx;
 }

@@ -308,103 +308,47 @@ mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool)
 
 #ifdef USE_SQLITE
 
-static apr_hash_t *time_connection_pools = NULL;
-
 struct sqlite_time_conn {
   sqlite3 *handle;
   sqlite3_stmt *prepared_statement;
-  char *errmsg;
 };
 
-static apr_status_t _sqlite_time_reslist_get_ro_connection(void **conn_, void *params, apr_pool_t *pool)
+void mapcache_sqlite_time_connection_constructor(mapcache_context *ctx, void **conn_, void *params)
 {
   int ret;
   int flags;  
   mapcache_timedimension_sqlite *dim = (mapcache_timedimension_sqlite*) params;
-  struct sqlite_time_conn *conn = apr_pcalloc(pool, sizeof (struct sqlite_time_conn));
+  struct sqlite_time_conn *conn = apr_pcalloc(ctx->pool, sizeof (struct sqlite_time_conn));
   *conn_ = conn;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   ret = sqlite3_open_v2(dim->dbfile, &conn->handle, flags, NULL);
   
   if (ret != SQLITE_OK) {
-    return APR_EGENERAL;
+    ctx->set_error(ctx,500,"failed to open timedimension dbfile (%s): %s",dim->dbfile,sqlite3_errmsg(conn->handle));
+    return;
   }
   sqlite3_busy_timeout(conn->handle, 300000);
-  return APR_SUCCESS;
 }
 
-static apr_status_t _sqlite_time_reslist_free_connection(void *conn_, void *params, apr_pool_t *pool)
+void mapcache_sqlite_time_connection_destructor(void *conn_)
 {
   struct sqlite_time_conn *conn = (struct sqlite_time_conn*) conn_;
   if(conn->prepared_statement) {
     sqlite3_finalize(conn->prepared_statement);
   }
   sqlite3_close(conn->handle);
-  return APR_SUCCESS;
 }
 
-static struct sqlite_time_conn* _sqlite_time_get_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *dim) {
-  apr_status_t rv;
-  struct sqlite_time_conn *conn = NULL;
-  apr_reslist_t *pool = NULL;
-  if(!time_connection_pools || NULL == (pool = apr_hash_get(time_connection_pools,dim->timedimension.key, APR_HASH_KEY_STRING)) ) {
-    
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-    
-    if(!time_connection_pools) {
-      time_connection_pools = apr_hash_make(ctx->process_pool);
-    }
-
-    /* probably doesn't exist, unless the previous mutex locked us, so we check */
-    pool = apr_hash_get(time_connection_pools,dim->timedimension.key, APR_HASH_KEY_STRING);
-    if(!pool) {
-      /* there where no existing connection pools, create them*/
-      rv = apr_reslist_create(&pool,
-                              0 /* min */,
-                              10 /* soft max */,
-                              200 /* hard max */,
-                              60*1000000 /*60 seconds, ttl*/,
-                              _sqlite_time_reslist_get_ro_connection, /* resource constructor */
-                              _sqlite_time_reslist_free_connection, /* resource destructor */
-                              dim, ctx->process_pool);
-      if(rv != APR_SUCCESS) {
-        ctx->set_error(ctx,500,"failed to create sqlite time connection pool");
-#ifdef APR_HAS_THREADS
-        if(ctx->threadlock)
-          apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-        return NULL;
-      }
-      apr_hash_set(time_connection_pools,dim->timedimension.key,APR_HASH_KEY_STRING,pool);
-    }
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-    pool = apr_hash_get(time_connection_pools,dim->timedimension.key, APR_HASH_KEY_STRING);
-    assert(pool);
-  }
-  rv = apr_reslist_acquire(pool, (void **) &conn);
-  if (rv != APR_SUCCESS) {
-    ctx->set_error(ctx, 500, "failed to aquire connection to time dimension sqlite backend: %s", (conn && conn->errmsg)?conn->errmsg:"unknown error");
-    return NULL;
-  }
-  return conn;
+static mapcache_pooled_connection* _sqlite_time_get_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *dim) {
+  mapcache_pooled_connection *pc = mapcache_connection_pool_get_connection(ctx,dim->timedimension.key,
+        mapcache_sqlite_time_connection_constructor,
+        mapcache_sqlite_time_connection_destructor, dim);
+  return pc;
 }
 
-static void _sqlite_time_release_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *sdim, struct sqlite_time_conn *conn)
+static void _sqlite_time_release_conn(mapcache_context *ctx, mapcache_pooled_connection *pc)
 {
-  apr_reslist_t *pool;
-  pool = apr_hash_get(time_connection_pools,sdim->timedimension.key, APR_HASH_KEY_STRING);
-
-  if (GC_HAS_ERROR(ctx)) {
-    apr_reslist_invalidate(pool, (void*) conn);
-  } else {
-    apr_reslist_release(pool, (void*) conn);
-  }
+  mapcache_connection_pool_release_connection(ctx,pc);
 }
 
 static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stmt *stmt,
@@ -492,17 +436,20 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
   int ret;
   sqlite3_stmt *stmt;
   apr_array_header_t *time_ids = NULL;
-  struct sqlite_time_conn *conn = _sqlite_time_get_conn(ctx, sdim);
+  mapcache_pooled_connection *pc;
+  struct sqlite_time_conn *conn;
+  pc = _sqlite_time_get_conn(ctx,sdim);
   if (GC_HAS_ERROR(ctx)) {
-    if(conn) _sqlite_time_release_conn(ctx, sdim, conn);
+    if(pc) _sqlite_time_release_conn(ctx, pc);
     return NULL;
   }
+  conn = pc->connection;
   stmt = conn->prepared_statement;
   if(!stmt) {
     ret = sqlite3_prepare_v2(conn->handle, sdim->query, -1, &conn->prepared_statement, NULL);
     if(ret != SQLITE_OK) {
       ctx->set_error(ctx, 500, "time sqlite backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
-      _sqlite_time_release_conn(ctx, sdim, conn);
+      _sqlite_time_release_conn(ctx, pc);
       return NULL;
     }
     stmt = conn->prepared_statement;
@@ -511,7 +458,7 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
   _bind_sqlite_timedimension_params(ctx,stmt,conn->handle,tileset,grid,extent,start,end);
   if(GC_HAS_ERROR(ctx)) {
     sqlite3_reset(stmt);
-    _sqlite_time_release_conn(ctx, sdim, conn);
+    _sqlite_time_release_conn(ctx, pc);
     return NULL;
   }
   
@@ -521,7 +468,7 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
     if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
       ctx->set_error(ctx, 500, "sqlite backend failed on timedimension query : %s (%d)", sqlite3_errmsg(conn->handle), ret);
       sqlite3_reset(stmt);
-      _sqlite_time_release_conn(ctx, sdim, conn);
+      _sqlite_time_release_conn(ctx, pc);
       return NULL;
     }
     if(ret == SQLITE_ROW) {
@@ -530,7 +477,7 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
     }
   } while (ret == SQLITE_ROW || ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
   sqlite3_reset(stmt);
-  _sqlite_time_release_conn(ctx, sdim, conn);
+  _sqlite_time_release_conn(ctx, pc);
   return time_ids;
 }
 

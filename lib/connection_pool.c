@@ -62,7 +62,7 @@ static apr_status_t mapcache_connection_container_destructor(void *conn_, void *
   mapcache_pooled_connection *pc = pcc->head;
   while(pc) {
     mapcache_pooled_connection *this = pc;
-    this->private->destructor(this->connexion);
+    this->private->destructor(this->connection);
     free(this->private->key);
     pc = this->private->next;
     free(this);
@@ -117,7 +117,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   
   /* connection not found in pool */
   pc = calloc(1,sizeof(mapcache_pooled_connection));
-  constructor(ctx, &pc->connexion, params);
+  constructor(ctx, &pc->connection, params);
   if(GC_HAS_ERROR(ctx)) {
     free(pc);
     apr_reslist_release(ctx->connection_pool->connexions, pcc);
@@ -139,7 +139,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
       pred = opc;
       opc = opc->private->next;
     }
-    opc->private->destructor(opc->connexion);
+    opc->private->destructor(opc->connection);
     free(opc->private->key);
     free(opc->private);
     free(opc);
@@ -151,7 +151,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   return pc;
 
 }
-void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection) {
+void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, mapcache_pooled_connection *connection) {
   mapcache_pooled_connection_container *pcc = connection->private->pcc;
   mapcache_pooled_connection *pc = pcc->head, *pred=NULL;
   while(pc) {
@@ -161,7 +161,7 @@ void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, char 
       } else {
         pcc->head = pc->private->next;
       }
-      pc->private->destructor(pc->connexion);
+      pc->private->destructor(pc->connection);
       free(pc->private->key);
       free(pc);
     }
@@ -170,12 +170,13 @@ void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, char 
   }
 }
 
-void mapcache_connection_pool_release_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection) {
-  mapcache_pooled_connection_container *pcc = connection->private->pcc;
-  if(GC_HAS_ERROR(ctx)) {
-    mapcache_connection_pool_invalidate_connection(ctx,key,connection);
+void mapcache_connection_pool_release_connection(mapcache_context *ctx, mapcache_pooled_connection *connection) {
+  if(connection) {
+    mapcache_pooled_connection_container *pcc = connection->private->pcc;
+    if(GC_HAS_ERROR(ctx)) {
+      mapcache_connection_pool_invalidate_connection(ctx,connection);
+    }
+    apr_reslist_release(ctx->connection_pool->connexions,(void*)pcc);
   }
-  apr_reslist_release(ctx->connection_pool->connexions,(void*)pcc);
-
 }
 

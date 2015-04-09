@@ -592,22 +592,14 @@ struct mapcache_cache_sqlite {
   void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
   int n_prepared_statements;
   int detect_blank;
-};
-
-typedef struct mapcache_cache_multi_sqlite mapcache_cache_multi_sqlite;
-
-struct mapcache_cache_multi_sqlite {
-    mapcache_cache_sqlite sqlite;
-    char *filename_template;
-    char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
-    int count_x, count_y;
+  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+  int count_x, count_y;
 };
 
 /**
  * \memberof mapcache_cache_sqlite
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx);
-mapcache_cache* mapcache_cache_multi_sqlite_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
 #endif
 
@@ -1958,7 +1950,7 @@ typedef struct mapcache_pooled_connection_private_data mapcache_pooled_connectio
 
 struct mapcache_pooled_connection {
     mapcache_pooled_connection_private_data *private;
-    void *connexion;
+    void *connection;
 };
 
 typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params);
@@ -1969,8 +1961,8 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
         mapcache_connection_constructor constructor,
         mapcache_connection_destructor destructor,
         void *params);
-void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection);
-void mapcache_connection_pool_release_connection(mapcache_context *ctx, char *key, mapcache_pooled_connection *connection);
+void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, mapcache_pooled_connection *connection);
+void mapcache_connection_pool_release_connection(mapcache_context *ctx, mapcache_pooled_connection *connection);
 
 #endif /* MAPCACHE_H_ */
 /* vim: ts=2 sts=2 et sw=2
