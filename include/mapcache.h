@@ -630,9 +630,16 @@ typedef struct mapcache_cache_memcache mapcache_cache_memcache;
  * \brief a mapcache_cache on memcached servers
  * \implements mapcache_cache
  */
+
+struct mapcache_cache_memcache_server {
+    char* host;
+    int port;
+};
+
 struct mapcache_cache_memcache {
   mapcache_cache cache;
-  apr_memcache_t *memcache;
+  int nservers;
+  struct mapcache_cache_memcache_server *servers;
 };
 
 /**
@@ -1953,8 +1960,8 @@ struct mapcache_pooled_connection {
     void *connection;
 };
 
-typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params);
-typedef void (*mapcache_connection_destructor)(void *connection);
+typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params, apr_pool_t *process_pool);
+typedef void (*mapcache_connection_destructor)(void *connection, apr_pool_t *process_pool);
 
 apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool);
 mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_context *ctx, char *key,

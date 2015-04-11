@@ -313,7 +313,7 @@ struct sqlite_time_conn {
   sqlite3_stmt *prepared_statement;
 };
 
-void mapcache_sqlite_time_connection_constructor(mapcache_context *ctx, void **conn_, void *params)
+void mapcache_sqlite_time_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
   int flags;  
@@ -330,7 +330,7 @@ void mapcache_sqlite_time_connection_constructor(mapcache_context *ctx, void **c
   sqlite3_busy_timeout(conn->handle, 300000);
 }
 
-void mapcache_sqlite_time_connection_destructor(void *conn_)
+void mapcache_sqlite_time_connection_destructor(void *conn_, apr_pool_t *pool)
 {
   struct sqlite_time_conn *conn = (struct sqlite_time_conn*) conn_;
   if(conn->prepared_statement) {

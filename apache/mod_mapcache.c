@@ -59,8 +59,6 @@ typedef struct mapcache_context_apache mapcache_context_apache;
 typedef struct mapcache_context_apache_request mapcache_context_apache_request;
 typedef struct mapcache_context_apache_server mapcache_context_apache_server;
 
-apr_pool_t *pchild = NULL;
-
 struct mapcache_context_apache {
   mapcache_context ctx;
 };
@@ -314,10 +312,16 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
-  pchild = pool;
+  int rv;
+  mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
 #ifdef APR_HAS_THREADS
   apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
 #endif
+  rv = mapcache_connection_pool_create(&(cfg->cp),pool);
+  ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a mapcache connection pool for server");
+  if(rv!=APR_SUCCESS) {
+    ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+  }
 }
 
 static int mod_mapcache_request_handler(request_rec *r)
@@ -440,14 +444,8 @@ static int mod_mapcache_request_handler(request_rec *r)
 static int mod_mapcache_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
   mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
-  apr_status_t rv;
   if(!cfg) {
     ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "configuration not found in server context");
-    return 1;
-  }
-  rv = mapcache_connection_pool_create(&(cfg->cp),p);
-  if(rv!=APR_SUCCESS) {
-    ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
     return 1;
   }
   

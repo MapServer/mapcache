@@ -31,6 +31,60 @@
 #ifdef USE_MEMCACHE
 
 #include "mapcache.h"
+struct mapcache_memcache_conn_param {
+  mapcache_cache_memcache *cache;
+};
+
+struct mapcache_memcache_pooled_connection {
+  apr_memcache_t *memcache;
+  apr_pool_t *pool;
+};
+
+void mapcache_memcache_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *process_pool) {
+  struct mapcache_memcache_conn_param *param = params;
+  mapcache_cache_memcache *cache = param->cache;
+  struct mapcache_memcache_pooled_connection *pc;
+  int i;
+  pc = calloc(1,sizeof(struct mapcache_memcache_pooled_connection));
+  apr_pool_create(&pc->pool,process_pool);
+  if(APR_SUCCESS != apr_memcache_create(pc->pool, cache->nservers, 0, &(pc->memcache))) {
+    ctx->set_error(ctx,500,"cache %s: failed to create memcache backend", cache->cache.name);
+    return;
+  }
+  for(i=0; i<param->cache->nservers; i++) {
+    apr_memcache_server_t *server;
+    if(APR_SUCCESS != apr_memcache_server_create(pc->pool,cache->servers[i].host,cache->servers[i].port,4,5,50,10000,&server)) {
+      ctx->set_error(ctx,500,"cache %s: failed to create server %s:%d",cache->cache.name,cache->servers[i].host,cache->servers[i].port);
+      return;
+    }
+    if(APR_SUCCESS != apr_memcache_add_server(pc->memcache,server)) {
+      ctx->set_error(ctx,500,"cache %s: failed to add server %s:%d",cache->cache.name,cache->servers[i].host,cache->servers[i].port);
+      return;
+    }
+  }
+  *conn_ = pc;
+}
+
+void mapcache_memcache_connection_destructor(void *conn_, apr_pool_t *process_pool) {
+  struct mapcache_memcache_pooled_connection *pc = conn_;
+  apr_pool_destroy(pc->pool);
+  free(pc);
+}
+
+static mapcache_pooled_connection* _mapcache_memcache_get_conn(mapcache_context *ctx,
+        mapcache_cache_memcache *cache, mapcache_tile *tile) {
+  mapcache_pooled_connection *pc;
+  struct mapcache_memcache_conn_param param;
+
+  param.cache = cache;
+
+  pc = mapcache_connection_pool_get_connection(ctx,cache->cache.name, mapcache_memcache_connection_constructor, mapcache_memcache_connection_destructor, &param);
+  return pc;
+}
+
+static void _mapcache_memcache_release_conn(mapcache_context *ctx, mapcache_pooled_connection *con) {
+  mapcache_connection_pool_release_connection(ctx, con);
+}
 
 static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
@@ -39,18 +93,31 @@ static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_cac
   int rv;
   size_t tmpdatasize;
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
-  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  mapcache_pooled_connection *pc;
+  struct mapcache_memcache_pooled_connection *mpc;
+  pc = _mapcache_memcache_get_conn(ctx,cache,tile);
+  if(GC_HAS_ERROR(ctx))
+    return MAPCACHE_FALSE;
+  mpc = pc->connection;
+  
+  key = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) {
-    return MAPCACHE_FALSE;
+    rv = MAPCACHE_FALSE;
+    goto cleanup;
   }
-  rv = apr_memcache_getp(cache->memcache,ctx->pool,key,&tmpdata,&tmpdatasize,NULL);
+  rv = apr_memcache_getp(mpc->memcache,ctx->pool,key,&tmpdata,&tmpdatasize,NULL);
   if(rv != APR_SUCCESS) {
-    return MAPCACHE_FALSE;
+    rv = MAPCACHE_FALSE;
+    goto cleanup;
   }
   if(tmpdatasize == 0) {
-    return MAPCACHE_FALSE;
+    rv = MAPCACHE_FALSE;
+    goto cleanup;
   }
-  return MAPCACHE_TRUE;
+  rv = MAPCACHE_TRUE;
+cleanup:
+  _mapcache_memcache_release_conn(ctx,pc);
+  return rv;
 }
 
 static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
@@ -59,13 +126,22 @@ static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_cach
   int rv;
   char errmsg[120];
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
-  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  mapcache_pooled_connection *pc;
+  struct mapcache_memcache_pooled_connection *mpc;
+  pc = _mapcache_memcache_get_conn(ctx,cache,tile);
   GC_CHECK_ERROR(ctx);
-  rv = apr_memcache_delete(cache->memcache,key,0);
+  mpc = pc->connection;
+  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  if(GC_HAS_ERROR(ctx)) goto cleanup;
+  
+  rv = apr_memcache_delete(mpc->memcache,key,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
-    int code = 500;
-    ctx->set_error(ctx,code,"memcache: failed to delete key %s: %s", key, apr_strerror(rv,errmsg,120));
+    ctx->set_error(ctx,500,"memcache: failed to delete key %s: %s", key, apr_strerror(rv,errmsg,120));
+    goto cleanup;
   }
+
+cleanup:
+  _mapcache_memcache_release_conn(ctx,pc);
 }
 
 /**
@@ -80,18 +156,28 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
   char *key;
   int rv;
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
-  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  mapcache_pooled_connection *pc;
+  struct mapcache_memcache_pooled_connection *mpc;
+  pc = _mapcache_memcache_get_conn(ctx,cache,tile);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
+  mpc = pc->connection;
+  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  if(GC_HAS_ERROR(ctx)) {
+    rv = MAPCACHE_FAILURE;
+    goto cleanup;
+  }
   tile->encoded_data = mapcache_buffer_create(0,ctx->pool);
-  rv = apr_memcache_getp(cache->memcache,ctx->pool,key,(char**)&tile->encoded_data->buf,&tile->encoded_data->size,NULL);
+  rv = apr_memcache_getp(mpc->memcache,ctx->pool,key,(char**)&tile->encoded_data->buf,&tile->encoded_data->size,NULL);
   if(rv != APR_SUCCESS) {
-    return MAPCACHE_CACHE_MISS;
+    rv = MAPCACHE_CACHE_MISS;
+    goto cleanup;
   }
   if(tile->encoded_data->size == 0) {
     ctx->set_error(ctx,500,"memcache cache returned 0-length data for tile %d %d %d\n",tile->x,tile->y,tile->z);
-    return MAPCACHE_FAILURE;
+    rv = MAPCACHE_FAILURE;
+    goto cleanup;
   }
   /* extract the tile modification time from the end of the data returned */
   memcpy(
@@ -101,7 +187,11 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
   ((char*)tile->encoded_data->buf)[tile->encoded_data->size+sizeof(apr_time_t)]='\0';
   tile->encoded_data->avail = tile->encoded_data->size;
   tile->encoded_data->size -= sizeof(apr_time_t);
-  return MAPCACHE_SUCCESS;
+  rv = MAPCACHE_SUCCESS;
+  
+cleanup:
+  _mapcache_memcache_release_conn(ctx,pc);
+return rv;
 }
 
 /**
@@ -119,15 +209,21 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
   int rv;
   /* set expiration to one day if not configured */
   int expires = 86400;
+  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
+  mapcache_pooled_connection *pc;
+  struct mapcache_memcache_pooled_connection *mpc;
+  pc = _mapcache_memcache_get_conn(ctx,cache,tile);
+  GC_CHECK_ERROR(ctx);
+  mpc = pc->connection;
+  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
+  if(GC_HAS_ERROR(ctx)) goto cleanup;
+  
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
-  mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
-  key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
-  GC_CHECK_ERROR(ctx);
 
   if(!tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
-    GC_CHECK_ERROR(ctx);
+    if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
   /* concatenate the current time to the end of the memcache data so we can extract it out
@@ -138,12 +234,15 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
   memcpy(data,tile->encoded_data->buf,tile->encoded_data->size);
   memcpy(&(data[tile->encoded_data->size]),&now,sizeof(apr_time_t));
 
-  rv = apr_memcache_set(cache->memcache,key,data,tile->encoded_data->size+sizeof(apr_time_t),expires,0);
+  rv = apr_memcache_set(mpc->memcache,key,data,tile->encoded_data->size+sizeof(apr_time_t),expires,0);
   if(rv != APR_SUCCESS) {
     ctx->set_error(ctx,500,"failed to store tile %d %d %d to memcache cache %s",
                    tile->x,tile->y,tile->z,cache->cache.name);
-    return;
+    goto cleanup;
   }
+
+cleanup:
+  _mapcache_memcache_release_conn(ctx,pc);
 }
 
 /**
@@ -152,30 +251,25 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
 static void _mapcache_cache_memcache_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
+  int i = 0;
   mapcache_cache_memcache *dcache = (mapcache_cache_memcache*)cache;
-  int servercount = 0;
   for(cur_node = ezxml_child(node,"server"); cur_node; cur_node = cur_node->next) {
-    servercount++;
+    dcache->nservers++;
   }
-  if(!servercount) {
+  if(!dcache->nservers) {
     ctx->set_error(ctx,400,"memcache cache %s has no <server>s configured",cache->name);
     return;
   }
-  if(APR_SUCCESS != apr_memcache_create(ctx->pool, servercount, 0, &dcache->memcache)) {
-    ctx->set_error(ctx,400,"cache %s: failed to create memcache backend", cache->name);
-    return;
-  }
+  dcache->servers = apr_pcalloc(ctx->pool, dcache->nservers * sizeof(struct mapcache_cache_memcache_server));
+
   for(cur_node = ezxml_child(node,"server"); cur_node; cur_node = cur_node->next) {
     ezxml_t xhost = ezxml_child(cur_node,"host");
     ezxml_t xport = ezxml_child(cur_node,"port");
-    const char *host;
-    apr_memcache_server_t *server;
-    apr_port_t port;
     if(!xhost || !xhost->txt || ! *xhost->txt) {
       ctx->set_error(ctx,400,"cache %s: <server> with no <host>",cache->name);
       return;
     } else {
-      host = apr_pstrdup(ctx->pool,xhost->txt);
+      dcache->servers[i].host = apr_pstrdup(ctx->pool,xhost->txt);
     }
 
     if(!xport || !xport->txt || ! *xport->txt) {
@@ -188,20 +282,9 @@ static void _mapcache_cache_memcache_configuration_parse_xml(mapcache_context *c
         ctx->set_error(ctx,400,"failed to parse value %s for memcache cache %s", xport->txt,cache->name);
         return;
       }
-      port = iport;
+      dcache->servers[i].port = iport;
     }
-    if(APR_SUCCESS != apr_memcache_server_create(ctx->pool,host,port,4,5,50,10000,&server)) {
-      ctx->set_error(ctx,400,"cache %s: failed to create server %s:%d",cache->name,host,port);
-      return;
-    }
-    if(APR_SUCCESS != apr_memcache_add_server(dcache->memcache,server)) {
-      ctx->set_error(ctx,400,"cache %s: failed to add server %s:%d",cache->name,host,port);
-      return;
-    }
-    if(APR_SUCCESS != apr_memcache_set(dcache->memcache,"mapcache_test_key","mapcache",8,0,0)) {
-      ctx->set_error(ctx,400,"cache %s: failed to add test key to server %s:%d",cache->name,host,port);
-      return;
-    }
+    i++;
   }
 }
 
@@ -212,7 +295,7 @@ static void _mapcache_cache_memcache_configuration_post_config(mapcache_context 
     mapcache_cfg *cfg)
 {
   mapcache_cache_memcache *dcache = (mapcache_cache_memcache*)cache;
-  if(!dcache->memcache || dcache->memcache->ntotal==0) {
+  if(!dcache->nservers) {
     ctx->set_error(ctx,400,"cache %s has no servers configured",cache->name);
   }
 }
