@@ -961,6 +961,7 @@ int main(int argc, const char **argv)
     mapcache_configuration_post_config(&ctx,cfg);
     if(ctx.get_error(&ctx))
       return usage(argv[0],ctx.get_error_message(&ctx));
+    mapcache_connection_pool_create(&ctx.connection_pool, ctx.pool);
   }
 
 #ifdef USE_CLIPPERS

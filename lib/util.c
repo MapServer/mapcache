@@ -313,6 +313,7 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
   dst->supports_redirects = src->supports_redirects;
   dst->pop_errors = src->pop_errors;
   dst->push_errors = src->push_errors;
+  dst->connection_pool = src->connection_pool;
 }
 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to)
