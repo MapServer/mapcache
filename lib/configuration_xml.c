@@ -554,6 +554,18 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     ctx->set_error(ctx,400, "failed to add cache \"%s\": tiff support is not available on this build",name);
     return;
 #endif
+  } else if(!strcmp(type,"couchbase")) {
+#ifdef USE_COUCHBASE
+    cache = mapcache_cache_couchbase_create(ctx);
+#else
+    ctx->set_error(ctx, 400, "failed to add cache \"%s\": couchbase support is not available on this build", name);
+#endif
+  } else if(!strcmp(type,"riak")) {
+#ifdef USE_RIAK
+    cache = mapcache_cache_riak_create(ctx);
+#else
+    ctx->set_error(ctx, 400, "failed to add cache \"%s\": riak support is not available on this build", name);
+#endif
   } else {
     ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"", type, name);
     return;
