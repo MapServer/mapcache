@@ -243,7 +243,7 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *
 
 
 #ifdef DEBUG
-      check_tiff_format(ctx,tile,hTIFF,filename);
+      check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
         return MAPCACHE_FALSE;
@@ -343,7 +343,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
 
 
 #ifdef DEBUG
-      check_tiff_format(ctx,tile,hTIFF,filename);
+      check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
         return MAPCACHE_FAILURE;
@@ -615,7 +615,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
   if(create) {
 #ifdef USE_GEOTIFF
-    double  adfPixelScale[3], adfTiePoints[6], bbox[4];
+    double  adfPixelScale[3], adfTiePoints[6];
+    mapcache_extent bbox;
     GTIF *gtif;
     int x,y;
 #endif
@@ -679,12 +680,12 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
       y = (tile->y / cache->count_y)*(cache->count_y) + ntilesy - 1;
 
       mapcache_grid_get_extent(ctx, tile->grid_link->grid,
-                               x,y,tile->z,bbox);
+                               x,y,tile->z,&bbox);
       adfTiePoints[0] = 0.0;
       adfTiePoints[1] = 0.0;
       adfTiePoints[2] = 0.0;
-      adfTiePoints[3] = bbox[0];
-      adfTiePoints[4] = bbox[3];
+      adfTiePoints[3] = bbox.minx;
+      adfTiePoints[4] = bbox.maxy;
       adfTiePoints[5] = 0.0;
       TIFFSetField( hTIFF, TIFFTAG_GEOTIEPOINTS, 6, adfTiePoints );
     }
@@ -746,7 +747,7 @@ close_tiff:
 static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *pcache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
-  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
   ezxml_t xcount;
   ezxml_t ycount;
   ezxml_t xformat;
@@ -837,7 +838,7 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
 static void _mapcache_cache_tiff_configuration_post_config(mapcache_context *ctx, mapcache_cache *pcache,
     mapcache_cfg *cfg)
 {
-  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
   /* check all required parameters are configured */
   if((!cache->filename_template || !strlen(cache->filename_template))) {
     ctx->set_error(ctx, 400, "tiff cache %s has no template pattern",cache->cache.name);

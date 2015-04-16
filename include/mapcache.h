@@ -698,7 +698,6 @@ struct mapcache_cache_riak {
    char *host;
    int port;
    RIACK_STRING bucket;
-   mapcache_context *ctx;
 };
 
 /**

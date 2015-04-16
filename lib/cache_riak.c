@@ -35,9 +35,6 @@
 #include <apr_strings.h>
 #include <apr_reslist.h>
 #include <apr_hash.h>
-#ifdef APR_HAS_THREADS
-#include <apr_thread_mutex.h>
-#endif
 
 #include <string.h>
 #include <errno.h>
@@ -47,129 +44,63 @@
  * we have to store all the connections in a hash map in case there are multiple
  * riak caches defined.
  */
-static apr_hash_t *_connection_pools = NULL;
 
-static apr_status_t _riak_reslist_get_connection(void **conn_, void *params, apr_pool_t *pool) {
-    mapcache_cache_riak *cache = (mapcache_cache_riak*)params;
+struct riak_conn_params {
+  mapcache_cache_riak *cache;
+};
 
+void mapcache_riak_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool) {
+    mapcache_cache_riak *cache = ((struct riak_conn_params*)params)->cache;
+    struct RIACK_CONNECTION_OPTIONS options;
     struct RIACK_CLIENT *client = riack_new_client(0);
+    
     if (client == NULL) {
-        return APR_EGENERAL;
+        ctx->set_error(ctx,500,"failed to riack_new_client(0)");
+        return;
     }
 
-    struct RIACK_CONNECTION_OPTIONS options;
     options.recv_timeout_ms = 2000;
     options.send_timeout_ms = 2000;
     if (riack_connect(client, cache->host, cache->port, &options) != RIACK_SUCCESS) {
         riack_free(client);
-        return APR_EGENERAL;
+        ctx->set_error(ctx,500,"failed to riack_connect()");
+        return;
     }
 
     if (riack_ping(client) != RIACK_SUCCESS) {
         riack_free(client);
-        return APR_EGENERAL;
+        ctx->set_error(ctx,500,"failed to riack_ping()");
+        return;
     }
 
     *conn_ = client;
-
-    return APR_SUCCESS;
 }
 
-static apr_status_t _riak_reslist_free_connection(void *conn_, void *params, apr_pool_t *pool) {
+void mapcache_riak_connection_destructor(void *conn_, apr_pool_t *process_pool) {
     struct RIACK_CLIENT *client = (struct RIACK_CLIENT *)conn_;
     riack_free(client);
-
-    return APR_SUCCESS;
 }
 
-static struct RIACK_CLIENT* _riak_get_connection(mapcache_context *ctx, mapcache_cache_riak *cache, mapcache_tile *tile)
+static mapcache_pooled_connection* _riak_get_connection(mapcache_context *ctx, mapcache_cache_riak *cache, mapcache_tile *tile)
 {
-  apr_time_t start = apr_time_now();
+  mapcache_pooled_connection *pc;
+  struct riak_conn_params params;
 
-  apr_status_t rv;
-  struct RIACK_CLIENT *client = 0;
-  apr_reslist_t *pool = NULL;
+  params.cache = cache;
 
-  if(!_connection_pools || NULL == (pool = apr_hash_get(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING)) ) {
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
+  pc = mapcache_connection_pool_get_connection(ctx,cache->cache.name,mapcache_riak_connection_constructor,
+          mapcache_riak_connection_destructor, &params);
 
-    if(!_connection_pools) {
-      _connection_pools = apr_hash_make(ctx->process_pool);
-    }
-
-    /* probably doesn't exist, unless the previous mutex locked us, so we check */
-    pool = apr_hash_get(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING);
-    if(!pool) {
-      /* there where no existing connection pools, create them*/
-      rv = apr_reslist_create(&pool,
-                              0 /* min */,
-                              50 /* soft max */,
-                              200 /* hard max */,
-                              60*1000000 /*60 seconds, ttl*/,
-                              _riak_reslist_get_connection, /* resource constructor */
-                              _riak_reslist_free_connection, /* resource destructor */
-                              cache, ctx->process_pool);
-      if(rv != APR_SUCCESS) {
-        ctx->set_error(ctx, 500, "failed to create riak connection pool");
-#ifdef APR_HAS_THREADS
-        if(ctx->threadlock)
-          apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-        return NULL;
-      }
-
-      apr_hash_set(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING, pool);
-    }
-
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-
-    pool = apr_hash_get(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING);
-    assert(pool);
-  }
-
-  rv = apr_reslist_acquire(pool, (void **)&client);
-  if(rv != APR_SUCCESS) {
-    ctx->set_error(ctx, 500, "failed to aquire connection to riak backend: %s", ctx->get_error_message(ctx));
-    ctx->log(ctx, MAPCACHE_ERROR, "Failed to aquire connection to riak backend: %s", ctx->get_error_message(ctx));
-    return NULL;
-  }
-
-  int took = apr_time_as_msec(apr_time_now() - start);
-
-  if ( took >= 50 ) {
-      ctx->log(ctx, MAPCACHE_DEBUG, "Riak get connection took %d msecs",  took);
-  }
-
-  return client;
-}
-
-static void _riak_release_connection(mapcache_tile *tile, mapcache_cache_riak *cache, struct RIACK_CLIENT *client)
-{
-  apr_reslist_t *pool;
-  pool = apr_hash_get(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING);
-  apr_reslist_release(pool, (void*)client);
-}
-
-static void _riak_invalidate_connection(mapcache_tile *tile, mapcache_cache_riak *cache, struct RIACK_CLIENT *client)
-{
-  apr_reslist_t *pool;
-  pool = apr_hash_get(_connection_pools, cache->cache.name, APR_HASH_KEY_STRING);
-  apr_reslist_invalidate(pool, (void*)client);
+  return pc;
 }
 
 static int _mapcache_cache_riak_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
     int error;
-	int retries = 3;
+	  int retries = 3;
     RIACK_STRING key;
     struct RIACK_GET_OBJECT obj;
     struct RIACK_CLIENT *client;
-
+    mapcache_pooled_connection *pc;
     mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     key.value = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b", "#");
@@ -178,10 +109,11 @@ static int _mapcache_cache_riak_has_tile(mapcache_context *ctx, mapcache_cache *
     }
     key.len = strlen(key.value);
 
-    client = _riak_get_connection(ctx, cache, tile);
+    pc = _riak_get_connection(ctx, cache, tile);
     if (GC_HAS_ERROR(ctx)) {
         return MAPCACHE_FALSE;
     }
+    client = pc->connection;
 
 	do
     {
@@ -202,21 +134,21 @@ static int _mapcache_cache_riak_has_tile(mapcache_context *ctx, mapcache_cache *
 
     if (error != RIACK_SUCCESS) {
         riack_free_get_object(client, &obj);    // riack_get allocates the returned object so we need to deallocate it.
-        _riak_invalidate_connection(tile, cache, client);
+        mapcache_connection_pool_invalidate_connection(ctx,pc);
         ctx->set_error(ctx, 500, "riak: failed to get key %s: %d", key, error);
         return MAPCACHE_FALSE;
     }
 
     if (obj.object.content_count < 1 || obj.object.content[0].data_len == 0) {
-        riack_free_get_object(client, &obj);    // riack_get allocates the returned object so we need to deallocate it.
-        _riak_release_connection(tile, cache, client);
-        return MAPCACHE_FALSE;
+      error = MAPCACHE_FALSE;
+    } else {
+      error = MAPCACHE_TRUE;
     }
 
     riack_free_get_object(client, &obj);    // riack_get allocates the returned object so we need to deallocate it.
-    _riak_release_connection(tile, cache, client);
+    mapcache_connection_pool_release_connection(ctx,pc);
 
-    return MAPCACHE_TRUE;
+    return error;
 }
 
 static void _mapcache_cache_riak_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
@@ -224,23 +156,25 @@ static void _mapcache_cache_riak_delete(mapcache_context *ctx, mapcache_cache *p
     RIACK_STRING key;
     struct RIACK_CLIENT *client;
     struct RIACK_DEL_PROPERTIES properties;
+    mapcache_pooled_connection *pc;
+    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     memset(&properties, 0, sizeof(struct RIACK_DEL_PROPERTIES));
 
-    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     key.value = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b", "#");
     GC_CHECK_ERROR(ctx);
     key.len = strlen(key.value);
 
-    client = _riak_get_connection(ctx, cache, tile);
+    pc = _riak_get_connection(ctx, cache, tile);
     GC_CHECK_ERROR(ctx);
+    client = pc->connection;
 
     properties.rw_use = 1;
     properties.rw = (4294967295 - 3);	// Special value meaning "ALL"
     error = riack_delete(client, cache->bucket, key, &properties);
 
-    _riak_release_connection(tile, cache, client);
+    mapcache_connection_pool_release_connection(ctx,pc);
 
     if (error != RIACK_SUCCESS) {
         ctx->set_error(ctx, 500, "riak: failed to delete key %s: %d", key, error);
@@ -262,10 +196,8 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
     struct RIACK_GET_OBJECT obj;
     struct RIACK_GET_PROPERTIES properties;
     struct RIACK_CLIENT *client;
-
-    int took;
-
-    apr_time_t start = apr_time_now();
+    mapcache_pooled_connection *pc;
+    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     memset(&properties, 0, sizeof(struct RIACK_GET_PROPERTIES));
 
@@ -275,7 +207,6 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
     properties.r = 1;
 	*/
 
-    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     key.value = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b", "#");
     if (GC_HAS_ERROR(ctx)) {
@@ -285,10 +216,11 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
 
     tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
 
-    client = _riak_get_connection(ctx, cache, tile);
+    pc = _riak_get_connection(ctx, cache, tile);
     if (GC_HAS_ERROR(ctx)) {
         return MAPCACHE_FAILURE;
     }
+    client = pc->connection;
 
     // If we get an error it is advised that we call reconnect.  It also appears
     // that every now and then we get an error and need to retry once again to
@@ -313,13 +245,11 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
     if (error != RIACK_SUCCESS)
     {
         if (connect_error != RIACK_SUCCESS)
-            _riak_invalidate_connection(tile, cache, client);
+            mapcache_connection_pool_invalidate_connection(ctx,pc);
         else
-            _riak_release_connection(tile, cache, client);
+            mapcache_connection_pool_release_connection(ctx,pc);
 
         ctx->set_error(ctx, 500, "Failed to get tile %s from cache %s due to error %d", key.value, cache->cache.name, error);
-        ctx->log(ctx, MAPCACHE_ERROR, "Failed to get tile %s from cache %s due to error %d", key.value, cache->cache.name, error);
-
         return MAPCACHE_FAILURE;
     }
 
@@ -328,7 +258,7 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
     // to do this sort of test here instead of erroring.
     if (obj.object.content_count < 1 || obj.object.content[0].data_len == 0) {
         riack_free_get_object(client, &obj);  // Need to free the object here as well.
-        _riak_release_connection(tile, cache, client);
+        mapcache_connection_pool_release_connection(ctx,pc);
         return MAPCACHE_CACHE_MISS;
     }
 
@@ -337,16 +267,7 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
 
     riack_free_get_object(client, &obj);    // riack_get allocates the returned object so we need to deallocate it.
 
-    apr_time_t now = apr_time_now();
-    tile->mtime = now;
-
-    _riak_release_connection(tile, cache, client); // Release the connection now that all memory is cleaned up.
-
-    took = apr_time_as_msec(now - start);
-
-    if ( took >= 100 ) {
-	    ctx->log(ctx, MAPCACHE_DEBUG, "Get of tile %s took %d msecs", key.value, took);
-    }
+    mapcache_connection_pool_release_connection(ctx,pc);
 
     return MAPCACHE_SUCCESS;
 }
@@ -367,10 +288,8 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
     struct RIACK_CONTENT content;
     struct RIACK_PUT_PROPERTIES properties;
     struct RIACK_CLIENT *client;
-
-    int took;
-
-    apr_time_t start = apr_time_now();
+    mapcache_pooled_connection *pc;
+    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     memset(&content, 0, sizeof(struct RIACK_CONTENT));
     memset(&object, 0, sizeof(struct RIACK_OBJECT));
@@ -384,7 +303,6 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
     properties.dw_use = 1;
     properties.dw = 0;*/
 
-    mapcache_cache_riak *cache = (mapcache_cache_riak*)pcache;
 
     key = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b", "#");
     GC_CHECK_ERROR(ctx);
@@ -394,8 +312,9 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
         GC_CHECK_ERROR(ctx);
     }
 
-    client = _riak_get_connection(ctx, cache, tile);
+    pc = _riak_get_connection(ctx, cache, tile);
     GC_CHECK_ERROR(ctx);
+    client = pc->connection;
 
     // Set up the riak object to put.  Need to do this after we get the client connection
     object.bucket.value = cache->bucket.value;
@@ -431,22 +350,13 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
     while (error != RIACK_SUCCESS && retries >= 0);
 
     if (connect_error != RIACK_SUCCESS)
-        _riak_invalidate_connection(tile, cache, client);
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
     else
-        _riak_release_connection(tile, cache, client);
+      mapcache_connection_pool_release_connection(ctx,pc);
 
     if (error != RIACK_SUCCESS)
     {
         ctx->set_error(ctx, 500, "failed to store tile %s to cache %s due to error %d.", key, cache->cache.name, error);
-        ctx->log(ctx, MAPCACHE_ERROR, "Failed to set tile %s to cache %s due to error %d", key, cache->cache.name, error);
-    }
-
-    apr_time_t end = apr_time_now();
-
-    took = apr_time_as_msec( end - start );
-
-    if ( took >= 100 ) {
-	ctx->log(ctx, MAPCACHE_DEBUG, "Set of tile %s took %d msecs", key, took );
     }
 }
 
@@ -454,7 +364,7 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
  * \private \memberof mapcache_cache_riak
  */
 static void _mapcache_cache_riak_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) {
-    ezxml_t cur_node;
+    ezxml_t cur_node,xhost,xport,xbucket;
     mapcache_cache_riak *dcache = (mapcache_cache_riak*)cache;
     int servercount = 0;
 
@@ -473,9 +383,9 @@ static void _mapcache_cache_riak_configuration_parse_xml(mapcache_context *ctx, 
     }
 
     cur_node = ezxml_child(node, "server");
-    ezxml_t xhost = ezxml_child(cur_node, "host");   /* Host should contain just server */
-    ezxml_t xport = ezxml_child(cur_node, "port");
-    ezxml_t xbucket = ezxml_child(cur_node, "bucket");
+    xhost = ezxml_child(cur_node, "host");   /* Host should contain just server */
+    xport = ezxml_child(cur_node, "port");
+    xbucket = ezxml_child(cur_node, "bucket");
 
     if (!xhost || !xhost->txt || ! *xhost->txt) {
         ctx->set_error(ctx, 400, "cache %s: <server> with no <host>", cache->name);
@@ -506,8 +416,6 @@ static void _mapcache_cache_riak_configuration_parse_xml(mapcache_context *ctx, 
         }
         dcache->bucket.len = strlen(dcache->bucket.value);
     }
-
-    dcache->ctx = ctx;
 }
 
 /**
