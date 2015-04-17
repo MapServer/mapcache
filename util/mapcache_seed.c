@@ -585,7 +585,7 @@ void seed_worker()
     if(cmd.command == MAPCACHE_CMD_SEED) {
       /* aquire a lock on the metatile ?*/
       mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-      int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+      int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
       if(isLocked == MAPCACHE_TRUE) {
         /* this will query the source to create the tiles, and save them to the cache */
         mapcache_tileset_render_metatile(&seed_ctx, mt);
@@ -593,10 +593,10 @@ void seed_worker()
           /* temporarily clear error state so we don't mess up with error handling in the locker */
           void *error;
           seed_ctx.pop_errors(&seed_ctx,&error);
-          mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
           seed_ctx.push_errors(&seed_ctx,error);
         } else {
-          mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
         }
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {

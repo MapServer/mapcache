@@ -926,6 +926,7 @@ void parseServices(mapcache_context *ctx, ezxml_t root, mapcache_cfg *config)
 }
 
 
+
 void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filename, mapcache_cfg *config)
 {
   ezxml_t doc, node;
@@ -1095,23 +1096,8 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
   }
 
   if((node = ezxml_child(doc,"locker")) != NULL) {
-    const char *ltype = ezxml_attr(node, "type");
-    if(!ltype) ltype = "disk";
-    if(!strcmp(ltype,"disk")) {
-      config->locker = mapcache_locker_disk_create(ctx);
-    } else if(!strcmp(ltype,"memcache")) {
-#ifdef USE_MEMCACHE
-      config->locker = mapcache_locker_memcache_create(ctx);
-#else
-      ctx->set_error(ctx,400,"<locker>: type \"memcache\" cannot be used as memcache support is not compiled in");
-      goto cleanup;
-#endif
-    } else {
-      ctx->set_error(ctx,400,"<locker>: unknown type \"%s\" (allowed are disk and memcache)",ltype);
-      goto cleanup;
-    }
-    config->locker->parse_xml(ctx, config, config->locker, node);
-
+    mapcache_config_parse_locker(ctx,node,&config->locker);
+    GC_CHECK_ERROR(ctx);
   } else {
     /* backwards compatibility */
     int micro_retry;
@@ -1136,7 +1122,7 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
       /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
       micro_retry = 10000;
     }
-    ldisk->retry = micro_retry / 1000000.0;
+    config->locker->retry_interval = micro_retry / 1000000.0;
   }
 
   if((node = ezxml_child(doc,"threaded_fetching")) != NULL) {

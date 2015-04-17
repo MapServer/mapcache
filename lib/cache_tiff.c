@@ -243,7 +243,7 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *
 
 
 #ifdef DEBUG
-      check_tiff_format(ctx,tile,hTIFF,filename);
+      check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
         return MAPCACHE_FALSE;
@@ -343,7 +343,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
 
 
 #ifdef DEBUG
-      check_tiff_format(ctx,tile,hTIFF,filename);
+      check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
         return MAPCACHE_FAILURE;
@@ -588,7 +588,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
    * aquire a lock on the tiff file.
    */
 
-  while(mapcache_lock_or_wait_for_resource(ctx,filename) == MAPCACHE_FALSE);
+  while(mapcache_lock_or_wait_for_resource(ctx,(cache->locker?cache->locker:ctx->config->locker),filename) == MAPCACHE_FALSE);
 
   /* check if the tiff file exists already */
   rv = apr_stat(&finfo,filename,0,ctx->pool);
@@ -615,7 +615,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   ntilesy = MAPCACHE_MIN(cache->count_y, level->maxy);
   if(create) {
 #ifdef USE_GEOTIFF
-    double  adfPixelScale[3], adfTiePoints[6], bbox[4];
+    double  adfPixelScale[3], adfTiePoints[6];
+    mapcache_extent bbox;
     GTIF *gtif;
     int x,y;
 #endif
@@ -679,12 +680,12 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
       y = (tile->y / cache->count_y)*(cache->count_y) + ntilesy - 1;
 
       mapcache_grid_get_extent(ctx, tile->grid_link->grid,
-                               x,y,tile->z,bbox);
+                               x,y,tile->z,&bbox);
       adfTiePoints[0] = 0.0;
       adfTiePoints[1] = 0.0;
       adfTiePoints[2] = 0.0;
-      adfTiePoints[3] = bbox[0];
-      adfTiePoints[4] = bbox[3];
+      adfTiePoints[3] = bbox.minx;
+      adfTiePoints[4] = bbox.maxy;
       adfTiePoints[5] = 0.0;
       TIFFSetField( hTIFF, TIFFTAG_GEOTIEPOINTS, 6, adfTiePoints );
     }
@@ -733,7 +734,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
 close_tiff:
   if(hTIFF)
     MyTIFFClose(hTIFF);
-  mapcache_unlock_resource(ctx,filename);
+  mapcache_unlock_resource(ctx,cache->locker?cache->locker:ctx->config->locker,filename);
 #else
   ctx->set_error(ctx,500,"tiff write support disabled by default");
 #endif
@@ -746,10 +747,7 @@ close_tiff:
 static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *pcache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
-  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
-  ezxml_t xcount;
-  ezxml_t ycount;
-  ezxml_t xformat;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
   char * format_name;
   mapcache_image_format *pformat;
   if ((cur_node = ezxml_child(node,"template")) != NULL) {
@@ -792,27 +790,27 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
       cache->inv_div_y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
   }
-  xcount = ezxml_child(node,"xcount");
-  if(xcount && xcount->txt && *xcount->txt) {
+  cur_node = ezxml_child(node,"xcount");
+  if(cur_node && cur_node->txt && *cur_node->txt) {
     char *endptr;
-    cache->count_x = (int)strtol(xcount->txt,&endptr,10);
+    cache->count_x = (int)strtol(cur_node->txt,&endptr,10);
     if(*endptr != 0) {
-      ctx->set_error(ctx,400,"failed to parse xcount value %s for tiff cache %s", xcount->txt,pcache->name);
+      ctx->set_error(ctx,400,"failed to parse xcount value %s for tiff cache %s", cur_node->txt,pcache->name);
       return;
     }
   }
-  ycount = ezxml_child(node,"ycount");
-  if(ycount && ycount->txt && *ycount->txt) {
+  cur_node = ezxml_child(node,"ycount");
+  if(cur_node && cur_node->txt && *cur_node->txt) {
     char *endptr;
-    cache->count_y = (int)strtol(ycount->txt,&endptr,10);
+    cache->count_y = (int)strtol(cur_node->txt,&endptr,10);
     if(*endptr != 0) {
-      ctx->set_error(ctx,400,"failed to parse ycount value %s for tiff cache %s", ycount->txt,pcache->name);
+      ctx->set_error(ctx,400,"failed to parse ycount value %s for tiff cache %s", cur_node->txt,pcache->name);
       return;
     }
   }
-  xformat = ezxml_child(node,"format");
-  if(xformat && xformat->txt && *xformat->txt) {
-    format_name = xformat->txt;
+  cur_node = ezxml_child(node,"format");
+  if(cur_node && cur_node->txt && *cur_node->txt) {
+    format_name = cur_node->txt;
   } else {
     format_name = "JPEG";
   }
@@ -829,6 +827,12 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
     return;
   }
   cache->format = (mapcache_image_format_jpeg*)pformat;
+
+  cur_node = ezxml_child(node,"locker");
+  if(cur_node) {
+    mapcache_config_parse_locker(ctx, cur_node, &cache->locker);
+  }
+  
 }
 
 /**
@@ -837,7 +841,7 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
 static void _mapcache_cache_tiff_configuration_post_config(mapcache_context *ctx, mapcache_cache *pcache,
     mapcache_cfg *cfg)
 {
-  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)cache;
+  mapcache_cache_tiff *cache = (mapcache_cache_tiff*)pcache;
   /* check all required parameters are configured */
   if((!cache->filename_template || !strlen(cache->filename_template))) {
     ctx->set_error(ctx, 400, "tiff cache %s has no template pattern",cache->cache.name);
