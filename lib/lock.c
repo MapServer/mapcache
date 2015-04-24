@@ -62,9 +62,10 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *l
     rv = MAPCACHE_LOCK_LOCKED;
     
     while(rv != MAPCACHE_LOCK_NOENT) {
-      if(apr_time_msec(apr_time_now()-start_wait) > locker->timeout*1000) {
+      unsigned int waited = apr_time_as_msec(apr_time_now()-start_wait);
+      if(waited > locker->timeout*1000) {
         mapcache_unlock_resource(ctx,locker,resource);
-        ctx->log(ctx,MAPCACHE_ERROR,"deleting a possibly stale lock after waiting on it for %g seconds",apr_time_msec(apr_time_now()-start_wait)/1000.0);
+        ctx->log(ctx,MAPCACHE_ERROR,"deleting a possibly stale lock after waiting on it for %g seconds",waited/1000.0);
         return MAPCACHE_FALSE;
       }
       apr_sleep(locker->retry_interval * 1000000);
