@@ -159,6 +159,7 @@ typedef struct mapcache_dimension_regex mapcache_dimension_regex;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
 typedef struct mapcache_connection_pool mapcache_connection_pool;
+typedef struct mapcache_locker mapcache_locker;
 
 /** \defgroup utility Utility */
 /** @{ */
@@ -578,6 +579,7 @@ struct mapcache_cache_tiff {
   int count_x;
   int count_y;
   mapcache_image_format_jpeg *format;
+  mapcache_locker *locker;
 };
 #endif
 
@@ -1158,14 +1160,23 @@ typedef enum {
   MAPCACHE_LOCKER_MEMCACHE
 } mapcache_lock_mode;
 
-typedef struct mapcache_locker mapcache_locker;
+typedef enum {
+    MAPCACHE_LOCK_AQUIRED,
+    MAPCACHE_LOCK_LOCKED,
+    MAPCACHE_LOCK_NOENT
+} mapcache_lock_result;
+
 
 struct mapcache_locker{
-  int (*lock_or_wait)(mapcache_context *ctx, mapcache_locker *self, char *resource);
-  void (*unlock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  
   void (*clear_all_locks)(mapcache_context *ctx, mapcache_locker *self);
-  void (*parse_xml)(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_locker *self, ezxml_t node);
+  void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
   mapcache_lock_mode type;
+  double timeout;
+  double retry_interval; /* time to wait before checking again on a lock, in seconds */
 };
 
 typedef struct {
@@ -1178,7 +1189,6 @@ typedef struct {
    * need to be synchronized
    */
   const char *dir;
-  double retry; /* time in seconds to wait before rechecking for lockfile presence */
 } mapcache_locker_disk;
 
 mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx);
@@ -1194,11 +1204,12 @@ typedef struct {
   int nservers;
   mapcache_locker_memcache_server *servers;
   int timeout; /* in seconds, passed and honoured by memcache, not mapcache */
-  double retry; /* in seconds */
 } mapcache_locker_memcache;
 
 mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);
 #endif
+
+void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker);
 
 /**
  * a configuration that will be served
@@ -1638,8 +1649,8 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
 void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *tileset, const char *filename);
 
 
-int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, char *resource);
-void mapcache_unlock_resource(mapcache_context *ctx, char *resource);
+int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource);
+void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource);
 
 mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);

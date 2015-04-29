@@ -31,6 +31,7 @@
 #include <apr_file_io.h>
 #include <apr_strings.h>
 #include <apr_time.h>
+#include <unistd.h>
 
 #define MAPCACHE_LOCKFILE_PREFIX "_gc_lock"
 
@@ -48,9 +49,30 @@ char* lock_filename_for_resource(mapcache_context *ctx, mapcache_locker_disk *ld
                       ldisk->dir,saferes);
 }
 
-int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, char *resource)
+int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource)
 {
-  return ctx->config->locker->lock_or_wait(ctx, ctx->config->locker, resource);
+  mapcache_lock_result rv = locker->aquire_lock(ctx, locker, resource);
+  if(GC_HAS_ERROR(ctx)) {
+    return MAPCACHE_FAILURE;
+  }
+  if(rv == MAPCACHE_LOCK_AQUIRED)
+    return MAPCACHE_TRUE;
+  else {
+    apr_time_t start_wait = apr_time_now();
+    rv = MAPCACHE_LOCK_LOCKED;
+    
+    while(rv != MAPCACHE_LOCK_NOENT) {
+      unsigned int waited = apr_time_as_msec(apr_time_now()-start_wait);
+      if(waited > locker->timeout*1000) {
+        mapcache_unlock_resource(ctx,locker,resource);
+        ctx->log(ctx,MAPCACHE_ERROR,"deleting a possibly stale lock after waiting on it for %g seconds",waited/1000.0);
+        return MAPCACHE_FALSE;
+      }
+      apr_sleep(locker->retry_interval * 1000000);
+      rv = locker->ping_lock(ctx,locker,resource);
+    }
+    return MAPCACHE_FALSE;
+  }
 }
 
 void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker *self) {
@@ -81,7 +103,7 @@ void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker
   }
   apr_dir_close(lockdir);
 }
-int mapcache_locker_disk_lock_or_wait(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
   char *lockname, errmsg[120];
   mapcache_locker_disk *ldisk;
   assert(self->type == MAPCACHE_LOCKER_DISK);
@@ -98,40 +120,49 @@ int mapcache_locker_disk_lock_or_wait(mapcache_context *ctx, mapcache_locker *se
   if( rv != APR_SUCCESS ) {
     if( !APR_STATUS_IS_EEXIST(rv) ) {
       ctx->set_error(ctx, 500, "failed to create lockfile %s: %s", lockname, apr_strerror(rv,errmsg,120));
-      return MAPCACHE_FAILURE;
+      return MAPCACHE_LOCK_NOENT;
     }
-    apr_finfo_t info;
-    rv = apr_stat(&info,lockname,0,ctx->pool);
-#ifdef DEBUG
-    if(!APR_STATUS_IS_ENOENT(rv)) {
-      ctx->log(ctx, MAPCACHE_DEBUG, "waiting on resource lock %s", resource);
-    }
-#endif
-    while(!APR_STATUS_IS_ENOENT(rv)) {
-      /* sleep for the configured number of micro-seconds (default is 1/100th of a second) */
-      apr_sleep(ldisk->retry * 1000000);
-      rv = apr_stat(&info,lockname,0,ctx->pool);
-    }
-    return MAPCACHE_FALSE;
+    return MAPCACHE_LOCK_LOCKED;
   } else {
     /* we acquired the lock */
+    char *pid_s;
+    pid_t pid;
+    apr_size_t pid_s_len;
+    pid = getpid();
+    pid_s = apr_psprintf(ctx->pool,"%"APR_PID_T_FMT,pid);
+    pid_s_len = strlen(pid_s);
+    apr_file_write(lockfile,pid_s,&pid_s_len);
     apr_file_close(lockfile);
-    return MAPCACHE_TRUE;
+    return MAPCACHE_LOCK_AQUIRED;
   }
 }
 
-void mapcache_locker_disk_unlock(mapcache_context *ctx, mapcache_locker *self, char *resource)
+mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+  apr_finfo_t info;
+  apr_status_t rv;
+  char *lockname;
+  mapcache_locker_disk *ldisk = (mapcache_locker_disk*)self;
+  lockname = lock_filename_for_resource(ctx,ldisk,resource);
+  rv = apr_stat(&info,lockname,0,ctx->pool);
+  if(APR_STATUS_IS_ENOENT(rv)) {
+    return MAPCACHE_LOCK_NOENT;
+  } else {
+    return MAPCACHE_LOCK_LOCKED;
+  }
+}
+
+void mapcache_locker_disk_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource)
 {
   mapcache_locker_disk *ld = (mapcache_locker_disk*)self;
   char *lockname = lock_filename_for_resource(ctx,ld,resource);
   apr_file_remove(lockname,ctx->pool);
 }
 
-void mapcache_unlock_resource(mapcache_context *ctx, char *resource) {
-  ctx->config->locker->unlock(ctx, ctx->config->locker, resource);
+void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource) {
+  locker->release_lock(ctx, locker, resource);
 }
 
-void mapcache_locker_disk_parse_xml(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_locker *self, ezxml_t doc) {
+void mapcache_locker_disk_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
   mapcache_locker_disk *ldisk = (mapcache_locker_disk*)self;
   ezxml_t node;
   if((node = ezxml_child(doc,"directory")) != NULL) {
@@ -139,26 +170,6 @@ void mapcache_locker_disk_parse_xml(mapcache_context *ctx, mapcache_cfg *cfg, ma
   } else {
     ldisk->dir = apr_pstrdup(ctx->pool,"/tmp");
   }
-
-  if((node = ezxml_child(doc,"retry")) != NULL) {
-    char *endptr;
-    ldisk->retry = strtod(node->txt,&endptr);
-    if(*endptr != 0 || ldisk->retry <= 0) {
-      ctx->set_error(ctx, 400, "failed to parse retry seconds \"%s\". Expecting a positive floating point number",
-          node->txt);
-      return;
-    }
-  } else {
-    /* default retry interval is 1/100th of a second */
-    ldisk->retry = 0.01;
-  }
-  /* TODO one day
-  if((node = ezxml_child(doc,"lock_prefix")) != NULL) {
-    ldisk->prefix = apr_pstrdup(ctx->pool, node->txt);
-  } else {
-    ldisk->prefix = apr_pstrdup(ctx->pool,"");
-  }
-  */
 }
 
 mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx) {
@@ -166,14 +177,15 @@ mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx) {
   mapcache_locker *l = (mapcache_locker*)ld;
   l->type = MAPCACHE_LOCKER_DISK;
   l->clear_all_locks = mapcache_locker_disk_clear_all_locks;
-  l->lock_or_wait = mapcache_locker_disk_lock_or_wait;
+  l->aquire_lock = mapcache_locker_disk_aquire_lock;
   l->parse_xml = mapcache_locker_disk_parse_xml;
-  l->unlock = mapcache_locker_disk_unlock;
+  l->release_lock = mapcache_locker_disk_release_lock;
+  l->ping_lock = mapcache_locker_disk_ping_lock;
   return l;
 }
 
 #ifdef USE_MEMCACHE
-void mapcache_locker_memcache_parse_xml(mapcache_context *ctx, mapcache_cfg *cfg, mapcache_locker *self, ezxml_t doc) {
+void mapcache_locker_memcache_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   ezxml_t node,server_node;
   char *endptr;
@@ -215,18 +227,6 @@ void mapcache_locker_memcache_parse_xml(mapcache_context *ctx, mapcache_cfg *cfg
   } else {
     /* default: timeout after 10 minutes */
     lm->timeout = 600;
-  }
-
-  if((node = ezxml_child(doc,"retry")) != NULL) {
-    lm->retry = strtod(node->txt,&endptr);
-    if(*endptr != 0 || lm->retry <= 0) {
-      ctx->set_error(ctx, 400, "failed to parse memcache locker retry \"%s\". Expecting a positive floating point number",
-          node->txt);
-      return;
-    }
-  } else {
-    /* default: retry every .3 seconds */
-    lm->retry = 0.3;
   }
 }
 
@@ -271,7 +271,22 @@ apr_memcache_t* create_memcache(mapcache_context *ctx, mapcache_locker_memcache 
   return memcache;
 }
 
-int mapcache_locker_memcache_lock_or_wait(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+  apr_status_t rv;
+  char *one;
+  size_t ione;
+  mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
+  char *key = memcache_key_for_resource(ctx, lm, resource);
+  apr_memcache_t *memcache = create_memcache(ctx,lm);  
+  rv = apr_memcache_getp(memcache,ctx->pool,key,&one,&ione,NULL);
+  if(rv == APR_SUCCESS)
+    return MAPCACHE_LOCK_LOCKED;
+  else
+    return MAPCACHE_LOCK_NOENT;
+}
+  
+
+mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
@@ -282,34 +297,25 @@ int mapcache_locker_memcache_lock_or_wait(mapcache_context *ctx, mapcache_locker
   }
   rv = apr_memcache_add(memcache,key,"1",1,lm->timeout,0);
   if( rv == APR_SUCCESS) {
-    return MAPCACHE_TRUE;
+    return MAPCACHE_LOCK_AQUIRED;
   } else if ( rv == APR_EEXIST ) {
-    apr_pool_t *retry_pool;
-    char *one;
-    size_t ione;
-    apr_pool_create(&retry_pool, ctx->pool);
-    rv = APR_SUCCESS;
-    while(rv == APR_SUCCESS) {
-      /* sleep for the configured number of micro-seconds */
-      apr_sleep(lm->retry * 1000000);
-      rv = apr_memcache_getp(memcache,retry_pool,key,&one,&ione,NULL);
-    }
-    apr_pool_destroy(retry_pool);
-    return MAPCACHE_FALSE;
+    return MAPCACHE_LOCK_LOCKED;
   } else {
     ctx->set_error(ctx,500,"failed to lock resource %s to memcache locker: %s",resource, apr_strerror(rv,errmsg,120));
-    return MAPCACHE_FAILURE;
+    return MAPCACHE_LOCK_NOENT;
   }
-
 }
 
-void mapcache_locker_memcache_unlock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
   char *key = memcache_key_for_resource(ctx, lm, resource);
   apr_memcache_t *memcache = create_memcache(ctx,lm);  
-  GC_CHECK_ERROR(ctx);
+  if(!memcache) {
+    /*error*/
+    return;
+  }
   
   rv = apr_memcache_delete(memcache,key,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
@@ -323,14 +329,60 @@ mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx) {
   mapcache_locker *l = (mapcache_locker*)lm;
   l->type = MAPCACHE_LOCKER_MEMCACHE;
   l->clear_all_locks = NULL;
-  l->lock_or_wait = mapcache_locker_memcache_lock_or_wait;
+  l->aquire_lock = mapcache_locker_memcache_aquire_lock;
+  l->ping_lock = mapcache_locker_memcache_ping_lock;
   l->parse_xml = mapcache_locker_memcache_parse_xml;
-  l->unlock = mapcache_locker_memcache_unlock;
+  l->release_lock = mapcache_locker_memcache_release_lock;
   lm->nservers = 0;
   lm->servers = NULL;
   return l;
 }
 
 #endif
+
+void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker) {
+  ezxml_t cur_node;
+  const char *ltype = ezxml_attr(node, "type");
+  if(!ltype) ltype = "disk";
+  if(!strcmp(ltype,"disk")) {
+    *locker = mapcache_locker_disk_create(ctx);
+  } else if(!strcmp(ltype,"memcache")) {
+#ifdef USE_MEMCACHE
+    *locker = mapcache_locker_memcache_create(ctx);
+#else
+    ctx->set_error(ctx,400,"<locker>: type \"memcache\" cannot be used as memcache support is not compiled in");
+    return;
+#endif
+  } else {
+    ctx->set_error(ctx,400,"<locker>: unknown type \"%s\" (allowed are disk and memcache)",ltype);
+    return;
+  }
+  (*locker)->parse_xml(ctx, *locker, node);
+  
+  if((cur_node = ezxml_child(node,"retry")) != NULL) {
+    char *endptr;
+    (*locker)->retry_interval = strtod(cur_node->txt,&endptr);
+    if(*endptr != 0 || (*locker)->retry_interval <= 0) {
+      ctx->set_error(ctx, 400, "failed to locker parse retry seconds \"%s\". Expecting a positive floating point number",
+              cur_node->txt);
+      return;
+    }
+  } else {
+    /* default retry interval is 1/10th of a second */
+    (*locker)->retry_interval = 0.1;
+  }
+  if((cur_node = ezxml_child(node,"timeout")) != NULL) {
+    char *endptr;
+    (*locker)->timeout = strtod(cur_node->txt,&endptr);
+    if(*endptr != 0 || (*locker)->timeout <= 0) {
+      ctx->set_error(ctx, 400, "failed to parse locker timeout seconds \"%s\". Expecting a positive floating point number",
+              cur_node->txt);
+      return;
+    }
+  } else {
+    /* default timeout is 2 minutes */
+    (*locker)->timeout = 120;
+  }
+}
 /* vim: ts=2 sts=2 et sw=2
 */
