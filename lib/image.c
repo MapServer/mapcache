@@ -359,5 +359,24 @@ int mapcache_image_blank_color(mapcache_image* image)
     return MAPCACHE_FALSE;
 }
 
+
+void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const unsigned char *fill_color) {
+#if 0 && defined(USE_PIXMAN)
+  pixman_fill((uint32_t*)image->data, image->stride, 32, 0, 0, image->w, image->h, *((int*)fill_color) );
+#else
+  int r,c;
+  unsigned char *pixptr;
+  for(r=0;r<image->h;r++) {
+    pixptr = image->data + image->stride * r;
+    for(c=0;c<image->w;c++) {
+      pixptr[0]=fill_color[0];
+      pixptr[1]=fill_color[1];
+      pixptr[2]=fill_color[2];
+      pixptr[3]=fill_color[3];
+      pixptr+=4;
+    }
+  }
+#endif
+}
 /* vim: ts=2 sts=2 et sw=2
 */

@@ -213,7 +213,7 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_cache *pcache
 
   if(ret == 0) {
     if(((char*)(data.data))[0] == '#') {
-      tile->encoded_data = mapcache_empty_png_decode(ctx,(unsigned char*)data.data,&tile->nodata);
+      tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy, (unsigned char*)data.data,&tile->nodata);
     } else {
       tile->encoded_data = mapcache_buffer_create(0,ctx->pool);
       tile->encoded_data->buf = data.data;
