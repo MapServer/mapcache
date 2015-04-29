@@ -75,6 +75,7 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *l
   }
 }
 
+
 void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker *self) {
   mapcache_locker_disk *ldisk = (mapcache_locker_disk*)self;
   apr_dir_t *lockdir;
@@ -103,6 +104,7 @@ void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker
   }
   apr_dir_close(lockdir);
 }
+
 mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
   char *lockname, errmsg[120];
   mapcache_locker_disk *ldisk;
@@ -293,7 +295,7 @@ mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx,
   char *key = memcache_key_for_resource(ctx, lm, resource);
   apr_memcache_t *memcache = create_memcache(ctx,lm);  
   if(GC_HAS_ERROR(ctx)) {
-    return MAPCACHE_FAILURE;
+    return MAPCACHE_LOCK_NOENT;
   }
   rv = apr_memcache_add(memcache,key,"1",1,lm->timeout,0);
   if( rv == APR_SUCCESS) {

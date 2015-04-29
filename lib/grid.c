@@ -160,10 +160,11 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
   return MAPCACHE_FAILURE;
 }
 
-void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *grid_link, double resolution, int *level)
+mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid_link, double resolution, int *level)
 {
   double dst = fabs(grid_link->grid->levels[grid_link->minz]->resolution - resolution);
-  int i;
+  int i,g;
+  mapcache_grid_link *ret = grid_link;
   *level = 0;
 
   for(i=grid_link->minz + 1; i<grid_link->maxz; i++) {
@@ -173,6 +174,20 @@ void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *
       *level = i;
     }
   }
+  if(grid_link->intermediate_grids) {
+    for(g=0; g<grid_link->intermediate_grids->nelts; g++) {
+      mapcache_grid_link *igl = APR_ARRAY_IDX(grid_link->intermediate_grids, g, mapcache_grid_link*);
+      for(i=igl->minz; i<igl->maxz; i++) {
+        double curdst = fabs(igl->grid->levels[i]->resolution - resolution);
+        if(curdst<dst) {
+          dst = curdst;
+          *level = i;
+          ret = igl;
+        }
+      }
+    }
+  }
+  return ret;
 }
 
 /*

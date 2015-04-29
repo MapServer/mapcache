@@ -131,7 +131,7 @@ void _mapcache_service_ve_parse_request(mapcache_context *ctx, mapcache_service 
 
 
   req = (mapcache_request_get_tile*) apr_pcalloc(ctx->pool, sizeof (mapcache_request_get_tile));
-  req->request.type = MAPCACHE_REQUEST_GET_TILE;
+  ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
   req->ntiles = 1;
   req->tiles = (mapcache_tile**) apr_pcalloc(ctx->pool, sizeof (mapcache_tile*));
   req->tiles[0] = tile;

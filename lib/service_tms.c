@@ -240,7 +240,7 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
   if(index == 5) {
     char *gridname;
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(ctx->pool,sizeof(mapcache_request_get_tile));
-    req->request.type = MAPCACHE_REQUEST_GET_TILE;
+    ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
     gridname = sTileset;  /*hijack the char* pointer while counting the number of commas */
     while(*gridname) {
       if(*gridname == ';') req->ntiles++;
