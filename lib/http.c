@@ -153,18 +153,6 @@ typedef struct header_cb_struct{
   char *str;
 } header_cb_struct;
 
-/* calculate the length of the string formed by key=value&, and add it to cnt */
-#ifdef _WIN32
-static int _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#else
-static APR_DECLARE_NONSTD(int) _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#endif
-  *((int*)cnt) += strlen(key) + 2 + ((value && *value) ? strlen(value) : 0);
-  return 1;
-}
-
 /* Converts an integer value to its hex character*/
 char to_hex(char code) {
   static char hex[] = "0123456789abcdef";
@@ -266,9 +254,8 @@ int _mapcache_unescape_url(char *url)
 char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params)
 {
   if(!apr_is_empty_table(params)) {
-    int stringLength = 0, baseLength;
+    int baseLength;
     header_cb_struct hcs;
-    char charToAppend=0;
     baseLength = strlen(base);
     hcs.pool = ctx->pool;
     hcs.str = base;

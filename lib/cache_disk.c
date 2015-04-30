@@ -499,6 +499,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       char *blankname;
       _mapcache_cache_disk_blank_tile_key(ctx,cache,tile,tile->raw_image->data,&blankname);
       if(apr_file_open(&f, blankname, APR_FOPEN_READ, APR_OS_DEFAULT, ctx->pool) != APR_SUCCESS) {
+        int isLocked;
+        void *lock;
         if(!tile->encoded_data) {
           tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
           GC_CHECK_ERROR(ctx);
@@ -517,7 +519,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
         }
 
         /* aquire a lock on the blank file */
-        int isLocked = mapcache_lock_or_wait_for_resource(ctx,ctx->config->locker,blankname);
+        isLocked = mapcache_lock_or_wait_for_resource(ctx,ctx->config->locker,blankname, &lock);
 
         if(isLocked == MAPCACHE_TRUE) {
 
@@ -525,7 +527,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
                                   APR_FOPEN_CREATE|APR_FOPEN_WRITE|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,
                                   APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
             ctx->set_error(ctx, 500,  "failed to create file %s: %s",blankname, apr_strerror(ret,errmsg,120));
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname);
+            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
             return; /* we could not create the file */
           }
 
@@ -533,17 +535,17 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
           ret = apr_file_write(f,(void*)tile->encoded_data->buf,&bytes);
           if(ret != APR_SUCCESS) {
             ctx->set_error(ctx, 500,  "failed to write data to file %s (wrote %d of %d bytes): %s",blankname, (int)bytes, (int)tile->encoded_data->size, apr_strerror(ret,errmsg,120));
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname);
+            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
             return; /* we could not create the file */
           }
 
           if(bytes != tile->encoded_data->size) {
             ctx->set_error(ctx, 500,  "failed to write image data to %s, wrote %d of %d bytes", blankname, (int)bytes, (int)tile->encoded_data->size);
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname);
+            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
             return;
           }
           apr_file_close(f);
-          mapcache_unlock_resource(ctx,ctx->config->locker,blankname);
+          mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
 #ifdef DEBUG
           ctx->log(ctx,MAPCACHE_DEBUG,"created blank tile %s",blankname);
 #endif

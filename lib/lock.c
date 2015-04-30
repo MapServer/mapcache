@@ -49,9 +49,9 @@ char* lock_filename_for_resource(mapcache_context *ctx, mapcache_locker_disk *ld
                       ldisk->dir,saferes);
 }
 
-int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource)
+int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock)
 {
-  mapcache_lock_result rv = locker->aquire_lock(ctx, locker, resource);
+  mapcache_lock_result rv = locker->aquire_lock(ctx, locker, resource, lock);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
@@ -64,12 +64,12 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *l
     while(rv != MAPCACHE_LOCK_NOENT) {
       unsigned int waited = apr_time_as_msec(apr_time_now()-start_wait);
       if(waited > locker->timeout*1000) {
-        mapcache_unlock_resource(ctx,locker,resource);
+        mapcache_unlock_resource(ctx,locker,resource, *lock);
         ctx->log(ctx,MAPCACHE_ERROR,"deleting a possibly stale lock after waiting on it for %g seconds",waited/1000.0);
         return MAPCACHE_FALSE;
       }
       apr_sleep(locker->retry_interval * 1000000);
-      rv = locker->ping_lock(ctx,locker,resource);
+      rv = locker->ping_lock(ctx,locker,resource, *lock);
     }
     return MAPCACHE_FALSE;
   }
@@ -105,15 +105,17 @@ void mapcache_locker_disk_clear_all_locks(mapcache_context *ctx, mapcache_locker
   apr_dir_close(lockdir);
 }
 
-mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock) {
   char *lockname, errmsg[120];
   mapcache_locker_disk *ldisk;
-  assert(self->type == MAPCACHE_LOCKER_DISK);
-  ldisk = (mapcache_locker_disk*)self;
-
-  lockname = lock_filename_for_resource(ctx,ldisk,resource);
   apr_file_t *lockfile;
   apr_status_t rv;
+  
+  assert(self->type == MAPCACHE_LOCKER_DISK);
+  ldisk = (mapcache_locker_disk*)self;
+  *lock = NULL; /*unused*/
+
+  lockname = lock_filename_for_resource(ctx,ldisk,resource);
   /* create the lockfile */
   rv = apr_file_open(&lockfile,lockname,APR_WRITE|APR_CREATE|APR_EXCL|APR_XTHREAD,APR_OS_DEFAULT,ctx->pool);
 
@@ -139,7 +141,7 @@ mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, map
   }
 }
 
-mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
   apr_finfo_t info;
   apr_status_t rv;
   char *lockname;
@@ -153,15 +155,15 @@ mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapca
   }
 }
 
-void mapcache_locker_disk_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource)
+void mapcache_locker_disk_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock)
 {
   mapcache_locker_disk *ld = (mapcache_locker_disk*)self;
   char *lockname = lock_filename_for_resource(ctx,ld,resource);
   apr_file_remove(lockname,ctx->pool);
 }
 
-void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource) {
-  locker->release_lock(ctx, locker, resource);
+void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock) {
+  locker->release_lock(ctx, locker, resource, lock);
 }
 
 void mapcache_locker_disk_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
@@ -184,6 +186,66 @@ mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx) {
   l->release_lock = mapcache_locker_disk_release_lock;
   l->ping_lock = mapcache_locker_disk_ping_lock;
   return l;
+}
+
+struct mapcache_locker_fallback_lock {
+  mapcache_locker *locker; /*the locker that actually acquired the lock*/
+  void *lock; /*the opaque lock returned by the locker*/
+};
+
+void mapcache_locker_fallback_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+  struct mapcache_locker_fallback_lock *flock = lock;
+  flock->locker->release_lock(ctx,flock->locker,resource,flock->lock);
+}
+
+mapcache_lock_result mapcache_locker_fallback_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+  struct mapcache_locker_fallback_lock *flock = lock;
+  return flock->locker->ping_lock(ctx,flock->locker,resource,flock->lock);
+}
+
+void mapcache_locker_fallback_clear_all_locks(mapcache_context *ctx, mapcache_locker *self) {
+  int i;
+  mapcache_locker_fallback *locker = (mapcache_locker_fallback*)self;
+  for(i=0;i<locker->lockers->nelts;i++) {
+    mapcache_locker *child_locker = APR_ARRAY_IDX(locker->lockers, i, mapcache_locker*);
+    if(child_locker->clear_all_locks) {
+      child_locker->clear_all_locks(ctx,child_locker);
+    }
+  }
+}
+
+mapcache_lock_result mapcache_locker_fallback_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock) {
+  int i;
+  mapcache_locker_fallback *locker = (mapcache_locker_fallback*)self;
+  struct mapcache_locker_fallback_lock *fallback_lock = apr_pcalloc(ctx->pool, sizeof(struct mapcache_locker_fallback_lock));
+  *lock = fallback_lock;
+  for(i=0;i<locker->lockers->nelts;i++) {
+    mapcache_lock_result lock_result;
+    mapcache_locker *child_locker = APR_ARRAY_IDX(locker->lockers, i, mapcache_locker*);
+    void *error;
+    ctx->pop_errors(ctx,&error);
+    lock_result = child_locker->aquire_lock(ctx, child_locker, resource, &(fallback_lock->lock));
+    if(!GC_HAS_ERROR(ctx)) {
+      fallback_lock->locker = child_locker;
+      ctx->push_errors(ctx,error);
+      return lock_result;
+    }
+    ctx->push_errors(ctx,error);
+  }
+  return MAPCACHE_LOCK_NOENT;
+}
+
+
+void mapcache_locker_fallback_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
+  mapcache_locker_fallback *lm = (mapcache_locker_fallback*)self;
+  ezxml_t node;
+  lm->lockers = apr_array_make(ctx->pool,2,sizeof(mapcache_locker*));
+  for(node = ezxml_child(doc,"locker"); node; node = node->next) {
+    mapcache_locker *child_locker;
+    mapcache_config_parse_locker(ctx,node,&child_locker);
+    GC_CHECK_ERROR(ctx);
+    APR_ARRAY_PUSH(lm->lockers,mapcache_locker*) = child_locker;
+  }
 }
 
 #ifdef USE_MEMCACHE
@@ -273,13 +335,15 @@ apr_memcache_t* create_memcache(mapcache_context *ctx, mapcache_locker_memcache 
   return memcache;
 }
 
-mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
   apr_status_t rv;
   char *one;
   size_t ione;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = create_memcache(ctx,lm);  
+  apr_memcache_t *memcache = (apr_memcache_t*)lock;  
+  if(!memcache)
+    return MAPCACHE_LOCK_NOENT;
   rv = apr_memcache_getp(memcache,ctx->pool,key,&one,&ione,NULL);
   if(rv == APR_SUCCESS)
     return MAPCACHE_LOCK_LOCKED;
@@ -288,7 +352,7 @@ mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, m
 }
   
 
-mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock) {
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
@@ -297,6 +361,7 @@ mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx,
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_LOCK_NOENT;
   }
+  *lock = memcache;
   rv = apr_memcache_add(memcache,key,"1",1,lm->timeout,0);
   if( rv == APR_SUCCESS) {
     return MAPCACHE_LOCK_AQUIRED;
@@ -308,12 +373,12 @@ mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx,
   }
 }
 
-void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource) {
+void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = create_memcache(ctx,lm);  
+  apr_memcache_t *memcache = (apr_memcache_t*)lock;  
   if(!memcache) {
     /*error*/
     return;
@@ -342,12 +407,26 @@ mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx) {
 
 #endif
 
+mapcache_locker* mapcache_locker_fallback_create(mapcache_context *ctx) {
+  mapcache_locker_fallback *lm = (mapcache_locker_fallback*)apr_pcalloc(ctx->pool, sizeof(mapcache_locker_fallback));
+  mapcache_locker *l = (mapcache_locker*)lm;
+  l->type = MAPCACHE_LOCKER_FALLBACK;
+  l->clear_all_locks = mapcache_locker_fallback_clear_all_locks;
+  l->aquire_lock = mapcache_locker_fallback_aquire_lock;
+  l->ping_lock = mapcache_locker_fallback_ping_lock;
+  l->parse_xml = mapcache_locker_fallback_parse_xml;
+  l->release_lock = mapcache_locker_fallback_release_lock;
+  return l;
+}
+
 void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker) {
   ezxml_t cur_node;
   const char *ltype = ezxml_attr(node, "type");
   if(!ltype) ltype = "disk";
   if(!strcmp(ltype,"disk")) {
     *locker = mapcache_locker_disk_create(ctx);
+  } else if(!strcmp(ltype,"fallback")) {
+    *locker = mapcache_locker_fallback_create(ctx);
   } else if(!strcmp(ltype,"memcache")) {
 #ifdef USE_MEMCACHE
     *locker = mapcache_locker_memcache_create(ctx);

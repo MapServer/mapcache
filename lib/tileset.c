@@ -763,7 +763,7 @@ void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) 
  */
 void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 {
-  int isLocked,ret;
+  int ret;
   mapcache_metatile *mt=NULL;
   if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
           tile->z > tile->grid_link->max_cached_zoom) {
@@ -787,7 +787,8 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
   }
 
   if(ret == MAPCACHE_CACHE_MISS) {
-
+    int isLocked;
+    void *lock;
     /* bail out straight away if the tileset has no source or is read-only */
     if(tile->tileset->read_only || !tile->tileset->source) {
       /* there is no source configured for this tile. not an error, let caller now*/
@@ -816,7 +817,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
 
     /* aquire a lock on the metatile */
     mt = mapcache_tileset_metatile_get(ctx, tile);
-    isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt));
+    isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
     GC_CHECK_ERROR(ctx);
 
 
@@ -833,10 +834,10 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
         /* temporarily clear error state so we don't mess up with error handling in the locker */
         void *error;
         ctx->pop_errors(ctx,&error);
-        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt));
+        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
         ctx->push_errors(ctx,error);
       } else {
-        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt));
+        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
       }
     }
     GC_CHECK_ERROR(ctx);

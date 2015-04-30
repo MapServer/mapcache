@@ -510,6 +510,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   char *filename;
   TIFF *hTIFF = NULL;
   int rv;
+  void *lock;
   int create;
   char errmsg[120];
   mapcache_cache_tiff *cache;
@@ -588,7 +589,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
    * aquire a lock on the tiff file.
    */
 
-  while(mapcache_lock_or_wait_for_resource(ctx,(cache->locker?cache->locker:ctx->config->locker),filename) == MAPCACHE_FALSE);
+  while(mapcache_lock_or_wait_for_resource(ctx,(cache->locker?cache->locker:ctx->config->locker),filename, &lock) == MAPCACHE_FALSE);
 
   /* check if the tiff file exists already */
   rv = apr_stat(&finfo,filename,0,ctx->pool);
@@ -734,7 +735,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
 close_tiff:
   if(hTIFF)
     MyTIFFClose(hTIFF);
-  mapcache_unlock_resource(ctx,cache->locker?cache->locker:ctx->config->locker,filename);
+  mapcache_unlock_resource(ctx,cache->locker?cache->locker:ctx->config->locker,filename, lock);
 #else
   ctx->set_error(ctx,500,"tiff write support disabled by default");
 #endif

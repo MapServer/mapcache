@@ -1165,7 +1165,8 @@ typedef enum {
 
 typedef enum {
   MAPCACHE_LOCKER_DISK,
-  MAPCACHE_LOCKER_MEMCACHE
+  MAPCACHE_LOCKER_MEMCACHE,
+  MAPCACHE_LOCKER_FALLBACK
 } mapcache_lock_mode;
 
 typedef enum {
@@ -1176,9 +1177,9 @@ typedef enum {
 
 
 struct mapcache_locker{
-  mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
-  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
-  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource);
+  mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock);
+  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
+  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
   
   void (*clear_all_locks)(mapcache_context *ctx, mapcache_locker *self);
   void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
@@ -1216,6 +1217,13 @@ typedef struct {
 
 mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);
 #endif
+
+typedef struct {
+    mapcache_locker locker;
+    apr_array_header_t *lockers;
+} mapcache_locker_fallback;
+
+mapcache_locker* mapcache_locker_fallback_create(mapcache_context *ctx);
 
 void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker);
 
@@ -1660,8 +1668,8 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
 void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *tileset, const char *filename);
 
 
-int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource);
-void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource);
+int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock);
+void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock);
 
 mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
