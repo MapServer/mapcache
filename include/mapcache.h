@@ -156,6 +156,7 @@ typedef struct mapcache_dimension_time mapcache_dimension_time;
 typedef struct mapcache_timedimension mapcache_timedimension;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
+typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
@@ -1938,7 +1939,8 @@ typedef enum {
   MAPCACHE_DIMENSION_VALUES,
   MAPCACHE_DIMENSION_REGEX,
   MAPCACHE_DIMENSION_INTERVALS,
-  MAPCACHE_DIMENSION_TIME
+  MAPCACHE_DIMENSION_TIME,
+  MAPCACHE_DIMENSION_SQLITE
 } mapcache_dimension_type;
 
 struct mapcache_dimension {
@@ -1947,6 +1949,7 @@ struct mapcache_dimension {
   char *unit;
   apr_table_t *metadata;
   char *default_value;
+  int skip_validation;
 
   /**
    * \brief validate the given value
@@ -1963,7 +1966,7 @@ struct mapcache_dimension {
    *
    * \returns a list of character strings that will be included in the capabilities <dimension> element
    */
-  const char** (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
+  apr_array_header_t*  (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
 
   /**
    * \brief parse the value given in the configuration
@@ -1976,6 +1979,13 @@ struct mapcache_dimension_values {
   int nvalues;
   char **values;
   int case_sensitive;
+};
+
+struct mapcache_dimension_sqlite {
+  mapcache_dimension dimension;
+  char *sqlite_db;
+  char *validate_query;
+  char *list_query;
 };
 
 struct mapcache_dimension_regex {
@@ -2001,6 +2011,7 @@ struct mapcache_dimension_time {
 };
 
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);

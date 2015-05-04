@@ -372,8 +372,8 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
     if(tileset->dimensions) {
       for(i=0; i<tileset->dimensions->nelts; i++) {
-        const char **values;
-        const char **value;
+        apr_array_header_t *values;
+        int value_idx;
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
         ezxml_t dim = ezxml_add_child(layer,"Dimension",0);
         ezxml_set_txt(ezxml_add_child(dim,"ows:Identifier",0),dimension->name);
@@ -383,10 +383,9 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
           ezxml_set_txt(ezxml_add_child(dim,"UOM",0),dimension->unit);
         }
         values = dimension->print_ogc_formatted_values(ctx,dimension);
-        value = values;
-        while(*value) {
-          ezxml_set_txt(ezxml_add_child(dim,"Value",0),*value);
-          value++;
+        for(value_idx=0;value_idx<values->nelts;value_idx++) {
+          char *idval = APR_ARRAY_IDX(values,value_idx,char*);
+          ezxml_set_txt(ezxml_add_child(dim,"Value",0),idval);
         }
         dimensionstemplate = apr_pstrcat(ctx->pool,dimensionstemplate,"{",dimension->name,"}/",NULL);
       }
@@ -781,19 +780,20 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     for(i=0; i<tileset->dimensions->nelts; i++) {
       char *tmpval;
       int ok;
+      const char *value;
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      const char *value = apr_table_get(dimtable,dimension->name);
+      if(dimension->skip_validation) continue;
+      value = apr_table_get(dimtable,dimension->name);
       if(value) {
         tmpval = apr_pstrdup(ctx->pool,value);
         ok = dimension->validate(ctx,dimension,&tmpval);
         GC_CHECK_ERROR(ctx);
         if(ok != MAPCACHE_SUCCESS) {
           ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
-                         dimension->name, value);
+                  dimension->name, value);
           if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
           return;
         }
-
         /* re-set the eventually modified value in the dimension table */
         apr_table_set(dimtable,dimension->name,tmpval);
       }
