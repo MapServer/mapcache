@@ -651,7 +651,7 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
   memset(failed,-1,FAIL_BACKLOG_COUNT);
   size_t cur=0;
   double last_time=0, now_time;
-  while(error_detected == 0) {
+  while(1) {
     struct seed_status *st;
     apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
     if(ret != APR_SUCCESS || !st) break;
@@ -687,6 +687,7 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
       if(pct > percent_failed_allowed) {
         ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
         error_detected = 1;
+        return NULL;
       }
     }
     if(st->msg) free(st->msg);
