@@ -1983,7 +1983,7 @@ struct mapcache_dimension_values {
 
 struct mapcache_dimension_sqlite {
   mapcache_dimension dimension;
-  char *sqlite_db;
+  char *dbfile;
   char *validate_query;
   char *list_query;
 };

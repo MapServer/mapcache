@@ -269,174 +269,6 @@ mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
   return (mapcache_dimension*)dimension;
 }
 
-#ifdef USE_SQLITE
-
-struct dimension_sqlite_connection {
-  sqlite3 *handle;
-  char *errmsg;
-};
-
-static struct dimension_sqlite_connection* _mapcache_dimension_sqlite_get_connection(mapcache_context *ctx, mapcache_dimension_sqlite *dim) {
-  int ret;
-  int flags;  
-  struct dimension_sqlite_connection *conn = apr_pcalloc(ctx->pool, sizeof (struct dimension_sqlite_connection));
-  flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
-  ret = sqlite3_open_v2(dim->sqlite_db, &conn->handle, flags, NULL);
-  
-  if (ret != SQLITE_OK) {
-    ctx->set_error(ctx, 500, "failed to open connection to sqlite dimension db file: %s", (conn->handle?sqlite3_errmsg(conn->handle):"unknown error") );
-    return NULL;
-  }
-  sqlite3_busy_timeout(conn->handle, 300000);
-  return conn;
-}
-
-static void _mapcache_dimension_sqlite_release_connection(mapcache_context *ctx, mapcache_dimension_sqlite *dim, struct dimension_sqlite_connection *conn) {
-  sqlite3_close(conn->handle);
-}
-
-static int _mapcache_dimension_sqlite_validate(mapcache_context *ctx, mapcache_dimension *dim, char **value)
-{
-  mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
-  struct dimension_sqlite_connection *conn = NULL;
-  sqlite3_stmt *stmt = NULL;
-  int sqliteret,paramidx,ret=MAPCACHE_FAILURE;
-  
-  conn = _mapcache_dimension_sqlite_get_connection(ctx,dimension);
-  if(GC_HAS_ERROR(ctx)) {
-    goto cleanup;
-  }
-
-  sqliteret = sqlite3_prepare_v2(conn->handle, dimension->validate_query, -1, &stmt, NULL);
-  if(sqliteret != SQLITE_OK) {
-    ctx->set_error(ctx, 500, "sqlite dimension backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
-    goto cleanup;
-  }
-  paramidx = sqlite3_bind_parameter_index(stmt, ":dim");
-  if (paramidx) {
-    sqliteret = sqlite3_bind_text(stmt, paramidx, *value, -1, SQLITE_STATIC);
-    if(sqliteret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "sqlite dimension failed to bind :dim : %s", sqlite3_errmsg(conn->handle));
-      goto cleanup;
-    }
-  }
-  do {
-    sqliteret = sqlite3_step(stmt);
-    if (sqliteret != SQLITE_DONE && sqliteret != SQLITE_ROW && sqliteret != SQLITE_BUSY && sqliteret != SQLITE_LOCKED) {
-      ctx->set_error(ctx, 500, "sqlite dimension backend failed on query : %s (%d)", sqlite3_errmsg(conn->handle), sqliteret);
-      goto cleanup;
-    }
-    if(sqliteret == SQLITE_ROW) {
-      const char* dim_modified = (const char*) sqlite3_column_text(stmt, 0);
-      if(strcmp(dim_modified, *value)) {
-        *value = apr_pstrdup(ctx->pool, dim_modified);
-      }
-      ret = MAPCACHE_SUCCESS;
-    }
-  } while (sqliteret == SQLITE_ROW || sqliteret == SQLITE_BUSY || sqliteret == SQLITE_LOCKED);
-
-cleanup:
-  if(stmt) {
-    sqlite3_finalize(stmt);
-  }
-  if(conn) {
-    _mapcache_dimension_sqlite_release_connection(ctx,dimension,conn);
-  }
-      
-  return ret;
-}
-
-static apr_array_header_t* _mapcache_dimension_sqlite_print(mapcache_context *ctx, mapcache_dimension *dim)
-{
-  mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
-  struct dimension_sqlite_connection *conn = NULL;
-  sqlite3_stmt *stmt = NULL;
-  int sqliteret;
-  apr_array_header_t *ret = apr_array_make(ctx->pool,0,sizeof(char*));
-  
-  conn = _mapcache_dimension_sqlite_get_connection(ctx,dimension);
-  if(GC_HAS_ERROR(ctx)) {
-    goto cleanup;
-  }
-
-  sqliteret = sqlite3_prepare_v2(conn->handle, dimension->list_query, -1, &stmt, NULL);
-  if(sqliteret != SQLITE_OK) {
-    ctx->set_error(ctx, 500, "sqlite dimension backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
-    goto cleanup;
-  }
-  do {
-    sqliteret = sqlite3_step(stmt);
-    if (sqliteret != SQLITE_DONE && sqliteret != SQLITE_ROW && sqliteret != SQLITE_BUSY && sqliteret != SQLITE_LOCKED) {
-      ctx->set_error(ctx, 500, "sqlite dimension backend failed on query : %s (%d)", sqlite3_errmsg(conn->handle), sqliteret);
-      goto cleanup;
-    }
-    if(sqliteret == SQLITE_ROW) {
-      const char* sqdim = (const char*) sqlite3_column_text(stmt, 0);
-      APR_ARRAY_PUSH(ret,char*) = apr_pstrdup(ctx->pool,sqdim);
-    }
-  } while (sqliteret == SQLITE_ROW || sqliteret == SQLITE_BUSY || sqliteret == SQLITE_LOCKED);
-
-cleanup:
-  if(stmt) {
-    sqlite3_finalize(stmt);
-  }
-  if(conn) {
-    _mapcache_dimension_sqlite_release_connection(ctx,dimension,conn);
-  }
-      
-  return ret;
-}
-
-
-static void _mapcache_dimension_sqlite_parse_xml(mapcache_context *ctx, mapcache_dimension *dim,
-    ezxml_t node)
-{
-  mapcache_dimension_sqlite *dimension;
-  ezxml_t child;
-  
-  dimension = (mapcache_dimension_sqlite*)dim;
-
-  child = ezxml_child(node,"dbfile");
-  if(child) {
-    dimension->sqlite_db = apr_pstrdup(ctx->pool, child->txt);
-  } else {
-    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <dbfile> node", dim->name);
-    return;
-  }
-  child = ezxml_child(node,"validate_query");
-  if(child) {
-    dimension->validate_query = apr_pstrdup(ctx->pool, child->txt);
-  } else {
-    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <validate_query> node", dim->name);
-    return;
-  }
-  child = ezxml_child(node,"list_query");
-  if(child) {
-    dimension->list_query = apr_pstrdup(ctx->pool, child->txt);
-  } else {
-    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <list_query> node", dim->name);
-    return;
-  }
-  
-}
-
-#endif
-
-mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
-{
-#ifdef USE_SQLITE
-  mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
-  dimension->dimension.type = MAPCACHE_DIMENSION_SQLITE;
-  dimension->sqlite_db = NULL;
-  dimension->dimension.validate = _mapcache_dimension_sqlite_validate;
-  dimension->dimension.configuration_parse_xml = _mapcache_dimension_sqlite_parse_xml;
-  dimension->dimension.print_ogc_formatted_values = _mapcache_dimension_sqlite_print;
-  return (mapcache_dimension*)dimension;
-#else
-  return NULL;
-#endif
-}
-
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool)
 {
   mapcache_dimension_time *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_time));
@@ -473,48 +305,200 @@ mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool)
 
 #ifdef USE_SQLITE
 
-struct sqlite_time_conn {
+struct sqlite_dimension_conn {
   sqlite3 *handle;
-  sqlite3_stmt *prepared_statement;
+  sqlite3_stmt **prepared_statements;
+  int n_statements;
 };
 
-void mapcache_sqlite_time_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
+void mapcache_sqlite_dimension_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
   int flags;  
-  mapcache_timedimension_sqlite *dim = (mapcache_timedimension_sqlite*) params;
-  struct sqlite_time_conn *conn = apr_pcalloc(ctx->pool, sizeof (struct sqlite_time_conn));
+  char *dbfile = (char*) params;
+  struct sqlite_dimension_conn *conn = calloc(1, sizeof (struct sqlite_dimension_conn));
   *conn_ = conn;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
-  ret = sqlite3_open_v2(dim->dbfile, &conn->handle, flags, NULL);
+  ret = sqlite3_open_v2(dbfile, &conn->handle, flags, NULL);
   
   if (ret != SQLITE_OK) {
-    ctx->set_error(ctx,500,"failed to open timedimension dbfile (%s): %s",dim->dbfile,sqlite3_errmsg(conn->handle));
+    ctx->set_error(ctx,500,"failed to open sqlite dimension dbfile (%s): %s",dbfile,sqlite3_errmsg(conn->handle));
+    sqlite3_close(conn->handle);
+    *conn_=NULL;
     return;
   }
   sqlite3_busy_timeout(conn->handle, 300000);
 }
 
-void mapcache_sqlite_time_connection_destructor(void *conn_, apr_pool_t *pool)
+void mapcache_sqlite_dimension_connection_destructor(void *conn_, apr_pool_t *pool)
 {
-  struct sqlite_time_conn *conn = (struct sqlite_time_conn*) conn_;
-  if(conn->prepared_statement) {
-    sqlite3_finalize(conn->prepared_statement);
+  struct sqlite_dimension_conn *conn = (struct sqlite_dimension_conn*) conn_;
+  while(conn->n_statements) {
+    conn->n_statements--;
+    if(conn->prepared_statements[conn->n_statements]) {
+      sqlite3_finalize(conn->prepared_statements[conn->n_statements]);
+    }
   }
+  free(conn->prepared_statements);
   sqlite3_close(conn->handle);
 }
 
-static mapcache_pooled_connection* _sqlite_time_get_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *dim) {
+static mapcache_pooled_connection* _sqlite_time_dimension_get_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *dim) {
   mapcache_pooled_connection *pc = mapcache_connection_pool_get_connection(ctx,dim->timedimension.key,
-        mapcache_sqlite_time_connection_constructor,
-        mapcache_sqlite_time_connection_destructor, dim);
+        mapcache_sqlite_dimension_connection_constructor,
+        mapcache_sqlite_dimension_connection_destructor, dim->dbfile);
+  return pc;
+}
+static mapcache_pooled_connection* _sqlite_dimension_get_conn(mapcache_context *ctx, mapcache_dimension_sqlite *dim) {
+  mapcache_pooled_connection *pc = mapcache_connection_pool_get_connection(ctx,dim->dimension.name,
+        mapcache_sqlite_dimension_connection_constructor,
+        mapcache_sqlite_dimension_connection_destructor, dim->dbfile);
   return pc;
 }
 
-static void _sqlite_time_release_conn(mapcache_context *ctx, mapcache_pooled_connection *pc)
+static void _sqlite_dimension_release_conn(mapcache_context *ctx, mapcache_pooled_connection *pc)
 {
-  mapcache_connection_pool_release_connection(ctx,pc);
+  if(GC_HAS_ERROR(ctx)) {
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
+  } else {
+    mapcache_connection_pool_release_connection(ctx,pc);
+  }
 }
+
+
+static int _mapcache_dimension_sqlite_validate(mapcache_context *ctx, mapcache_dimension *dim, char **value)
+{
+  mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
+  struct sqlite_dimension_conn *conn = NULL;
+  int sqliteret,paramidx,ret=MAPCACHE_FAILURE;
+  mapcache_pooled_connection *pc;
+  pc = _sqlite_dimension_get_conn(ctx,dimension);
+  if (GC_HAS_ERROR(ctx)) {
+    return ret;
+  }
+  conn = pc->connection;
+  if(!conn->prepared_statements) {
+    conn->prepared_statements = calloc(2,sizeof(sqlite3_stmt*));
+    conn->n_statements = 2;
+  }
+  if(!conn->prepared_statements[0]) {
+    sqliteret = sqlite3_prepare_v2(conn->handle, dimension->validate_query, -1, &conn->prepared_statements[0], NULL);
+    if(sqliteret != SQLITE_OK) {
+      ctx->set_error(ctx, 500, "sqlite dimension backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
+      goto cleanup;
+    }
+  }
+  
+  paramidx = sqlite3_bind_parameter_index(conn->prepared_statements[0], ":dim");
+  if (paramidx) {
+    sqliteret = sqlite3_bind_text(conn->prepared_statements[0], paramidx, *value, -1, SQLITE_STATIC);
+    if(sqliteret != SQLITE_OK) {
+      ctx->set_error(ctx,400, "sqlite dimension failed to bind :dim : %s", sqlite3_errmsg(conn->handle));
+      goto cleanup;
+    }
+  }
+  do {
+    sqliteret = sqlite3_step(conn->prepared_statements[0]);
+    if (sqliteret != SQLITE_DONE && sqliteret != SQLITE_ROW && sqliteret != SQLITE_BUSY && sqliteret != SQLITE_LOCKED) {
+      ctx->set_error(ctx, 500, "sqlite dimension backend failed on query : %s (%d)", sqlite3_errmsg(conn->handle), sqliteret);
+      goto cleanup;
+    }
+    if(sqliteret == SQLITE_ROW) {
+      const char* dim_modified = (const char*) sqlite3_column_text(conn->prepared_statements[0], 0);
+      if(strcmp(dim_modified, *value)) {
+        *value = apr_pstrdup(ctx->pool, dim_modified);
+      }
+      ret = MAPCACHE_SUCCESS;
+    }
+  } while (sqliteret == SQLITE_ROW || sqliteret == SQLITE_BUSY || sqliteret == SQLITE_LOCKED);
+
+cleanup:
+  if(conn->prepared_statements[0]) {
+    sqlite3_finalize(conn->prepared_statements[0]);
+  }
+  _sqlite_dimension_release_conn(ctx,pc);
+      
+  return ret;
+}
+
+static apr_array_header_t* _mapcache_dimension_sqlite_print(mapcache_context *ctx, mapcache_dimension *dim)
+{
+  mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
+  struct sqlite_dimension_conn *conn = NULL;
+  int sqliteret;
+  apr_array_header_t *ret = apr_array_make(ctx->pool,0,sizeof(char*));
+  mapcache_pooled_connection *pc;
+  pc = _sqlite_dimension_get_conn(ctx,dimension);
+  if (GC_HAS_ERROR(ctx)) {
+    return ret;
+  }
+  conn = pc->connection;
+  if(!conn->prepared_statements) {
+    conn->prepared_statements = calloc(2,sizeof(sqlite3_stmt*));
+    conn->n_statements = 2;
+  }
+ 
+  if(!conn->prepared_statements[1]) {
+    sqliteret = sqlite3_prepare_v2(conn->handle, dimension->list_query, -1, &conn->prepared_statements[1], NULL);
+    if(sqliteret != SQLITE_OK) {
+      ctx->set_error(ctx, 500, "sqlite dimension backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
+      goto cleanup;
+    }
+  }
+  do {
+    sqliteret = sqlite3_step(conn->prepared_statements[1]);
+    if (sqliteret != SQLITE_DONE && sqliteret != SQLITE_ROW && sqliteret != SQLITE_BUSY && sqliteret != SQLITE_LOCKED) {
+      ctx->set_error(ctx, 500, "sqlite dimension backend failed on query : %s (%d)", sqlite3_errmsg(conn->handle), sqliteret);
+      goto cleanup;
+    }
+    if(sqliteret == SQLITE_ROW) {
+      const char* sqdim = (const char*) sqlite3_column_text(conn->prepared_statements[1], 0);
+      APR_ARRAY_PUSH(ret,char*) = apr_pstrdup(ctx->pool,sqdim);
+    }
+  } while (sqliteret == SQLITE_ROW || sqliteret == SQLITE_BUSY || sqliteret == SQLITE_LOCKED);
+
+cleanup:
+  if(conn->prepared_statements[1]) {
+    sqlite3_reset(conn->prepared_statements[1]);
+  }
+  _sqlite_dimension_release_conn(ctx,pc);
+      
+  return ret;
+}
+
+
+static void _mapcache_dimension_sqlite_parse_xml(mapcache_context *ctx, mapcache_dimension *dim,
+    ezxml_t node)
+{
+  mapcache_dimension_sqlite *dimension;
+  ezxml_t child;
+  
+  dimension = (mapcache_dimension_sqlite*)dim;
+
+  child = ezxml_child(node,"dbfile");
+  if(child) {
+    dimension->dbfile = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <dbfile> node", dim->name);
+    return;
+  }
+  child = ezxml_child(node,"validate_query");
+  if(child) {
+    dimension->validate_query = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <validate_query> node", dim->name);
+    return;
+  }
+  child = ezxml_child(node,"list_query");
+  if(child) {
+    dimension->list_query = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <list_query> node", dim->name);
+    return;
+  }
+  
+}
+
 
 static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stmt *stmt,
         sqlite3 *handle, mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent,
@@ -599,50 +583,48 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
         mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end) {
   mapcache_timedimension_sqlite *sdim = (mapcache_timedimension_sqlite*)dim;
   int ret;
-  sqlite3_stmt *stmt;
   apr_array_header_t *time_ids = NULL;
   mapcache_pooled_connection *pc;
-  struct sqlite_time_conn *conn;
-  pc = _sqlite_time_get_conn(ctx,sdim);
+  struct sqlite_dimension_conn *conn;
+  pc = _sqlite_time_dimension_get_conn(ctx,sdim);
   if (GC_HAS_ERROR(ctx)) {
-    if(pc) _sqlite_time_release_conn(ctx, pc);
     return NULL;
   }
   conn = pc->connection;
-  stmt = conn->prepared_statement;
-  if(!stmt) {
-    ret = sqlite3_prepare_v2(conn->handle, sdim->query, -1, &conn->prepared_statement, NULL);
+  if(!conn->prepared_statements) {
+    conn->prepared_statements = calloc(1,sizeof(sqlite3_stmt*));
+    conn->n_statements = 1;
+  }
+  if(!conn->prepared_statements[0]) {
+    ret = sqlite3_prepare_v2(conn->handle, sdim->query, -1, &conn->prepared_statements[0], NULL);
     if(ret != SQLITE_OK) {
       ctx->set_error(ctx, 500, "time sqlite backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
-      _sqlite_time_release_conn(ctx, pc);
+      _sqlite_dimension_release_conn(ctx, pc);
       return NULL;
     }
-    stmt = conn->prepared_statement;
   }
   
-  _bind_sqlite_timedimension_params(ctx,stmt,conn->handle,tileset,grid,extent,start,end);
+  _bind_sqlite_timedimension_params(ctx,conn->prepared_statements[0],conn->handle,tileset,grid,extent,start,end);
   if(GC_HAS_ERROR(ctx)) {
-    sqlite3_reset(stmt);
-    _sqlite_time_release_conn(ctx, pc);
+    _sqlite_dimension_release_conn(ctx, pc);
     return NULL;
   }
   
   time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
   do {
-    ret = sqlite3_step(stmt);
+    ret = sqlite3_step(conn->prepared_statements[0]);
     if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
       ctx->set_error(ctx, 500, "sqlite backend failed on timedimension query : %s (%d)", sqlite3_errmsg(conn->handle), ret);
-      sqlite3_reset(stmt);
-      _sqlite_time_release_conn(ctx, pc);
+      _sqlite_dimension_release_conn(ctx, pc);
       return NULL;
     }
     if(ret == SQLITE_ROW) {
-      const char* time_id = (const char*) sqlite3_column_text(stmt, 0);
+      const char* time_id = (const char*) sqlite3_column_text(conn->prepared_statements[0], 0);
       APR_ARRAY_PUSH(time_ids,char*) = apr_pstrdup(ctx->pool,time_id);
     }
   } while (ret == SQLITE_ROW || ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-  sqlite3_reset(stmt);
-  _sqlite_time_release_conn(ctx, pc);
+  sqlite3_reset(conn->prepared_statements[0]);
+  _sqlite_dimension_release_conn(ctx, pc);
   return time_ids;
 }
 
@@ -773,6 +755,22 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
   return timedimension->get_entries_for_interval(ctx,timedimension,tileset,grid,extent,start,end);
   /* end loop */
 }
+
+mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
+{
+#ifdef USE_SQLITE
+  mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
+  dimension->dimension.type = MAPCACHE_DIMENSION_SQLITE;
+  dimension->dbfile = NULL;
+  dimension->dimension.validate = _mapcache_dimension_sqlite_validate;
+  dimension->dimension.configuration_parse_xml = _mapcache_dimension_sqlite_parse_xml;
+  dimension->dimension.print_ogc_formatted_values = _mapcache_dimension_sqlite_print;
+  return (mapcache_dimension*)dimension;
+#else
+  return NULL;
+#endif
+}
+
 
 #ifdef USE_SQLITE
 mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool) {
