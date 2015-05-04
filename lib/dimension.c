@@ -341,6 +341,7 @@ void mapcache_sqlite_dimension_connection_destructor(void *conn_, apr_pool_t *po
   }
   free(conn->prepared_statements);
   sqlite3_close(conn->handle);
+  free(conn);
 }
 
 static mapcache_pooled_connection* _sqlite_time_dimension_get_conn(mapcache_context *ctx, mapcache_timedimension_sqlite *dim) {
@@ -414,7 +415,7 @@ static int _mapcache_dimension_sqlite_validate(mapcache_context *ctx, mapcache_d
 
 cleanup:
   if(conn->prepared_statements[0]) {
-    sqlite3_finalize(conn->prepared_statements[0]);
+    sqlite3_reset(conn->prepared_statements[0]);
   }
   _sqlite_dimension_release_conn(ctx,pc);
       
