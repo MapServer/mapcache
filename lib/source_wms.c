@@ -55,7 +55,12 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
     int i;
     for(i=0; i<elts->nelts; i++) {
       apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
+      /* set both DIM_key=val and key=val KVP params */
       apr_table_setn(params,entry.key,entry.val);
+      if(strcasecmp(entry.key,"TIME") && strcasecmp(entry.key,"ELEVATION")) {
+        char *dim_name = apr_pstrcat(ctx->pool,"DIM_",entry.key,NULL);
+        apr_table_setn(params,dim_name,entry.val);
+      }
     }
 
   }

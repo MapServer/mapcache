@@ -667,7 +667,14 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
               } else {
                 dim_name = apr_pstrcat(ctx->pool, "dim_", dimension->name, NULL);
               }
-              if((value = (char*)apr_table_get(params,dim_name)) != NULL) {
+              if((value = (char*)apr_table_get(params,dim_name)) == NULL) {
+                if(strcasecmp(dimension->name,"TIME") && strcasecmp(dimension->name,"ELEVATION")) {
+                  /* also test for the dimension without the DIM_ prefix if the latter was not found in hte KVP params */
+                  value = (char*)apr_table_get(params,dimension->name);
+                }
+              }
+
+              if(value) {
                 char *tmpval = apr_pstrdup(ctx->pool,value);
                 int ok;
                 if(dimension->skip_validation) {
