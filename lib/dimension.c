@@ -35,11 +35,7 @@
 #include <time.h>
 #ifdef USE_SQLITE
 #include <sqlite3.h>
-#include <apr_reslist.h>
-#include <apr_hash.h>
-#ifdef APR_HAS_THREADS
-#include <apr_thread_mutex.h>
-#endif
+#include <float.h>
 #endif
 
 
@@ -526,41 +522,39 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
     }
   }
 
-  if(extent) {
-    paramidx = sqlite3_bind_parameter_index(stmt, ":minx");
-    if (paramidx) {
-      ret = sqlite3_bind_double(stmt, paramidx, extent->minx);
-      if(ret != SQLITE_OK) {
-        ctx->set_error(ctx,400, "failed to bind :minx %s", sqlite3_errmsg(handle));
-        return;
-      }
-    }
-    paramidx = sqlite3_bind_parameter_index(stmt, ":miny");
-    if (paramidx) {
-      ret = sqlite3_bind_double(stmt, paramidx, extent->miny);
-      if(ret != SQLITE_OK) {
-        ctx->set_error(ctx,400, "failed to bind :miny %s", sqlite3_errmsg(handle));
-        return;
-      }
-    }
-    paramidx = sqlite3_bind_parameter_index(stmt, ":maxx");
-    if (paramidx) {
-      ret = sqlite3_bind_double(stmt, paramidx, extent->maxx);
-      if(ret != SQLITE_OK) {
-        ctx->set_error(ctx,400, "failed to bind :maxx %s", sqlite3_errmsg(handle));
-        return;
-      }
-    }
-    paramidx = sqlite3_bind_parameter_index(stmt, ":maxy");
-    if (paramidx) {
-      ret = sqlite3_bind_double(stmt, paramidx, extent->maxy);
-      if(ret != SQLITE_OK) {
-        ctx->set_error(ctx,400, "failed to bind :maxy %s", sqlite3_errmsg(handle));
-        return;
-      }
+  paramidx = sqlite3_bind_parameter_index(stmt, ":minx");
+  if (paramidx) {
+    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->minx:-DBL_MAX);
+    if(ret != SQLITE_OK) {
+      ctx->set_error(ctx,400, "failed to bind :minx %s", sqlite3_errmsg(handle));
+      return;
     }
   }
-
+  paramidx = sqlite3_bind_parameter_index(stmt, ":miny");
+  if (paramidx) {
+    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->miny:-DBL_MAX);
+    if(ret != SQLITE_OK) {
+      ctx->set_error(ctx,400, "failed to bind :miny %s", sqlite3_errmsg(handle));
+      return;
+    }
+  }
+  paramidx = sqlite3_bind_parameter_index(stmt, ":maxx");
+  if (paramidx) {
+    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->maxx:DBL_MAX);
+    if(ret != SQLITE_OK) {
+      ctx->set_error(ctx,400, "failed to bind :maxx %s", sqlite3_errmsg(handle));
+      return;
+    }
+  }
+  paramidx = sqlite3_bind_parameter_index(stmt, ":maxy");
+  if (paramidx) {
+    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->maxy:DBL_MAX);
+    if(ret != SQLITE_OK) {
+      ctx->set_error(ctx,400, "failed to bind :maxy %s", sqlite3_errmsg(handle));
+      return;
+    }
+  }
+  
   paramidx = sqlite3_bind_parameter_index(stmt, ":start_timestamp");
   if (paramidx) {
     ret = sqlite3_bind_int64(stmt, paramidx, start);
