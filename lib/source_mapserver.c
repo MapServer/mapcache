@@ -278,6 +278,7 @@ mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
 mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
 {
   ctx->set_error(ctx, 500, "mapserver source not configured for this build");
+  return NULL;
 }
 #endif
 
