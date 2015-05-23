@@ -783,6 +783,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     }
   }
 
+  
   if (ret == MAPCACHE_CACHE_MISS) {
     /* bail out straight away if the tileset has no source or is read-only */
     if(tile->tileset->read_only || !tile->tileset->source) {
@@ -832,26 +833,31 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
           mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
        }
     }
-    /* If cached tile exist but stale, we do not return on error but continue to use it */
-    if (ret == MAPCACHE_CACHE_MISS) 
-       GC_CHECK_ERROR(ctx);
+
+    if (ret == MAPCACHE_CACHE_RELOAD) 
+       /* If we tried to reload a stale tile, we know we have already 
+        * fetched it from the cache. We can then ignore errors and just use old tile. 
+        */
+       ctx->clear_errors(ctx);
     
-
-    /* the previous step has successfully finished, we can now query the cache to return the tile content */
-    ret = tile->tileset->cache->tile_get(ctx, tile);
-    GC_CHECK_ERROR(ctx);
-
-    if(ret != MAPCACHE_SUCCESS) {
-      if(isLocked == MAPCACHE_FALSE) {
-        ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
+    else {
+       /* Else, check for errors and try to fetch the tile from the cache. 
+        */ 
+       GC_CHECK_ERROR(ctx);   
+       ret = tile->tileset->cache->tile_get(ctx, tile);
+       GC_CHECK_ERROR(ctx);
+       
+       if(ret != MAPCACHE_SUCCESS) {
+         if(isLocked == MAPCACHE_FALSE) {
+           ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
                        tile->tileset->name);
-      } else {
-        /* shouldn't really happen, as the error ought to have been caught beforehand */
-        ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
-      }
+         } else {
+            /* shouldn't really happen, as the error ought to have been caught beforehand */
+            ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+         }
+       }
     }
   }
-  
   /* update the tile expiration time */
   if(tile->tileset->auto_expire && tile->mtime) {
     apr_time_t now = apr_time_now();
