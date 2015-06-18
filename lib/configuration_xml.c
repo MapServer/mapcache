@@ -1182,6 +1182,7 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
       micro_retry = 10000;
     }
     config->locker->retry_interval = micro_retry / 1000000.0;
+    config->locker->timeout=120;
   }
 
   if((node = ezxml_child(doc,"threaded_fetching")) != NULL) {
