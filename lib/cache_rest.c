@@ -307,6 +307,27 @@ apr_table_t* _mapcache_cache_rest_headers(mapcache_context *ctx, mapcache_tile *
   return ret;
 }
 
+/* Converts an integer value to its hex character*/
+static char to_hex(char code) {
+  static char hex[] = "0123456789ABCDEF";
+  return hex[code & 15];
+}
+
+/* Returns a url-encoded version of str */
+static char *url_encode(apr_pool_t *pool, char *str) {
+  char *pstr = str, *buf = apr_pcalloc(pool, strlen(str) * 3 + 1), *pbuf = buf;
+  while (*pstr) {
+    if (isalnum(*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~' || *pstr=='/')
+      *pbuf++ = *pstr;
+    else if (*pstr == ' ')
+      *pbuf++ = '+';
+    else
+      *pbuf++ = '%', *pbuf++ = to_hex(*pstr >> 4), *pbuf++ = to_hex(*pstr & 15);
+    pstr++;
+  }
+  *pbuf = '\0';
+  return buf;
+}
 /**
  * \brief return url for given tile given a template
  *
@@ -319,6 +340,8 @@ apr_table_t* _mapcache_cache_rest_headers(mapcache_context *ctx, mapcache_tile *
 static void _mapcache_cache_rest_tile_url(mapcache_context *ctx, mapcache_tile *tile, mapcache_rest_configuration *config,
    mapcache_rest_operation *operation, char **url)
 {
+  char *slashptr,*path;
+  int cnt=0;
   if(operation && operation->tile_url) {
     *url = apr_pstrdup(ctx->pool, operation->tile_url);
   } else {
@@ -360,30 +383,28 @@ static void _mapcache_cache_rest_tile_url(mapcache_context *ctx, mapcache_tile *
     }
     *url = mapcache_util_str_replace(ctx->pool,*url, "{dim}", dimstring);
   }
-}
+  /* url-encode everything after the host name */
 
-/* Converts an integer value to its hex character*/
-static char to_hex(char code) {
-  static char hex[] = "0123456789abcdef";
-  return hex[code & 15];
-}
-
-/* Returns a url-encoded version of str */
-/* IMPORTANT: be sure to free() the returned string after use */
-static char *url_encode(char *str) {
-  char *pstr = str, *buf = malloc(strlen(str) * 3 + 1), *pbuf = buf;
-  while (*pstr) {
-    if (isalnum(*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~' || *pstr=='/') 
-      *pbuf++ = *pstr;
-    else if (*pstr == ' ') 
-      *pbuf++ = '+';
-    else 
-      *pbuf++ = '%', *pbuf++ = to_hex(*pstr >> 4), *pbuf++ = to_hex(*pstr & 15);
-    pstr++;
+  /* find occurence of third "/" in url */
+  slashptr = *url;
+  while(*slashptr) {
+    if(*slashptr == '/') cnt++;
+    if(cnt == 3) break;
+    slashptr++;
   }
-  *pbuf = '\0';
-  return buf;
+  if(!*slashptr) {
+    ctx->set_error(ctx,500,"invalid rest url provided, expecting http(s)://server/path format");
+    return;
+  }
+  path=slashptr;
+  path = url_encode(ctx->pool,path);
+  *slashptr=0;
+
+
+  *url = apr_pstrcat(ctx->pool,*url,path,NULL);
+  /*ctx->log(ctx,MAPCACHE_WARN,"rest url: %s",*url);*/
 }
+
 
 // Simple comparison function for comparing two HTTP header names that are
 // embedded within an HTTP header line, returning true if header1 comes
@@ -496,11 +517,8 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
     ctx->set_error(ctx,500,"invalid google url provided");
     return;
   }
-  resource = url_encode(resource);
 
   stringToSign = apr_pstrcat(ctx->pool, stringToSign, resource, NULL);
-
-  free(resource);
 
   hmac_sha1(stringToSign, strlen(stringToSign), (unsigned char*)google->secret, strlen(google->secret), sha);
 
@@ -582,13 +600,10 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
     ctx->set_error(ctx,500,"invalid azure url provided");
     return;
   }
-  resource = url_encode(resource);
 
   canonical_resource = apr_pstrcat(ctx->pool, "/", azure->id, resource, NULL);
 
   stringToSign = apr_pstrcat(ctx->pool, stringToSign, canonical_headers, canonical_resource, NULL);
-
-  free(resource);
 
   keyub64 = (char*)apr_pcalloc(ctx->pool, apr_base64_decode_len(azure->secret));
   apr_base64_decode(keyub64, azure->secret);
@@ -641,10 +656,8 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   
   strftime(x_amz_date, sizeof(x_amz_date), "%Y%m%dT%H%M%SZ", tnow);
   apr_table_set(headers, "x-amz-date", x_amz_date);
-  resource = url_encode(resource);
 
   canonical_request = apr_pstrcat(ctx->pool, method, "\n" ,resource, "\n\n",NULL);
-  free(resource);
 
   ahead = apr_table_elts(headers);
   aheaders = apr_pcalloc(ctx->pool, ahead->nelts * sizeof(char*));
