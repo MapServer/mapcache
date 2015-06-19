@@ -804,7 +804,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   char *url;
   apr_table_t *headers;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.get_tile, &url);
-  if(tile->allow_redirect) {
+  if(tile->allow_redirect && rcache->use_redirects) {
     tile->redirect = url;
     return MAPCACHE_SUCCESS;
   }
