@@ -249,6 +249,7 @@ struct mapcache_context {
   mapcache_service *service;
   apr_table_t *exceptions;
   int supports_redirects;
+  apr_table_t *headers_in;
 };
 
 void mapcache_context_init(mapcache_context *ctx);

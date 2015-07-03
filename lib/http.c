@@ -73,6 +73,29 @@ size_t _mapcache_curl_header_callback( void *ptr, size_t size, size_t nmemb,  vo
   return size*nmemb;
 }
 
+/*update val replacing {foo_header} with the Value of foo_header from the orginal request */
+static void _header_replace_str(mapcache_context *ctx, apr_table_t *headers, char **val) {
+  char *value = *val;
+  char *start_tag, *end_tag;
+  start_tag = strchr(value,'{');
+  while(start_tag) {
+    *start_tag=0;
+    end_tag = strchr(start_tag+1,'}');
+    if(end_tag) {
+      const char *header_value;
+      *end_tag=0;
+      header_value = apr_table_get(headers,start_tag+1);
+      if(header_value) {
+        value = apr_pstrcat(ctx->pool,value,header_value,end_tag+1,NULL);
+      }
+      *end_tag='}';
+    }
+    *start_tag='{';
+    start_tag = strchr(value,'{');
+  }
+  *val = value;
+}
+
 void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcache_buffer *data, apr_table_t *headers, long *http_code)
 {
   CURL *curl_handle;
@@ -115,7 +138,11 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
     apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
     int i;
     for (i = 0; i < array->nelts; i++) {
-      curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",elts[i].val,NULL));
+      char *val = elts[i].val;
+      if(strchr(val,'{') && ctx->headers_in) {
+        _header_replace_str(ctx,ctx->headers_in,&val);
+      }
+      curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",val,NULL));
     }
   }
   if(!req->headers || !apr_table_get(req->headers,"User-Agent")) {

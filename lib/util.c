@@ -290,6 +290,7 @@ void mapcache_context_init(mapcache_context *ctx)
   ctx->clear_errors = _mapcache_context_clear_error_default;
   ctx->pop_errors = _mapcache_context_pop_errors;
   ctx->push_errors = _mapcache_context_push_errors;
+  ctx->headers_in = NULL;
 }
 
 void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
@@ -314,6 +315,7 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
   dst->pop_errors = src->pop_errors;
   dst->push_errors = src->push_errors;
   dst->connection_pool = src->connection_pool;
+  dst->headers_in = src->headers_in;
 }
 
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to)

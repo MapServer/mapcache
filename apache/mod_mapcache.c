@@ -343,6 +343,7 @@ static int mod_mapcache_request_handler(request_rec *r)
   apache_ctx = apache_request_context_create(r);
   global_ctx = (mapcache_context*)apache_ctx;
   global_ctx->supports_redirects = 1;
+  global_ctx->headers_in = r->headers_in;
 
   params = mapcache_http_parse_param_string(global_ctx, r->args);
 
