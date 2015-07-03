@@ -77,8 +77,11 @@ size_t _mapcache_curl_header_callback( void *ptr, size_t size, size_t nmemb,  vo
 static void _header_replace_str(mapcache_context *ctx, apr_table_t *headers, char **val) {
   char *value = *val;
   char *start_tag, *end_tag;
+  size_t start_tag_offset;
   start_tag = strchr(value,'{');
   while(start_tag) {
+    start_tag_offset = start_tag - value; /*record where we found the '{' so we can look for the next one after that spot
+                                            (avoids infinite loop if tag was not found/replaced) */
     *start_tag=0;
     end_tag = strchr(start_tag+1,'}');
     if(end_tag) {
@@ -91,7 +94,7 @@ static void _header_replace_str(mapcache_context *ctx, apr_table_t *headers, cha
       *end_tag='}';
     }
     *start_tag='{';
-    start_tag = strchr(value,'{');
+    start_tag = strchr(value+start_tag_offset+1,'{');
   }
   *val = value;
 }
