@@ -865,8 +865,16 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
     }
 
     apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
-    if(tile->tileset->format)
+    if(tile->tileset->format && tile->tileset->format->mime_type)
       apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
+    else {
+      mapcache_image_format_type imgfmt = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
+      if(imgfmt == GC_JPEG) {
+        apr_table_set(headers, "Content-Type", "image/jpeg");
+      } else if (imgfmt == GC_PNG) {
+        apr_table_set(headers, "Content-Type", "image/png");
+      }
+    }
 
     if(rcache->rest.add_headers) {
       rcache->rest.add_headers(ctx,rcache,tile,url,headers);
