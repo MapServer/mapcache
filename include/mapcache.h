@@ -1183,7 +1183,6 @@ struct mapcache_locker{
   mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
   void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
   
-  void (*clear_all_locks)(mapcache_context *ctx, mapcache_locker *self);
   void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
   mapcache_lock_mode type;
   double timeout;
@@ -1214,7 +1213,6 @@ typedef struct {
   mapcache_locker locker;
   int nservers;
   mapcache_locker_memcache_server *servers;
-  int timeout; /* in seconds, passed and honoured by memcache, not mapcache */
 } mapcache_locker_memcache;
 
 mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);

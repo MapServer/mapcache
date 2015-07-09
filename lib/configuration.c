@@ -41,11 +41,6 @@ void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, m
 
   GC_CHECK_ERROR(ctx);
 
-  if(!cgi && config->locker->clear_all_locks) {
-    config->locker->clear_all_locks(ctx, config->locker);
-    GC_CHECK_ERROR(ctx);
-  }
-
   /* if we were suppplied with an onlineresource, make sure it ends with a / */
   if(NULL != (url = (char*)apr_table_get(config->metadata,"url"))) {
     char *urlend = url + strlen(url)-1;
