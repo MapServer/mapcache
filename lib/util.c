@@ -215,18 +215,18 @@ void _mapcache_context_set_exception_default(mapcache_context *ctx, char *key, c
 
 void _mapcache_context_set_error_default(mapcache_context *ctx, int code, char *msg, ...)
 {
-  char *fmt;
+  char *new_msg;
   va_list args;
   va_start(args,msg);
+  new_msg = apr_pvsprintf(ctx->pool,msg,args);
+  va_end(args);
 
   if(ctx->_errmsg) {
-    fmt=apr_psprintf(ctx->pool,"%s\n%s",ctx->_errmsg,msg);
+    ctx->_errmsg = apr_pstrcat(ctx->pool, ctx->_errmsg, "\n", new_msg, NULL);
   } else {
-    fmt=msg;
+    ctx->_errmsg = new_msg;
     ctx->_errcode = code;
   }
-  ctx->_errmsg = apr_pvsprintf(ctx->pool,fmt,args);
-  va_end(args);
 }
 
 void _mapcache_context_clear_error_default(mapcache_context *ctx)
