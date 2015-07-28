@@ -7,6 +7,10 @@
       <base>/tmp</base>
       <symlink_blank/>
    </cache>
+   <cache name="sqlite" type="sqlite3">
+     <dbfile>/tmp/{tileset}-{z}-{grid}.db</dbfile>
+      <detect_blank/>
+   </cache>
 
    <source name="vmap0" type="wms">
       <getmap>
@@ -23,9 +27,9 @@
    
    <tileset name="test">
       <source>vmap0</source>
-      <cache>disk</cache>
+      <cache>sqlite</cache>
       <grid>WGS84</grid>
-      <grid>g</grid>
+      <grid>GoogleMapsCompatible</grid>
       <format>PNG</format>
       <metatile>5 5</metatile>
       <metabuffer>10</metabuffer>
@@ -49,6 +53,9 @@
    <service type="demo" enabled="true"/>
 
    <errors>report</errors>
-   <lock_dir>/tmp</lock_dir>
+   <locker type="disk">
+     <directory>/tmp</directory>
+     <timeout>300</timeout>
+    </locker>
 
 </mapcache>
