@@ -838,7 +838,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
   
   cache->detect_blank = 0;
   if ((cur_node = ezxml_child(node, "detect_blank")) != NULL) {
-    if(!strcasecmp(cur_node->txt,"true")) {
+    if(strcasecmp(cur_node->txt,"false")) {
       cache->detect_blank = 1;
     }
   }
