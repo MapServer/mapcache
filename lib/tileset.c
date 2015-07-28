@@ -780,15 +780,12 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     apr_time_t now = apr_time_now();
     apr_time_t stale = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
     if(stale<now) {
-      mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-      GC_CHECK_ERROR(ctx);
-      ret = MAPCACHE_CACHE_MISS;
+      /* Indicate that we need to re-render the tile */
+      ret = MAPCACHE_CACHE_RELOAD;
     }
   }
 
-  if(ret == MAPCACHE_CACHE_MISS) {
-    int isLocked;
-    void *lock;
+  if (ret == MAPCACHE_CACHE_MISS) {
     /* bail out straight away if the tileset has no source or is read-only */
     if(tile->tileset->read_only || !tile->tileset->source) {
       /* there is no source configured for this tile. not an error, let caller now*/
@@ -805,54 +802,71 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
       ctx->set_error(ctx,404,"tile not in cache, and configured for readonly mode");
       return;
     }
+  }
+  
+  
+  if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
+    int isLocked;
+    void *lock;
 
-    /* the tile does not exist, we must take action before re-asking for it */
-    /*
-     * is the tile already being rendered by another thread ?
-     * the call is protected by the same mutex that sets the lock on the tile,
-     * so we can assure that:
-     * - if the lock does not exist, then this thread should do the rendering
-     * - if the lock exists, we should wait for the other thread to finish
-     */
+    /* If the tile does not exist or stale, we must take action before re-asking for it */
+    if( !tile->tileset->read_only && tile->tileset->source && !ctx->config->non_blocking) { 
+      /*
+       * is the tile already being rendered by another thread ?
+       * the call is protected by the same mutex that sets the lock on the tile,
+       * so we can assure that:
+       * - if the lock does not exist, then this thread should do the rendering
+       * - if the lock exists, we should wait for the other thread to finish
+       */
 
-    /* aquire a lock on the metatile */
-    mt = mapcache_tileset_metatile_get(ctx, tile);
-    isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
-    GC_CHECK_ERROR(ctx);
+      /* aquire a lock on the metatile */
+      mt = mapcache_tileset_metatile_get(ctx, tile);
+      isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
+      GC_CHECK_ERROR(ctx);
 
 
-    if(isLocked == MAPCACHE_TRUE) {
-      /* no other thread is doing the rendering, do it ourselves */
+      if(isLocked == MAPCACHE_TRUE) {
+         /* no other thread is doing the rendering, do it ourselves */
 #ifdef DEBUG
-      ctx->log(ctx, MAPCACHE_DEBUG, "cache miss: tileset %s - tile %d %d %d",
-               tile->tileset->name,tile->x, tile->y,tile->z);
+        ctx->log(ctx, MAPCACHE_DEBUG, "cache miss/reload: tileset %s - tile %d %d %d",
+             tile->tileset->name,tile->x, tile->y,tile->z);
 #endif
-      /* this will query the source to create the tiles, and save them to the cache */
-      mapcache_tileset_render_metatile(ctx, mt);
-      
-      if(GC_HAS_ERROR(ctx)) {
-        /* temporarily clear error state so we don't mess up with error handling in the locker */
-        void *error;
-        ctx->pop_errors(ctx,&error);
-        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
-        ctx->push_errors(ctx,error);
-      } else {
-        mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
+        /* this will query the source to create the tiles, and save them to the cache */
+        mapcache_tileset_render_metatile(ctx, mt);
+
+        if(GC_HAS_ERROR(ctx)) {
+          /* temporarily clear error state so we don't mess up with error handling in the locker */
+          void *error;
+          ctx->pop_errors(ctx,&error);
+          mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
+          ctx->push_errors(ctx,error);
+        } else {
+          mapcache_unlock_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), lock);
+        }
       }
     }
-    GC_CHECK_ERROR(ctx);
 
-    /* the previous step has successfully finished, we can now query the cache to return the tile content */
-    ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
-    GC_CHECK_ERROR(ctx);
+    if (ret == MAPCACHE_CACHE_RELOAD && GC_HAS_ERROR(ctx)) 
+      /* If we tried to reload a stale tile but failed, we know we have already 
+       * fetched it from the cache. We can then ignore errors and just use old tile. 
+       */
+      ctx->clear_errors(ctx);
 
-    if(ret != MAPCACHE_SUCCESS) {
-      if(isLocked == MAPCACHE_FALSE) {
-        ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
-                       tile->tileset->name);
-      } else {
-        /* shouldn't really happen, as the error ought to have been caught beforehand */
-        ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+    else {
+      /* Else, check for errors and try to fetch the tile from the cache. 
+      */ 
+      GC_CHECK_ERROR(ctx);   
+      ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
+      GC_CHECK_ERROR(ctx);
+
+      if(ret != MAPCACHE_SUCCESS) {
+        if(isLocked == MAPCACHE_FALSE) {
+          ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
+              tile->tileset->name);
+        } else {
+          /* shouldn't really happen, as the error ought to have been caught beforehand */
+          ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+        }
       }
     }
   }
