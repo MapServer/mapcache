@@ -61,6 +61,9 @@ check_function_exists("symlink"  HAVE_SYMLINK)
 
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
+if(APPLE)
+  set(CMAKE_MACOSX_RPATH ON)
+endif()
 set(CMAKE_LINK_INTERFACE_LIBRARY "")
 
 file(GLOB mapcache_SOURCES lib/*.c )
