@@ -77,7 +77,7 @@ apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_
   apr_status_t rv;
   *cp = apr_pcalloc(server_pool, sizeof(mapcache_connection_pool));
   (*cp)->server_pool = server_pool;
-  rv = apr_reslist_create(&((*cp)->connexions), 1, 5, 200, 60*1000000, 
+  rv = apr_reslist_create(&((*cp)->connexions), 1, 5, 200, 60*1000000,
       mapcache_connection_container_creator,
       mapcache_connection_container_destructor,
       NULL,
@@ -104,8 +104,12 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   while(pc) {
     count++;
     if(!strcmp(key,pc->private->key)) {
-      /* move current connection to head of list, and return it */
-      if(pc != pcc->head) {
+      /* move current connection to head of list, and return it. We only move the connection
+         to the front of the list if it wasn't in the first 2 connections, as in the seeding
+         case we are always alternating between read and write operations (i.e. potentially
+         2 different connections and in that cas we end up switching connections each time
+         there's an access */
+      if(pc != pcc->head && count>2) {
         assert(pred);
         pred->private->next = pc->private->next;
         pc->private->next = pcc->head;
@@ -119,7 +123,9 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   
   /* connection not found in pool */
   pc = calloc(1,sizeof(mapcache_pooled_connection));
+  /*
   ctx->log(ctx, MAPCACHE_DEBUG, "calling constructor for pooled connection (%s)", key);
+  */
   constructor(ctx, &pc->connection, params, pcc->pool);
   if(GC_HAS_ERROR(ctx)) {
     free(pc);
