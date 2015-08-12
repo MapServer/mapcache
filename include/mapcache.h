@@ -90,7 +90,11 @@
 
 #define MAPCACHE_USERAGENT "mod-mapcache/"MAPCACHE_VERSION
 
-
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#  define MS_DLL_EXPORT     __declspec(dllexport)
+#else
+#define  MS_DLL_EXPORT
+#endif
 
 
 typedef struct mapcache_image_format mapcache_image_format;
@@ -219,13 +223,13 @@ struct mapcache_context {
    * \memberof mapcache_context
    */
   void (*clear_errors)(mapcache_context * ctx);
-  
+
   /**
    * \brief clear current error and store it in mapcache_error
    * \memberof mapcache_context
    */
   void (*pop_errors)(mapcache_context * ctx, void **error);
-  
+
   /**
    * \brief restore error status from mapcache_error
    * \memberof mapcache_context
@@ -254,8 +258,8 @@ struct mapcache_context {
   apr_table_t *headers_in;
 };
 
-void mapcache_context_init(mapcache_context *ctx);
-void mapcache_context_copy(mapcache_context *src, mapcache_context *dst);
+MS_DLL_EXPORT void mapcache_context_init(mapcache_context *ctx);
+MS_DLL_EXPORT void mapcache_context_copy(mapcache_context *src, mapcache_context *dst);
 
 #define GC_CHECK_ERROR_RETURN(ctx) if(((mapcache_context*)ctx)->_errcode) return MAPCACHE_FAILURE;
 #define GC_CHECK_ERROR(ctx) if(((mapcache_context*)ctx)->_errcode) return;
@@ -1041,7 +1045,7 @@ mapcache_service* mapcache_service_demo_create(mapcache_context *ctx);
 /**
  * \brief return the request that corresponds to the given url
  */
-void mapcache_service_dispatch_request(mapcache_context *ctx,
+MS_DLL_EXPORT void mapcache_service_dispatch_request(mapcache_context *ctx,
                                        mapcache_request **request,
                                        char *pathinfo,
                                        apr_table_t *params,
@@ -1147,7 +1151,7 @@ void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const uns
 /** @{ */
 void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcache_buffer *data, apr_table_t *headers, long *http_code);
 char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params);
-apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args);
+MS_DLL_EXPORT apr_table_t *mapcache_http_parse_param_string(mapcache_context *ctx, char *args);
 /** @} */
 
 /** \defgroup configuration Configuration*/
@@ -1184,7 +1188,7 @@ struct mapcache_locker{
   mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock);
   mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
   void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
-  
+
   void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
   mapcache_lock_mode type;
   double timeout;
@@ -1315,14 +1319,14 @@ struct mapcache_cfg {
  * @param pool
  * @return
  */
-void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, mapcache_cfg *config, int cgi);
-void mapcache_configuration_post_config(mapcache_context *ctx, mapcache_cfg *config);
+MS_DLL_EXPORT void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, mapcache_cfg *config, int cgi);
+MS_DLL_EXPORT void mapcache_configuration_post_config(mapcache_context *ctx, mapcache_cfg *config);
 void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filename, mapcache_cfg *config);
-mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool);
+MS_DLL_EXPORT mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool);
 mapcache_source* mapcache_configuration_get_source(mapcache_cfg *config, const char *key);
-mapcache_cache* mapcache_configuration_get_cache(mapcache_cfg *config, const char *key);
+MS_DLL_EXPORT mapcache_cache* mapcache_configuration_get_cache(mapcache_cfg *config, const char *key);
 mapcache_grid *mapcache_configuration_get_grid(mapcache_cfg *config, const char *key);
-mapcache_tileset* mapcache_configuration_get_tileset(mapcache_cfg *config, const char *key);
+MS_DLL_EXPORT mapcache_tileset* mapcache_configuration_get_tileset(mapcache_cfg *config, const char *key);
 mapcache_image_format *mapcache_configuration_get_image_format(mapcache_cfg *config, const char *key);
 void mapcache_configuration_add_image_format(mapcache_cfg *config, mapcache_image_format *format, const char * key);
 void mapcache_configuration_add_source(mapcache_cfg *config, mapcache_source *source, const char * key);
@@ -1478,7 +1482,7 @@ struct mapcache_grid_link {
   mapcache_extent *restricted_extent;
   mapcache_extent_i *grid_limits;
   int minz,maxz;
-  
+
   /**
    * tiles above this zoom level will not be stored to the cache, but will be
    * dynamically generated (either by reconstructing from lower level tiles, or
@@ -1620,13 +1624,13 @@ void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
 void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset, double *resolution, int *level);
 
 mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
-void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * \brief delete tile from cache
  * @param whole_metatile delete all the other tiles from the metatile to
  */
-void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, int whole_metatile);
+MS_DLL_EXPORT void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, int whole_metatile);
 
 int mapcache_grid_is_bbox_aligned(mapcache_context *ctx, mapcache_grid *grid, mapcache_extent *bbox);
 
@@ -1637,7 +1641,7 @@ int mapcache_grid_is_bbox_aligned(mapcache_context *ctx, mapcache_grid *grid, ma
  * @param pool
  * @return
  */
-mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *tileset, mapcache_grid_link *grid_link);
+MS_DLL_EXPORT mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *tileset, mapcache_grid_link *grid_link);
 
 mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src);
 
@@ -1670,27 +1674,27 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
 void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *tileset, const char *filename);
 
 
-int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock);
-void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock);
+MS_DLL_EXPORT int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock);
+MS_DLL_EXPORT void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock);
 
-mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
-void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
-char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_metatile *mt);
+MS_DLL_EXPORT mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
+MS_DLL_EXPORT char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_metatile *mt);
 
 
 /** @} */
 
 
 
-mapcache_http_response* mapcache_core_get_capabilities(mapcache_context *ctx, mapcache_service *service, mapcache_request_get_capabilities *req_caps, char *url, char *path_info, mapcache_cfg *config);
-mapcache_http_response* mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_get_capabilities(mapcache_context *ctx, mapcache_service *service, mapcache_request_get_capabilities *req_caps, char *url, char *path_info, mapcache_cfg *config);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_get_tile(mapcache_context *ctx, mapcache_request_get_tile *req_tile);
 
-mapcache_http_response* mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_get_map(mapcache_context *ctx, mapcache_request_get_map *req_map);
 
-mapcache_http_response* mapcache_core_get_featureinfo(mapcache_context *ctx, mapcache_request_get_feature_info *req_fi);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_get_featureinfo(mapcache_context *ctx, mapcache_request_get_feature_info *req_fi);
 
-mapcache_http_response* mapcache_core_proxy_request(mapcache_context *ctx, mapcache_request_proxy *req_proxy);
-mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_proxy_request(mapcache_context *ctx, mapcache_request_proxy *req_proxy);
+MS_DLL_EXPORT mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx);
 
 
 /* in grid.c */
@@ -1699,7 +1703,7 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool);
 const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid);
 const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid);
 
-void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
+MS_DLL_EXPORT void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
                               int x, int y, int z, mapcache_extent *bbox);
 /**
  * \brief compute x y value for given lon/lat (dx/dy) and given zoomlevel
@@ -1711,7 +1715,7 @@ void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
  * @param x
  * @param y
  */
-void mapcache_grid_get_xy(mapcache_context *ctx, mapcache_grid *grid, double dx, double dy, int z, int *x, int *y);
+MS_DLL_EXPORT void mapcache_grid_get_xy(mapcache_context *ctx, mapcache_grid *grid, double dx, double dy, int z, int *x, int *y);
 
 double mapcache_grid_get_resolution(mapcache_extent *bbox, int sx, int sy);
 double mapcache_grid_get_horizontal_resolution(mapcache_extent *bbox, int width);
@@ -1731,12 +1735,12 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
  * \param extent
  * \param tolerance the number of tiles around the given extent that can be requested without returning an error.
  */
-void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance);
+MS_DLL_EXPORT void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance);
 
 /* in util.c */
-int mapcache_util_extract_int_list(mapcache_context *ctx, const char* args, const char *sep, int **numbers,
+MS_DLL_EXPORT int mapcache_util_extract_int_list(mapcache_context *ctx, const char* args, const char *sep, int **numbers,
                                    int *numbers_count);
-int mapcache_util_extract_double_list(mapcache_context *ctx, const char* args, const char *sep, double **numbers,
+MS_DLL_EXPORT int mapcache_util_extract_double_list(mapcache_context *ctx, const char* args, const char *sep, double **numbers,
                                       int *numbers_count);
 char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 const char *replacement );
@@ -2026,13 +2030,13 @@ typedef enum {
   MAPCACHE_TIMEDIMENSION_SOURCE_SQLITE
 } mapcache_timedimension_source_type;
 
-apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
+MS_DLL_EXPORT apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
         mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value);
 
 struct mapcache_timedimension {
   mapcache_timedimension_assembly_type assembly_type;
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset, 
+  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset,
         mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
   apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
   char *default_value;
@@ -2063,7 +2067,7 @@ struct mapcache_pooled_connection {
 typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params, apr_pool_t *process_pool);
 typedef void (*mapcache_connection_destructor)(void *connection, apr_pool_t *process_pool);
 
-apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool);
+MS_DLL_EXPORT apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool);
 mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_context *ctx, char *key,
         mapcache_connection_constructor constructor,
         mapcache_connection_destructor destructor,

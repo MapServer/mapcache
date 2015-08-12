@@ -437,7 +437,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
           memcpy(tile->encoded_data->buf,jpegtable_ptr,(jpegtable_size-2));
 
           /* advance the data pointer to after the header data */
-          bufptr = tile->encoded_data->buf + (jpegtable_size-2);
+          bufptr = ((char *)tile->encoded_data->buf) + (jpegtable_size-2);
 
 
           /* go to the specified offset in the tiff file, plus 2 bytes */
@@ -833,7 +833,7 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
   if(cur_node) {
     mapcache_config_parse_locker(ctx, cur_node, &cache->locker);
   }
-  
+
 }
 
 /**

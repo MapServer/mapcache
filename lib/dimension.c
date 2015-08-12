@@ -38,7 +38,24 @@
 #include <float.h>
 #endif
 
+#ifndef HAVE_TIMEGM
+time_t timegm(struct tm *tm)
+{
+  time_t t, tdiff;
+  struct tm in, gtime, ltime;
 
+  memcpy(&in, tm, sizeof(in));
+  t = mktime(&in);
+
+  memcpy(&gtime, gmtime(&t), sizeof(gtime));
+  memcpy(&ltime, localtime(&t), sizeof(ltime));
+  gtime.tm_isdst = ltime.tm_isdst;
+  tdiff = t - mktime(&gtime);
+
+  memcpy(&in, tm, sizeof(in));
+  return mktime(&in) + tdiff;
+}
+#endif
 
 static int _mapcache_dimension_intervals_validate(mapcache_context *ctx, mapcache_dimension *dim, char **value)
 {
@@ -310,13 +327,13 @@ struct sqlite_dimension_conn {
 void mapcache_sqlite_dimension_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
 {
   int ret;
-  int flags;  
+  int flags;
   char *dbfile = (char*) params;
   struct sqlite_dimension_conn *conn = calloc(1, sizeof (struct sqlite_dimension_conn));
   *conn_ = conn;
   flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   ret = sqlite3_open_v2(dbfile, &conn->handle, flags, NULL);
-  
+
   if (ret != SQLITE_OK) {
     ctx->set_error(ctx,500,"failed to open sqlite dimension dbfile (%s): %s",dbfile,sqlite3_errmsg(conn->handle));
     sqlite3_close(conn->handle);
@@ -385,7 +402,7 @@ static int _mapcache_dimension_sqlite_validate(mapcache_context *ctx, mapcache_d
       goto cleanup;
     }
   }
-  
+
   paramidx = sqlite3_bind_parameter_index(conn->prepared_statements[0], ":dim");
   if (paramidx) {
     sqliteret = sqlite3_bind_text(conn->prepared_statements[0], paramidx, *value, -1, SQLITE_STATIC);
@@ -414,7 +431,7 @@ cleanup:
     sqlite3_reset(conn->prepared_statements[0]);
   }
   _sqlite_dimension_release_conn(ctx,pc);
-      
+
   return ret;
 }
 
@@ -434,7 +451,7 @@ static apr_array_header_t* _mapcache_dimension_sqlite_print(mapcache_context *ct
     conn->prepared_statements = calloc(2,sizeof(sqlite3_stmt*));
     conn->n_statements = 2;
   }
- 
+
   if(!conn->prepared_statements[1]) {
     sqliteret = sqlite3_prepare_v2(conn->handle, dimension->list_query, -1, &conn->prepared_statements[1], NULL);
     if(sqliteret != SQLITE_OK) {
@@ -459,7 +476,7 @@ cleanup:
     sqlite3_reset(conn->prepared_statements[1]);
   }
   _sqlite_dimension_release_conn(ctx,pc);
-      
+
   return ret;
 }
 
@@ -469,7 +486,7 @@ static void _mapcache_dimension_sqlite_parse_xml(mapcache_context *ctx, mapcache
 {
   mapcache_dimension_sqlite *dimension;
   ezxml_t child;
-  
+
   dimension = (mapcache_dimension_sqlite*)dim;
 
   child = ezxml_child(node,"dbfile");
@@ -493,7 +510,7 @@ static void _mapcache_dimension_sqlite_parse_xml(mapcache_context *ctx, mapcache
     ctx->set_error(ctx,400,"sqlite dimension \"%s\" has no <list_query> node", dim->name);
     return;
   }
-  
+
 }
 
 
@@ -554,7 +571,7 @@ static void _bind_sqlite_timedimension_params(mapcache_context *ctx, sqlite3_stm
       return;
     }
   }
-  
+
   paramidx = sqlite3_bind_parameter_index(stmt, ":start_timestamp");
   if (paramidx) {
     ret = sqlite3_bind_int64(stmt, paramidx, start);
@@ -598,13 +615,13 @@ apr_array_header_t *_mapcache_timedimension_sqlite_get_entries(mapcache_context 
       return NULL;
     }
   }
-  
+
   _bind_sqlite_timedimension_params(ctx,conn->prepared_statements[0],conn->handle,tileset,grid,extent,start,end);
   if(GC_HAS_ERROR(ctx)) {
     _sqlite_dimension_release_conn(ctx, pc);
     return NULL;
   }
-  
+
   time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
   do {
     ret = sqlite3_step(conn->prepared_statements[0]);
@@ -643,7 +660,7 @@ typedef enum {
 void _mapcache_timedimension_sqlite_parse_xml(mapcache_context *ctx, mapcache_timedimension *dim, ezxml_t node) {
   mapcache_timedimension_sqlite *sdim = (mapcache_timedimension_sqlite*)dim;
   ezxml_t child;
-  
+
   child = ezxml_child(node,"dbfile");
   if(child && child->txt && *child->txt) {
     sdim->dbfile = apr_pstrdup(ctx->pool,child->txt);
@@ -662,8 +679,8 @@ void _mapcache_timedimension_sqlite_parse_xml(mapcache_context *ctx, mapcache_ti
 #endif
 
 char *mapcache_ogc_strptime(const char *value, struct tm *ts, mapcache_time_interval_t *ti) {
-  memset (ts, '\0', sizeof (*ts));
   char *valueptr;
+  memset (ts, '\0', sizeof (*ts));
   valueptr = strptime(value,"%Y-%m-%dT%H:%M:%SZ",ts);
   *ti = MAPCACHE_TINTERVAL_SECOND;
   if(valueptr) return valueptr;
@@ -700,7 +717,7 @@ apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_contex
     ctx->set_error(ctx,400,"failed to parse time %s",value);
     return NULL;
   }
-  
+
   if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
     /* we have a second (end) time */
     if (*valueptr == '/') {

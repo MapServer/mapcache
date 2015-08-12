@@ -31,7 +31,9 @@
 #include <apr_file_io.h>
 #include <apr_strings.h>
 #include <apr_time.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #define MAPCACHE_LOCKFILE_PREFIX "_gc_lock"
 
@@ -60,7 +62,7 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *l
   else {
     apr_time_t start_wait = apr_time_now();
     rv = MAPCACHE_LOCK_LOCKED;
-    
+
     while(rv != MAPCACHE_LOCK_NOENT) {
       unsigned int waited = apr_time_as_msec(apr_time_now()-start_wait);
       if(waited > locker->timeout*1000) {
@@ -81,7 +83,7 @@ mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, map
   mapcache_locker_disk *ldisk;
   apr_file_t *lockfile;
   apr_status_t rv;
-  
+
   assert(self->type == MAPCACHE_LOCKER_DISK);
   ldisk = (mapcache_locker_disk*)self;
   *lock = NULL; /*unused*/
@@ -245,7 +247,7 @@ static char* memcache_key_for_resource(mapcache_context *ctx, mapcache_locker_me
   char *saferes = apr_pstrdup(ctx->pool,resource);
   char *safeptr = saferes;
   while(*safeptr) {
-    if(*safeptr==' ' || *safeptr == '/' || *safeptr == '~' || *safeptr == '.' || 
+    if(*safeptr==' ' || *safeptr == '/' || *safeptr == '~' || *safeptr == '.' ||
         *safeptr == '\r' || *safeptr == '\n' || *safeptr == '\t' || *safeptr == '\f' || *safeptr == '\e' || *safeptr == '\a' || *safeptr == '\b') {
       *safeptr = '#';
     }
@@ -287,7 +289,7 @@ mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, m
   size_t ione;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = (apr_memcache_t*)lock;  
+  apr_memcache_t *memcache = (apr_memcache_t*)lock;
   if(!memcache)
     return MAPCACHE_LOCK_NOENT;
   rv = apr_memcache_getp(memcache,ctx->pool,key,&one,&ione,NULL);
@@ -296,14 +298,14 @@ mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, m
   else
     return MAPCACHE_LOCK_NOENT;
 }
-  
+
 
 mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock) {
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = create_memcache(ctx,lm);  
+  apr_memcache_t *memcache = create_memcache(ctx,lm);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_LOCK_NOENT;
   }
@@ -324,12 +326,12 @@ void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locke
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
   char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = (apr_memcache_t*)lock;  
+  apr_memcache_t *memcache = (apr_memcache_t*)lock;
   if(!memcache) {
     /*error*/
     return;
   }
-  
+
   rv = apr_memcache_delete(memcache,key,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
     ctx->set_error(ctx,500,"memcache: failed to delete key %s: %s", key, apr_strerror(rv,errmsg,120));
@@ -383,7 +385,7 @@ void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_
     return;
   }
   (*locker)->parse_xml(ctx, *locker, node);
-  
+
   if((cur_node = ezxml_child(node,"retry")) != NULL) {
     char *endptr;
     (*locker)->retry_interval = strtod(cur_node->txt,&endptr);

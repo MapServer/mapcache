@@ -87,13 +87,19 @@ APR_DECLARE(apr_table_t *) apr_table_clone(apr_pool_t *p,
 #endif
 #endif
 
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#  define MS_DLL_EXPORT     __declspec(dllexport)
+#else
+#define  MS_DLL_EXPORT
+#endif
 
 #if defined(_WIN32)
 struct mctimeval {
   long    tv_sec;         /* seconds */
   long    tv_usec;        /* and microseconds */
 };
-void  mapcache_gettimeofday(struct mctimeval *t, void *__not_used_here__);
+MS_DLL_EXPORT void  mapcache_gettimeofday(struct mctimeval *t, void *__not_used_here__);
+MS_DLL_EXPORT char * strptime (const char *buf, const char *format, struct tm *timeptr);
 #else
 #  include <sys/time.h>     /* for gettimeofday() */
 #  define  mctimeval timeval

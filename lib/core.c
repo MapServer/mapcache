@@ -196,10 +196,13 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 {
   int expires = 0;
   mapcache_http_response *response;
-  int i,is_empty=1; /* response image is initially empty */;
   char *timestr;
-  mapcache_image *base=NULL;
-  mapcache_image_format *format = NULL;
+  mapcache_image *base;
+  mapcache_image_format *format;
+  mapcache_image_format_type t;
+  int i,is_empty=1; /* response image is initially empty */;
+  base=NULL;
+  format = NULL;
 
 #ifdef DEBUG
   if(req_tile->ntiles ==0) {
@@ -208,7 +211,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 #endif
   response = mapcache_http_response_create(ctx->pool);
-  
+
   if(ctx->supports_redirects && req_tile->ntiles == 1) {
     req_tile->tiles[0]->allow_redirect = 1;
   }
@@ -233,7 +236,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
     if(tile->expires && (tile->expires < expires || expires == 0)) {
       expires = tile->expires;
     }
-    
+
     if(tile->nodata) {
       /* treat the special case where the cache explicitely stated that the
        tile was empty, and we don't have any vertical merging to do */
@@ -244,8 +247,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       }
       continue;
     }
-    
-    /* treat the most common case: 
+
+    /* treat the most common case:
      - we have a single tile request (i.e. isempty is true)
      - the cache returned the encoded image
      */
@@ -282,7 +285,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       mapcache_image_merge(ctx, base, tile->raw_image);
     } else {
       /* we don't need to merge onto an existing tile and don't have access to the tile's encoded data.
-       * 
+       *
        * we don't encode the tile's raw image data just yet because we might need to merge another one on top
        * of it later.
        */
@@ -318,9 +321,9 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
   }
-  
+
   /* compute the content-type */
-  mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,response->data);
+  t = mapcache_imageio_header_sniff(ctx,response->data);
   if(t == GC_PNG)
     apr_table_set(response->headers,"Content-Type","image/png");
   else if(t == GC_JPEG)
@@ -345,12 +348,13 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
   mapcache_tile ***maptiles;
   int *nmaptiles;
   mapcache_tile **tiles;
+  mapcache_grid_link **effectively_used_grid_links;
   mapcache_map *basemap = NULL;
   int ntiles = 0;
   int i;
   maptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_tile**));
   nmaptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(int));
-  mapcache_grid_link **effectively_used_grid_links = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_grid_link*));
+  effectively_used_grid_links = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_grid_link*));
   for(i=0; i<nmaps; i++) {
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
                                    &maps[i]->extent, maps[i]->width, maps[i]->height,
