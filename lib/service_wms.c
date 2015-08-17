@@ -200,7 +200,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     layerxml = ezxml_add_child(toplayer,"Layer",0);
     ezxml_set_attr(layerxml, "cascaded", "1");
     ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0");
-    
+
     ezxml_set_txt(ezxml_add_child(layerxml,"Name",0),tileset->name);
     tsxml = ezxml_add_child(vendorxml, "TileSet",0);
 
@@ -715,9 +715,9 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
             /* we need to create more tile/map entries */
               if(timedim_selected->nelts > 1) {
                 /* apr pools have no realloc */
+                mapcache_tile** tmptiles;
                 nallocated = nallocated + timedim_selected->nelts - 1;
-                mapcache_tile** tmptiles =
-                        apr_palloc(ctx->pool, nallocated * sizeof(mapcache_tile*));
+                tmptiles = apr_palloc(ctx->pool, nallocated * sizeof(mapcache_tile*));
                 for(i=0;i<tile_req->ntiles;i++) {
                   tmptiles[i] = tile_req->tiles[i];
                 }
@@ -738,9 +738,9 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
             /* we need to create more tile/map entries */
               if(timedim_selected->nelts > 1) {
                 /* apr pools have no realloc */
+                mapcache_map** tmpmaps;
                 nallocated = nallocated + timedim_selected->nelts - 1;
-                mapcache_map** tmpmaps =
-                        apr_palloc(ctx->pool, nallocated * sizeof(mapcache_map*));
+                tmpmaps = apr_palloc(ctx->pool, nallocated * sizeof(mapcache_map*));
                 for(i=0;i<map_req->nmaps;i++) {
                   tmpmaps[i] = map_req->maps[i];
                 }
@@ -756,7 +756,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
                 apr_table_set(map_req->maps[map_req->nmaps-1]->dimensions,tileset->timedimension->key,
                         APR_ARRAY_IDX(timedim_selected,i,char*));
               }
-              
+
             }
           }
         }
@@ -965,7 +965,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
     rule = apr_pcalloc(ctx->pool, sizeof(mapcache_forwarding_rule));
     rule->name = apr_pstrdup(ctx->pool,name);
     rule->match_params = apr_array_make(ctx->pool,1,sizeof(mapcache_dimension*));
-    rule->max_post_len = 10485760; /* 10 megabytes by default */ 
+    rule->max_post_len = 10485760; /* 10 megabytes by default */
 
     node = ezxml_child(rule_node,"append_pathinfo");
     if(node && !strcasecmp(node->txt,"true")) {
@@ -973,7 +973,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
     } else {
       rule->append_pathinfo = 0;
     }
-    
+
     node = ezxml_child(rule_node,"max_post_length");
     if(node) {
       char *endptr;
@@ -983,7 +983,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
         return;
       }
     }
-    
+
     node = ezxml_child(rule_node,"http");
     if(!node) {
       ctx->set_error(ctx,500,"rule \"%s\" does not contain an <http> block",name);

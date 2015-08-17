@@ -144,7 +144,7 @@ static int _mapcache_cache_bdb_has_tile(mapcache_context *ctx, mapcache_cache *p
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   mapcache_pooled_connection *pc;
-  struct bdb_env *benv; 
+  struct bdb_env *benv;
   pc = _bdb_get_conn(ctx,cache,tile,1);
   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FALSE;
   benv = pc->connection;
@@ -173,7 +173,7 @@ static void _mapcache_cache_bdb_delete(mapcache_context *ctx, mapcache_cache *pc
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   mapcache_pooled_connection *pc;
-  struct bdb_env *benv; 
+  struct bdb_env *benv;
   pc = _bdb_get_conn(ctx,cache,tile,0);
   GC_CHECK_ERROR(ctx);
   benv = pc->connection;
@@ -195,13 +195,14 @@ static int _mapcache_cache_bdb_get(mapcache_context *ctx, mapcache_cache *pcache
 {
   DBT key,data;
   int ret;
+  char *skey;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   mapcache_pooled_connection *pc;
-  struct bdb_env *benv; 
+  struct bdb_env *benv;
   pc = _bdb_get_conn(ctx,cache,tile,1);
   if(GC_HAS_ERROR(ctx)) return MAPCACHE_FALSE;
   benv = pc->connection;
-  char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   memset(&key, 0, sizeof(DBT));
   memset(&data, 0, sizeof(DBT));
   data.flags = DB_DBT_MALLOC;
@@ -242,7 +243,7 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_cache *pcach
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
   mapcache_pooled_connection *pc;
-  struct bdb_env *benv; 
+  struct bdb_env *benv;
   now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
   memset(&data, 0, sizeof(DBT));
@@ -254,7 +255,7 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_cache *pcach
     tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
     GC_CHECK_ERROR(ctx);
   }
-  
+
   if(tile->raw_image->h==256 && tile->raw_image->w==256 && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
     data.size = 5+sizeof(apr_time_t);
     data.data = apr_palloc(ctx->pool,data.size);
@@ -271,7 +272,7 @@ static void _mapcache_cache_bdb_set(mapcache_context *ctx, mapcache_cache *pcach
     data.size = tile->encoded_data->size;
     tile->encoded_data->size -= sizeof(apr_time_t);
   }
-  
+
   pc = _bdb_get_conn(ctx,cache,tile,0);
   GC_CHECK_ERROR(ctx);
   benv = pc->connection;
@@ -295,7 +296,7 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_cache *
   apr_time_t now;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)pcache;
   mapcache_pooled_connection *pc;
-  struct bdb_env *benv; 
+  struct bdb_env *benv;
   now = apr_time_now();
   memset(&key, 0, sizeof(DBT));
   memset(&data, 0, sizeof(DBT));
@@ -303,7 +304,7 @@ static void _mapcache_cache_bdb_multiset(mapcache_context *ctx, mapcache_cache *
   pc = _bdb_get_conn(ctx,cache,&tiles[0],0);
   GC_CHECK_ERROR(ctx);
   benv = pc->connection;
-  
+
   for(i=0; i<ntiles; i++) {
     char *skey;
     mapcache_tile *tile;

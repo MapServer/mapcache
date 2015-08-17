@@ -553,10 +553,13 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
         apr_array_header_t *timedimvals = tileset->timedimension->get_all_entries(
                 ctx,tileset->timedimension,tileset);
         for(id=0;id<timedimvals->nelts;id++) {
+	      char *idval;
+	      char *dimparam_wms;
+	      char *dimparam_singletile;
           if(id>1) break;
-          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
-          char *dimparam_wms = "    %s_wms_layer.mergeNewParams({%s:\"%s\"});\n";
-          char *dimparam_singletile = "    %s_slayer.mergeNewParams({%s:\"%s\"});\n";
+          idval = APR_ARRAY_IDX(timedimvals,id,char*);
+          dimparam_wms = "    %s_wms_layer.mergeNewParams({%s:\"%s\"});\n";
+          dimparam_singletile = "    %s_slayer.mergeNewParams({%s:\"%s\"});\n";
           ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
           /* normalize name to something that is a valid variable name */
           for(i=0; i<strlen(ol_layer_name); i++)
@@ -581,7 +584,7 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
           caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
           caps = apr_psprintf(ctx->pool,"%s%s",caps,
                   apr_psprintf(ctx->pool,dimparam_wms,ol_layer_name,tileset->timedimension->key,idval));
-            
+
           if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
             ol_layer = apr_psprintf(ctx->pool, demo_layer_singletile,
                                     ol_layer_name,
@@ -873,9 +876,11 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
                 ctx,tileset->timedimension,tileset);
         GC_CHECK_ERROR(ctx);
         for(id=0;id<timedimvals->nelts;id++) {
+          char *idval;
+          char *dimparam;
           if(id>1) break; /* we don't want all the entries in the demo interface */
-          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
-          char *dimparam = "%s_wmts_layer.mergeNewParams({%s:\"%s\"});\n";
+          idval = APR_ARRAY_IDX(timedimvals,id,char*);
+          dimparam = "%s_wmts_layer.mergeNewParams({%s:\"%s\"});\n";
           ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
           /* normalize name to something that is a valid variable name */
           for(i=0; i<strlen(ol_layer_name); i++)
@@ -903,7 +908,7 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
           caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
           caps = apr_psprintf(ctx->pool,"%s%s",caps,
                   apr_psprintf(ctx->pool,dimparam,ol_layer_name,tileset->timedimension->key,idval));
-            
+
         }
       }
     }

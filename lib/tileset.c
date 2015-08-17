@@ -406,7 +406,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   /* configured metatile size in geographical units */
   fullgwidth = res * tileset->metasize_x * grid->tile_sx;
   fullgheight = res * tileset->metasize_y * grid->tile_sy;
-  
+
   switch(grid->origin) {
     case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
       mt->map.extent.minx = grid->extent.minx + mt->x * fullgwidth - gbuffer;
@@ -618,20 +618,21 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
 }
 
 void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_tile *tile) {
-  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
-
-  /* we have at most 4 tiles composing the requested tile */
   mapcache_extent tile_bbox;
   double shrink_x, shrink_y, scalefactor;
   int x[4],y[4];
   int i, n=1;
+  mapcache_tile *childtile;
+  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
+
+  /* we have at most 4 tiles composing the requested tile */
   mapcache_grid_get_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z, &tile_bbox);
 
   /*
    shrink the extent so we do not fall exactly on a tile boundary, to avoid rounding
    errors when computing the x,y of the lower level tile(s) we will need
   */
-  
+
   shrink_x = (tile_bbox.maxx - tile_bbox.minx) / (tile->grid_link->grid->tile_sx * 1000); /* 1/1000th of a pixel */
   shrink_y = (tile_bbox.maxy - tile_bbox.miny) / (tile->grid_link->grid->tile_sy * 1000); /* 1/1000th of a pixel */
   tile_bbox.maxx -= shrink_x;
@@ -656,15 +657,15 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
   tile_bbox.minx -= shrink_x;
   tile_bbox.miny -= shrink_y;
 
-  mapcache_tile *childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
+  childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
   childtile->z = tile->grid_link->max_cached_zoom;
   scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
   tile->nodata = 1;
   for(i=0;i<n;i++) {
-    childtile->x = x[i];
-    childtile->y = y[i];
     mapcache_extent childtile_bbox;
     double dstminx,dstminy;
+    childtile->x = x[i];
+    childtile->y = y[i];
     mapcache_tileset_tile_get(ctx,childtile);
     GC_CHECK_ERROR(ctx);
     if(childtile->nodata) {
@@ -700,13 +701,14 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
       * https://bugs.freedesktop.org/show_bug.cgi?id=46277 */
       unsigned int row,col;
       unsigned char *srcpixptr;
+      unsigned char *row_ptr;
       unsigned int dstminxi = - dstminx / scalefactor;
       unsigned int dstminyi = - dstminy / scalefactor;
       srcpixptr = &(childtile->raw_image->data[dstminyi * childtile->raw_image->stride + dstminxi * 4]);
       /*
       ctx->log(ctx, MAPCACHE_WARN, "factor: %g. pixel: %d,%d (val:%d)",scalefactor,dstminxi,dstminyi,*((unsigned int*)srcpixptr));
        */
-      unsigned char *row_ptr = tile->raw_image->data;
+      row_ptr = tile->raw_image->data;
       for(row=0;row<tile->raw_image->h;row++) {
         unsigned char *pix_ptr = row_ptr;
         for(col=0;col<tile->raw_image->w;col++) {
@@ -726,8 +728,8 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
 
 
 
-  
-  
+
+
 }
 
 void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) {
@@ -803,14 +805,14 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
       return;
     }
   }
-  
-  
+
+
   if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
     int isLocked;
     void *lock;
 
     /* If the tile does not exist or stale, we must take action before re-asking for it */
-    if( !tile->tileset->read_only && tile->tileset->source && !ctx->config->non_blocking) { 
+    if( !tile->tileset->read_only && tile->tileset->source && !ctx->config->non_blocking) {
       /*
        * is the tile already being rendered by another thread ?
        * the call is protected by the same mutex that sets the lock on the tile,
@@ -846,16 +848,16 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
       }
     }
 
-    if (ret == MAPCACHE_CACHE_RELOAD && GC_HAS_ERROR(ctx)) 
-      /* If we tried to reload a stale tile but failed, we know we have already 
-       * fetched it from the cache. We can then ignore errors and just use old tile. 
+    if (ret == MAPCACHE_CACHE_RELOAD && GC_HAS_ERROR(ctx))
+      /* If we tried to reload a stale tile but failed, we know we have already
+       * fetched it from the cache. We can then ignore errors and just use old tile.
        */
       ctx->clear_errors(ctx);
 
     else {
-      /* Else, check for errors and try to fetch the tile from the cache. 
-      */ 
-      GC_CHECK_ERROR(ctx);   
+      /* Else, check for errors and try to fetch the tile from the cache.
+      */
+      GC_CHECK_ERROR(ctx);
       ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
 

@@ -86,7 +86,7 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
   response = mapcache_buffer_create(10,ctx->pool);
 
 #if LIBCURL_VERSION_NUM < 0x071700
-  /* 
+  /*
    * hack around a bug in curl <= 7.22 where the content-length is added
    * a second time even if ti was present in the manually set headers
    */
@@ -97,35 +97,35 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
-  /* we want to use our own read function */ 
+  /* we want to use our own read function */
   curl_easy_setopt(curl, CURLOPT_READFUNCTION, buffer_read_callback);
 
-  /* enable uploading */ 
+  /* enable uploading */
   curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
 
-  /* HTTP PUT please */ 
+  /* HTTP PUT please */
   curl_easy_setopt(curl, CURLOPT_PUT, 1L);
 
   /* specify target URL, and note that this URL should include a file
-   *        name, not only a directory */ 
+   *        name, not only a directory */
   curl_easy_setopt(curl, CURLOPT_URL, url);
 
-  /* now specify which file to upload */ 
+  /* now specify which file to upload */
   curl_easy_setopt(curl, CURLOPT_READDATA, &data);
 
   /* provide the size of the upload, we specicially typecast the value
-   *        to curl_off_t since we must be sure to use the correct data size */ 
+   *        to curl_off_t since we must be sure to use the correct data size */
   curl_easy_setopt(curl, CURLOPT_INFILESIZE, buffer->size);
-  
+
   /* send all data to this function  */
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffer_write_callback);
 
   /* we pass our mapcache_buffer struct to the callback function */
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response);
 
-  /* Now run off and do what you've been told! */ 
+  /* Now run off and do what you've been told! */
   res = curl_easy_perform(curl);
-  /* Check for errors */ 
+  /* Check for errors */
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest put: %s",curl_easy_strerror(res));
   } else {
@@ -154,18 +154,18 @@ static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers)
   }
 
   _set_headers(ctx, curl, headers);
-  
+
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
   /* specify target URL, and note that this URL should include a file
-   *        name, not only a directory */ 
+   *        name, not only a directory */
   curl_easy_setopt(curl, CURLOPT_URL, url);
-  
+
   curl_easy_setopt(curl, CURLOPT_NOBODY, 1);
 
-  /* Now run off and do what you've been told! */ 
+  /* Now run off and do what you've been told! */
   res = curl_easy_perform(curl);
-  /* Check for errors */ 
+  /* Check for errors */
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest head %s",curl_easy_strerror(res));
     http_code = 500;
@@ -173,9 +173,9 @@ static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers)
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
-  /* always cleanup */ 
+  /* always cleanup */
   curl_easy_cleanup(curl);
-  
+
   return (int)http_code;
 }
 
@@ -196,14 +196,14 @@ static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *header
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
   /* specify target URL, and note that this URL should include a file
-   *        name, not only a directory */ 
+   *        name, not only a directory */
   curl_easy_setopt(curl, CURLOPT_URL, url);
-  
+
   curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
 
-  /* Now run off and do what you've been told! */ 
+  /* Now run off and do what you've been told! */
   res = curl_easy_perform(curl);
-  /* Check for errors */ 
+  /* Check for errors */
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest head %s",curl_easy_strerror(res));
     http_code = 500;
@@ -211,9 +211,9 @@ static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *header
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
-  /* always cleanup */ 
+  /* always cleanup */
   curl_easy_cleanup(curl);
-  
+
   return (int)http_code;
 }
 
@@ -243,18 +243,18 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, char *url, apr_table
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)data);
 
   /* specify target URL, and note that this URL should include a file
-   *        name, not only a directory */ 
+   *        name, not only a directory */
   curl_easy_setopt(curl, CURLOPT_URL, url);
 
-  /* Now run off and do what you've been told! */ 
+  /* Now run off and do what you've been told! */
   res = curl_easy_perform(curl);
-  /* Check for errors */ 
+  /* Check for errors */
   if(res != CURLE_OK) {
     ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest get: %s",curl_easy_strerror(res));
     data = NULL;
   } else {
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
-    /* handle special behavior of s3 */ 
+    /* handle special behavior of s3 */
     if(http_code == 403) {
       char *msg = data->buf;
       while(msg && *msg) {
@@ -277,9 +277,9 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, char *url, apr_table
     }
   }
 
-  /* always cleanup */ 
+  /* always cleanup */
   curl_easy_cleanup(curl);
-  
+
   return data;
 }
 
@@ -287,19 +287,21 @@ apr_table_t* _mapcache_cache_rest_headers(mapcache_context *ctx, mapcache_tile *
    mapcache_rest_operation *operation) {
   apr_table_t *ret = apr_table_make(ctx->pool,3);
   const apr_array_header_t *array;
-  
+
   if(config->common_headers) {
+	apr_table_entry_t *elts;
+	int i;
     array = apr_table_elts(config->common_headers);
-    apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
-    int i;
+    elts = (apr_table_entry_t *) array->elts;
     for (i = 0; i < array->nelts; i++) {
       apr_table_set(ret, elts[i].key,elts[i].val);
     }
   }
   if(operation->headers) {
-    array = apr_table_elts(operation->headers);
-    apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
+	apr_table_entry_t *elts;
     int i;
+    array = apr_table_elts(operation->headers);
+    elts = (apr_table_entry_t *) array->elts;
     for (i = 0; i < array->nelts; i++) {
       apr_table_set(ret, elts[i].key,elts[i].val);
     }
@@ -459,13 +461,16 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
   const char *head;
   const apr_array_header_t *ahead;
   apr_table_entry_t *elts;
-  int i,nCanonicalHeaders=0,cnt=0;
-  assert(rcache->provider == MAPCACHE_REST_PROVIDER_GOOGLE);
-  mapcache_cache_google *google = (mapcache_cache_google*)rcache;
-  time_t now = time(NULL);
-  struct tm *tnow = gmtime(&now);
+  mapcache_cache_google *google;
+  time_t now;
+  struct tm *tnow;
   unsigned char sha[65];
   char b64[150];
+  int i,nCanonicalHeaders=0,cnt=0;
+  assert(rcache->provider == MAPCACHE_REST_PROVIDER_GOOGLE);
+  google = (mapcache_cache_google*)rcache;
+  now = time(NULL);
+  tnow = gmtime(&now);
   sha[64]=0;
 
   strftime(x_amz_date, 64 , "%a, %d %b %Y %H:%M:%S GMT", tnow);
@@ -483,7 +488,7 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
   stringToSign=apr_pstrcat(ctx->pool, method, "\n", head, "\n", NULL);
   head = apr_table_get(headers, "Content-Type");
   if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  
+
   /* Date: header, left empty as we are using x-amz-date */
   stringToSign=apr_pstrcat(ctx->pool, stringToSign, "\n", NULL);
 
@@ -506,7 +511,7 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
   for(i=0; i<nCanonicalHeaders; i++) {
     stringToSign = apr_pstrcat(ctx->pool, stringToSign, aheaders[i],":",apr_table_get(headers,aheaders[i]),"\n",NULL);
   }
-  
+
   /* find occurence of third "/" in url */
   while(*resource) {
     if(*resource == '/') cnt++;
@@ -533,13 +538,16 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
   const char *head;
   const apr_array_header_t *ahead;
   apr_table_entry_t *elts;
-  int i,nCanonicalHeaders=0,cnt=0;
-  assert(rcache->provider == MAPCACHE_REST_PROVIDER_AZURE);
-  mapcache_cache_azure *azure = (mapcache_cache_azure*)rcache;
-  time_t now = time(NULL);
-  struct tm *tnow = gmtime(&now);
+  mapcache_cache_azure *azure;
+  time_t now;
+  struct tm *tnow;
   unsigned char sha[65];
   char *b64sign,*keyub64;
+  int i,nCanonicalHeaders=0,cnt=0;
+  assert(rcache->provider == MAPCACHE_REST_PROVIDER_AZURE);
+  azure = (mapcache_cache_azure*)rcache;
+  now = time(NULL);
+  tnow = gmtime(&now);
   sha[64]=0;
 
   strftime(x_ms_date, sizeof(x_ms_date), "%a, %d %b %Y %H:%M:%S GMT", tnow);
@@ -576,8 +584,9 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
   elts = (apr_table_entry_t *) ahead->elts;
 
   for (i = 0; i < ahead->nelts; i++) {
+	char *k;
     if(strncmp(elts[i].key,"x-ms-",5) || elts[i].key[5]==0) continue;
-    char *k = aheaders[nCanonicalHeaders] = apr_pstrdup(ctx->pool, elts[i].key);
+    k = aheaders[nCanonicalHeaders] = apr_pstrdup(ctx->pool, elts[i].key);
     while(*k) {
       *k = tolower(*k);
       k++;
@@ -589,7 +598,7 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
   for(i=0; i<nCanonicalHeaders; i++) {
     canonical_headers = apr_pstrcat(ctx->pool, canonical_headers, aheaders[i],":",apr_table_get(headers,aheaders[i]),"\n",NULL);
   }
-  
+
   /* find occurence of third "/" in url */
   while(*resource) {
     if(*resource == '/') cnt++;
@@ -616,7 +625,7 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
 
   apr_table_set( headers, "Authorization", apr_pstrcat(ctx->pool,"SharedKey ", azure->id, ":", b64sign, NULL));
 
-  
+
 }
 static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* method, mapcache_cache_rest *rcache, mapcache_tile *tile, char *url, apr_table_t *headers)
 {
@@ -627,15 +636,16 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   const apr_array_header_t *ahead;
   char *tosign, *key, *canonical_request, x_amz_date[64], *resource = url, **aheaders, *auth;
   apr_table_entry_t *elts;
+  mapcache_cache_s3 *s3;
 
   sha1[64]=sha2[64]=0;
   assert(rcache->provider == MAPCACHE_REST_PROVIDER_S3);
-  mapcache_cache_s3 *s3 = (mapcache_cache_s3*)rcache;
+  s3 = (mapcache_cache_s3*)rcache;
 
   if(!strcmp(method,"PUT")) {
     assert(tile->encoded_data);
     sha256((unsigned char*)tile->encoded_data->buf, tile->encoded_data->size, sha1);
-    sha_hex_encode(sha1,32); 
+    sha_hex_encode(sha1,32);
   } else {
     /* sha256 hash of empty string */
     memcpy(sha1,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",64);
@@ -653,7 +663,7 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
     ctx->set_error(ctx,500,"invalid s3 url provided");
     return;
   }
-  
+
   strftime(x_amz_date, sizeof(x_amz_date), "%Y%m%dT%H%M%SZ", tnow);
   apr_table_set(headers, "x-amz-date", x_amz_date);
 
@@ -670,7 +680,7 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
       k++;
     }
   }
-  
+
   header_gnome_sort(aheaders, ahead->nelts);
   for(i=0; i<ahead->nelts; i++) {
     canonical_request = apr_pstrcat(ctx->pool, canonical_request, aheaders[i],":",apr_table_get(headers,aheaders[i]),"\n",NULL);
@@ -768,7 +778,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   if(rcache->rest.has_tile.add_headers) {
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
-  
+
   status = _head_request(ctx, url, headers);
 
   if(GC_HAS_ERROR(ctx))
@@ -794,7 +804,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   if(rcache->rest.delete_tile.add_headers) {
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
-  
+
   status = _delete_request(ctx, url, headers);
   GC_CHECK_ERROR(ctx);
 
@@ -851,9 +861,10 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
   }
 
   for(i=0; i<ntiles; i++) {
+	mapcache_tile *tile;
     if(i)
       curl_easy_reset(curl);
-    mapcache_tile *tile = tiles + i;
+    tile = tiles + i;
     _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
     headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
 
@@ -889,7 +900,7 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
   }
 
 multi_put_cleanup:
-  /* always cleanup */ 
+  /* always cleanup */
   curl_easy_cleanup(curl);
 
 }
@@ -969,7 +980,7 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
 
 }
 
-static void _mapcache_cache_google_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) 
+static void _mapcache_cache_google_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_cache_google *google = (mapcache_cache_google*)cache;
@@ -989,7 +1000,7 @@ static void _mapcache_cache_google_configuration_parse_xml(mapcache_context *ctx
   }
 }
 
-static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) 
+static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_cache_s3 *s3 = (mapcache_cache_s3*)cache;
@@ -1015,7 +1026,7 @@ static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ez
   }
 }
 
-static void _mapcache_cache_azure_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config) 
+static void _mapcache_cache_azure_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_cache_azure *azure = (mapcache_cache_azure*)cache;

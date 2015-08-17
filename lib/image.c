@@ -85,6 +85,9 @@ int mapcache_image_has_alpha(mapcache_image *img)
 void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_image *overlay)
 {
   int starti,startj;
+  pixman_image_t *si;
+  pixman_image_t *bi;
+  pixman_transform_t transform;
 #ifndef USE_PIXMAN
   int i,j;
   unsigned char *browptr, *orowptr, *bptr, *optr;
@@ -97,11 +100,10 @@ void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_
   starti = (base->h - overlay->h)/2;
   startj = (base->w - overlay->w)/2;
 #ifdef USE_PIXMAN
-  pixman_image_t *si = pixman_image_create_bits(PIXMAN_a8r8g8b8,overlay->w,overlay->h,
+  si = pixman_image_create_bits(PIXMAN_a8r8g8b8,overlay->w,overlay->h,
                        (uint32_t*)overlay->data,overlay->stride);
-  pixman_image_t *bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
+  bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
                        (uint32_t*)base->data,base->stride);
-  pixman_transform_t transform;
   pixman_transform_init_translate(&transform,
                                   pixman_int_to_fixed(-startj),
                                   pixman_int_to_fixed(-starti));

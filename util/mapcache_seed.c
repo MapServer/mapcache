@@ -169,7 +169,7 @@ int pop_queue(struct seed_cmd *cmd)
     return APR_SUCCESS;
   }
 #endif
-  
+
   ret = apr_queue_pop(work_queue, (void**)&pcmd);
   if(ret == APR_SUCCESS) {
     *cmd = *pcmd;
@@ -280,6 +280,10 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_metatile *mt = mapcache_tileset_metatile_get(ctx,tile);
   GEOSCoordSequence *mtbboxls = GEOSCoordSeq_create(5,2);
+  GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
+  GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
+  int i;
+  int intersects = 0;
   GEOSCoordSeq_setX(mtbboxls,0,mt->map.extent.minx);
   GEOSCoordSeq_setY(mtbboxls,0,mt->map.extent.miny);
   GEOSCoordSeq_setX(mtbboxls,1,mt->map.extent.maxx);
@@ -290,10 +294,6 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   GEOSCoordSeq_setY(mtbboxls,3,mt->map.extent.maxy);
   GEOSCoordSeq_setX(mtbboxls,4,mt->map.extent.minx);
   GEOSCoordSeq_setY(mtbboxls,4,mt->map.extent.miny);
-  GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
-  GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
-  int i;
-  int intersects = 0;
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
@@ -612,7 +612,7 @@ void seed_worker()
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
     }
-    
+
     {
       struct seed_status *st = calloc(1,sizeof(struct seed_status));
       st->x=tile->x;
@@ -647,10 +647,17 @@ static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
 }
 
 static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
+  size_t cur;
+  double last_time;
+  double now_time;
+  int i;
+  int nfailed;
+  int ntotal;
+  double pct;
   char failed[FAIL_BACKLOG_COUNT];
   memset(failed,-1,FAIL_BACKLOG_COUNT);
-  size_t cur=0;
-  double last_time=0, now_time;
+  cur=0;
+  last_time=0;
   while(1) {
     struct seed_status *st;
     apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
@@ -674,16 +681,17 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
     } else {
       /* count how many errors and successes we have */
       failed[cur]=1;
-      int i,nfailed=0,ntotal=0;
+      nfailed=0;
+      ntotal=0;
       if(failed_log) {
         fprintf(failed_log,"%d,%d,%d\n",st->x,st->y,st->z);
       }
       for(i=0; i<FAIL_BACKLOG_COUNT; i++) {
         if(failed[i]>=0) ntotal++;
-        if(failed[i]==1) nfailed++; 
+        if(failed[i]==1) nfailed++;
       }
       ctx.log(&ctx, MAPCACHE_WARN, "failed to seed tile z%d,x%d,y%d:\n%s\n", st->z,st->x,st->y,st->msg);
-      double pct = ((double)nfailed / (double)ntotal) * 100;
+      pct = ((double)nfailed / (double)ntotal) * 100;
       if(pct > percent_failed_allowed) {
         ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
         error_detected = 1;
@@ -781,6 +789,8 @@ int main(int argc, const char **argv)
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
   double *extent_array = NULL;
+  OGRFeatureH hFeature;
+  GEOSWKTReader *geoswktreader;
 
 #ifdef USE_CLIPPERS
   const char *ogr_where = NULL;
@@ -976,6 +986,7 @@ int main(int argc, const char **argv)
   }
 
   if(ogr_datasource) {
+    int f=0;
     OGRDataSourceH hDS = NULL;
     OGRLayerH layer = NULL;
     OGRRegisterAll();
@@ -1023,21 +1034,20 @@ int main(int argc, const char **argv)
     clippers = (const GEOSPreparedGeometry**)malloc(nClippers*sizeof(GEOSPreparedGeometry*));
 
 
-    OGRFeatureH hFeature;
-    GEOSWKTReader *geoswktreader = GEOSWKTReader_create();
+    geoswktreader = GEOSWKTReader_create();
     OGR_L_ResetReading(layer);
     extent = apr_palloc(ctx.pool,4*sizeof(mapcache_extent));
-    int f=0;
     while( (hFeature = OGR_L_GetNextFeature(layer)) != NULL ) {
+      char *wkt;
+      GEOSGeometry *geosgeom;
+      OGREnvelope ogr_extent;
       OGRGeometryH geom = OGR_F_GetGeometryRef(hFeature);
       if(!geom ||  !OGR_G_IsValid(geom)) continue;
-      char *wkt;
       OGR_G_ExportToWkt(geom,&wkt);
-      GEOSGeometry *geosgeom = GEOSWKTReader_read(geoswktreader,wkt);
+      geosgeom = GEOSWKTReader_read(geoswktreader,wkt);
       free(wkt);
       clippers[f] = GEOSPrepare(geosgeom);
       //GEOSGeom_destroy(geosgeom);
-      OGREnvelope ogr_extent;
       OGR_G_GetEnvelope  (geom, &ogr_extent);
       if(f == 0) {
         extent->minx = ogr_extent.MinX;
@@ -1222,11 +1232,11 @@ int main(int argc, const char **argv)
         apr_table_set(dimensions,tileset->timedimension->key,APR_ARRAY_IDX(timedim_selected,0,char*));
       } else {
         return usage(argv[0],"tileset references a TIME dimension, but none supplied on commandline. (hint: -D %s=<timestamp>",tileset->timedimension->key);
-        
+
       }
     }
   }
-  
+
   {
   /* start the logging thread */
     //create the queue where the seeding statuses will be put
@@ -1334,9 +1344,9 @@ int main(int argc, const char **argv)
   apr_terminate();
 
   if (error_detected > 0) {
-    exit(1);  
+    exit(1);
   }
-  
+
   return 0;
 }
 /* vim: ts=2 sts=2 et sw=2
