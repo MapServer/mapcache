@@ -310,8 +310,15 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   int action = MAPCACHE_CMD_SKIP;
-  int intersects = -1;
-  int tile_exists = force?0:tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
+  int tile_exists;
+
+#ifdef USE_CLIPPERS
+  /* check we are in the requested features before checking the tile */
+  if(nClippers > 0 && ogr_features_intersect_tile(ctx,tile) == 0)
+    return MAPCACHE_CMD_SKIP;
+#endif
+
+  tile_exists = force?0:tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
 
   /* if the tile exists and a time limit was specified, check the tile modification date */
   if(tile_exists) {
@@ -319,32 +326,20 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
       if(tileset->_cache->tile_get(ctx,tileset->_cache, tile) == MAPCACHE_SUCCESS) {
         if(tile->mtime && tile->mtime<age_limit) {
           /* the tile modification time is older than the specified limit */
-#ifdef USE_CLIPPERS
-          /* check we are in the requested features before deleting the tile */
-          if(nClippers > 0) {
-            intersects = ogr_features_intersect_tile(ctx,tile);
+      if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
+        mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
+        /* if we are in mode transfer, delete it from the dst tileset */
+        if (mode == MAPCACHE_CMD_TRANSFER) {
+          tile->tileset = tileset_transfer;
+          if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
+        mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
           }
-#endif
-          if(intersects != 0) {
-            /* the tile intersects the ogr features, or there was no clipping asked for: seed it */
-            if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
-              mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-              /* if we are in mode transfer, delete it from the dst tileset */
-              if (mode == MAPCACHE_CMD_TRANSFER) {
-                tile->tileset = tileset_transfer;
-                if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
-                  mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-                }
-                tile->tileset = tileset;
-              }
-              action = mode;
-            } else { //if(action == MAPCACHE_CMD_DELETE)
-              action = MAPCACHE_CMD_DELETE;
-            }
-          } else {
-            /* the tile does not intersect the ogr features, and already exists, do nothing */
-            action = MAPCACHE_CMD_SKIP;
-          }
+          tile->tileset = tileset;
+        }
+        action = mode;
+      } else { //if(action == MAPCACHE_CMD_DELETE)
+        action = MAPCACHE_CMD_DELETE;
+      }
         }
       } else {
         //BUG: tile_exists returned true, but tile_get returned a failure. not sure what to do.
@@ -372,20 +367,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
   } else {
     // the tile does not exist
     if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
-#ifdef USE_CLIPPERS
-      /* check we are in the requested features before deleting the tile */
-      if(nClippers > 0) {
-        if(ogr_features_intersect_tile(ctx,tile)) {
-          action = mode;
-        } else {
-          action = MAPCACHE_CMD_SKIP;
-        }
-      } else {
-        action = mode;
-      }
-#else
       action = mode;
-#endif
     } else {
       action = MAPCACHE_CMD_SKIP;
     }
