@@ -497,16 +497,19 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
     }
     if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       char *blankname;
+      int retry_count_create_symlink = 0;
+      char *blankname_rel = NULL;
       _mapcache_cache_disk_blank_tile_key(ctx,cache,tile,tile->raw_image->data,&blankname);
       if(apr_file_open(&f, blankname, APR_FOPEN_READ, APR_OS_DEFAULT, ctx->pool) != APR_SUCCESS) {
         int isLocked;
         void *lock;
+        char *blankdirname;
         if(!tile->encoded_data) {
           tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
           GC_CHECK_ERROR(ctx);
         }
         /* create the blank file */
-        char *blankdirname = apr_psprintf(ctx->pool, "%s/%s/%s/blanks",
+        blankdirname = apr_psprintf(ctx->pool, "%s/%s/%s/blanks",
                                           cache->base_directory,
                                           tile->tileset->name,
                                           tile->grid_link->grid->name);
@@ -554,12 +557,10 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
         apr_file_close(f);
       }
 
-      int retry_count_create_symlink = 0;
 
       /*
        * compute the relative path between tile and blank tile
        */
-      char *blankname_rel = NULL;
       blankname_rel = relative_path(ctx,filename, blankname);
       GC_CHECK_ERROR(ctx);
 

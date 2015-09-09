@@ -137,6 +137,7 @@ cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either
 
 int push_queue(struct seed_cmd cmd)
 {
+  struct seed_cmd *pcmd;
 #ifdef USE_FORK
   if(nprocesses > 1) {
     struct msg_cmd mcmd;
@@ -149,7 +150,7 @@ int push_queue(struct seed_cmd cmd)
     return APR_SUCCESS;
   }
 #endif
-  struct seed_cmd *pcmd = calloc(1,sizeof(struct seed_cmd));
+  pcmd = calloc(1,sizeof(struct seed_cmd));
   *pcmd = cmd;
   return apr_queue_push(work_queue,pcmd);
 }

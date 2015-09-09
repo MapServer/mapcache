@@ -74,6 +74,12 @@ set_target_properties(mapcache PROPERTIES
   SOVERSION 1
 )
 
+# Add compiler flags for warnings
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_GNUCC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror=declaration-after-statement")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+endif()
+
 #options suported by the cmake builder
 option(WITH_PIXMAN "Use pixman for SSE optimized image manipulations" ON)
 option(WITH_SQLITE "Use sqlite as a cache backend" ON)
