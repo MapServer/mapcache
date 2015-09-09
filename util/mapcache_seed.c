@@ -1019,7 +1019,7 @@ int main(int argc, const char **argv)
 
     geoswktreader = GEOSWKTReader_create();
     OGR_L_ResetReading(layer);
-    extent = apr_palloc(ctx.pool,4*sizeof(mapcache_extent));
+    extent = apr_palloc(ctx.pool,sizeof(mapcache_extent));
     while( (hFeature = OGR_L_GetNextFeature(layer)) != NULL ) {
       char *wkt;
       GEOSGeometry *geosgeom;
@@ -1077,6 +1077,36 @@ int main(int argc, const char **argv)
       }
       if(!grid_link) {
         return usage(argv[0],"grid not configured for tileset");
+      }
+    }
+    if(ogr_datasource) {
+      /* check that the provided ogr features are compatible with the grid units */
+      if(grid_link->grid->unit == MAPCACHE_UNIT_DEGREES) {
+        if(extent->minx < -181.0 ||
+           extent->maxx > 181.0 ||
+           extent->miny < -91.0 ||
+           extent->maxy > 91.0) {
+          printf("\n********************************************************************************\n"
+                 "* WARNING!!!: you are seeding a grid in latlon degreees,\n"
+                 "* but your provided OGR intersection features span (%f,%f,%f,%f).\n"
+                 "* this seems like an error, you should be providing OGR features that\n"
+                 "* are in the same projection as the grid you want to seed\n"
+                 "********************************************************************************\n\n",
+                 extent->minx, extent->miny, extent->maxx, extent->maxy);
+        }
+      } else {
+        if(extent->minx > -181.0 &&
+           extent->maxx < 181.0 &&
+           extent->miny > -91.0 &&
+           extent->maxy < 91.0) {
+          printf("\n********************************************************************************\n"
+                 "* WARNING!!!: you are seeding a grid that is not in latlon degreees,\n"
+                 "* but your provided OGR intersection features span (%f,%f,%f,%f) which seem to be in degrees.\n"
+                 "* this seems like an error, you should be providing OGR features that\n"
+                 "* are in the same projection as the grid you want to seed\n"
+                 "********************************************************************************\n\n",
+                 extent->minx, extent->miny, extent->maxx, extent->maxy);
+        }
       }
     }
     if(iteration_mode == MAPCACHE_ITERATION_UNSET) {
