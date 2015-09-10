@@ -515,7 +515,7 @@ typedef enum {
   MAPCACHE_REST_PROVIDER_NONE,
   MAPCACHE_REST_PROVIDER_S3,
   MAPCACHE_REST_PROVIDER_AZURE,
-  MAPCACHE_REST_PROVIDER_GOOGLE,
+  MAPCACHE_REST_PROVIDER_GOOGLE
 } mapcache_rest_provider;
 
 void sha256(const unsigned char *message, unsigned int len, unsigned char *digest);
@@ -1439,7 +1439,7 @@ typedef enum {
   MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT,
   MAPCACHE_GRID_ORIGIN_TOP_LEFT,
   MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT,
-  MAPCACHE_GRID_ORIGIN_TOP_RIGHT,
+  MAPCACHE_GRID_ORIGIN_TOP_RIGHT
 } mapcache_grid_origin;
 
 struct mapcache_grid {

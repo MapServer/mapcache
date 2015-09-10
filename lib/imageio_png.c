@@ -324,14 +324,10 @@ void _mapcache_imageio_png_flush_func(png_structp png_ptr)
   // do nothing
 }
 
-#ifndef _WIN32
-static inline int premultiply (int color,int alpha)
-#else
-static __inline int premultiply (int color,int alpha)
-#endif
-{
-  int temp = (alpha * color) + 0x80;
-  return ((temp + (temp >> 8)) >> 8);
+#define PREMULTIPLY(out,color,alpha)\
+{\
+  int temp = ((alpha) * (color)) + 0x80;\
+  out =((temp + (temp >> 8)) >> 8);\
 }
 
 
@@ -425,9 +421,9 @@ void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffe
         pixptr[1] = 0;
         pixptr[2] = 0;
       } else {
-        pixptr[0] = premultiply(pixel[2],alpha);
-        pixptr[1] = premultiply(pixel[1],alpha);
-        pixptr[2] = premultiply(pixel[0],alpha);
+        PREMULTIPLY(pixptr[0],pixel[2],alpha);
+        PREMULTIPLY(pixptr[1],pixel[1],alpha);
+        PREMULTIPLY(pixptr[2],pixel[0],alpha);
       }
       pixptr += 4;
     }
