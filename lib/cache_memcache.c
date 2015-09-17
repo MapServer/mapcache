@@ -213,10 +213,11 @@ cleanup:
  */
 static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
-  char *key;
+  char *key, *data;
   int rv;
   /* set no expiration if not configured */
   int expires =0;
+  apr_time_t now;
   mapcache_buffer *encoded_data = NULL;
   mapcache_cache_memcache *cache = (mapcache_cache_memcache*)pcache;
   mapcache_pooled_connection *pc;
@@ -252,8 +253,8 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
 
   /* concatenate the current time to the end of the memcache data so we can extract it out
    * when we re-get the tile */
-  char *data = calloc(1,encoded_data->size+sizeof(apr_time_t));
-  apr_time_t now = apr_time_now();
+  data = calloc(1,encoded_data->size+sizeof(apr_time_t));
+  now = apr_time_now();
   apr_pool_cleanup_register(ctx->pool, data, (void*)free, apr_pool_cleanup_null);
   memcpy(data,encoded_data->buf,encoded_data->size);
   memcpy(&(data[encoded_data->size]),&now,sizeof(apr_time_t));
