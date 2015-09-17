@@ -773,10 +773,10 @@ int main(int argc, const char **argv)
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
   double *extent_array = NULL;
-  OGRFeatureH hFeature;
-  GEOSWKTReader *geoswktreader;
 
 #ifdef USE_CLIPPERS
+  OGRFeatureH hFeature;
+  GEOSWKTReader *geoswktreader;
   const char *ogr_where = NULL;
   const char *ogr_layer = NULL;
   const char *ogr_sql = NULL;
@@ -1080,6 +1080,7 @@ int main(int argc, const char **argv)
         return usage(argv[0],"grid not configured for tileset");
       }
     }
+#ifdef USE_CLIPPERS
     if(ogr_datasource) {
       /* check that the provided ogr features are compatible with the grid units */
       if(grid_link->grid->unit == MAPCACHE_UNIT_DEGREES) {
@@ -1110,6 +1111,7 @@ int main(int argc, const char **argv)
         }
       }
     }
+#endif
     if(iteration_mode == MAPCACHE_ITERATION_UNSET) {
       if(!strcmp(grid_link->grid->name,"g") || !strcmp(grid_link->grid->name,"WGS84")
               || !strcmp(grid_link->grid->name,"GoogleMapsCompatible")) {
