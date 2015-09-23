@@ -46,7 +46,7 @@ void mapcache_memcache_connection_constructor(mapcache_context *ctx, void **conn
   struct mapcache_memcache_pooled_connection *pc;
   int i;
   pc = calloc(1,sizeof(struct mapcache_memcache_pooled_connection));
-  apr_pool_create(&pc->pool,process_pool);
+  apr_pool_create(&pc->pool,NULL);
   if(APR_SUCCESS != apr_memcache_create(pc->pool, cache->nservers, 0, &(pc->memcache))) {
     ctx->set_error(ctx,500,"cache %s: failed to create memcache backend", cache->cache.name);
     return;
@@ -186,7 +186,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
     &(((char*)encoded_data->buf)[encoded_data->size-sizeof(apr_time_t)]),
     sizeof(apr_time_t));
   
-  ((char*)encoded_data->buf)[encoded_data->size+sizeof(apr_time_t)]='\0';
+  ((char*)encoded_data->buf)[encoded_data->size-sizeof(apr_time_t)]='\0';
   encoded_data->avail = encoded_data->size;
   encoded_data->size -= sizeof(apr_time_t);
   if(((char*)encoded_data->buf)[0] == '#' && encoded_data->size > 1) {

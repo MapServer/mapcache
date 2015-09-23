@@ -313,14 +313,16 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
   int rv;
-  mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
 #ifdef APR_HAS_THREADS
   apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
 #endif
-  rv = mapcache_connection_pool_create(&(cfg->cp),pool);
-  ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a mapcache connection pool for server");
-  if(rv!=APR_SUCCESS) {
-    ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+  for( ; s ; s=s->next) {
+    mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
+    rv = mapcache_connection_pool_create(&(cfg->cp),pool);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a mapcache connection pool for child process");
+    if(rv!=APR_SUCCESS) {
+      ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+    }
   }
 }
 
@@ -449,7 +451,6 @@ static int mod_mapcache_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t 
     ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "configuration not found in server context");
     return 1;
   }
-  
 
 #ifdef USE_VERSION_STRING
   ap_add_version_component(p, MAPCACHE_USERAGENT);
@@ -566,7 +567,7 @@ static void *mod_mapcache_merge_server_conf(apr_pool_t *p, void *base_, void *vh
   } else if (base->aliases) {
     cfg->aliases = apr_hash_copy(p,base->aliases);
   }
-  return vhost;
+  return cfg;
 }
 
 static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *alias, const char* configfile)
