@@ -310,13 +310,13 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
         return NULL;
       }
     } else {
+      unsigned char empty[5] = {'#',0,0,0,0};
 #ifdef DEBUG
       if(!is_empty) {
         ctx->set_error(ctx,500,"BUG: no image data to encode, but tile not marked as empty");
         return NULL;
       }
 #endif
-      unsigned char empty[5] = {'#',0,0,0,0};
       response->data = mapcache_empty_png_decode(ctx,req_tile->tiles[0]->grid_link->grid->tile_sx, req_tile->tiles[0]->grid_link->grid->tile_sy, empty,&is_empty); /* is_empty is unchanged and left to 1 */
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
