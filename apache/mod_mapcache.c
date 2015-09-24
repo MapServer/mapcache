@@ -184,18 +184,33 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
   mapcache_context_apache_request *ctx = apr_pcalloc(r->pool, sizeof(mapcache_context_apache_request));
   mapcache_server_cfg *cfg = NULL;
   mapcache_cfg *config = NULL;
+  const char *mapcache_config_file;
+  mapcache_context *mctx = (mapcache_context*)ctx;
 
-  ctx->ctx.ctx.pool = r->pool;
+  mctx->pool = r->pool;
 #ifdef APR_HAS_THREADS
-  ctx->ctx.ctx.threadlock = thread_mutex;
+  mctx->threadlock = thread_mutex;
 #endif
 
   /* lookup the configuration object given the configuration file name */
   cfg = ap_get_module_config(r->server->module_config, &mapcache_module);
-  config = apr_hash_get(cfg->aliases,(void*)r->filename,APR_HASH_KEY_STRING);
-  ctx->ctx.ctx.config = config;
+  if(!cfg) {
+    return NULL;
+  }
+  mapcache_config_file = apr_table_get(r->notes,"mapcache_config_file");
+  //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "using mapcache config %s", mapcache_config_file);
+  if(!mapcache_config_file) {
+    return NULL;
+  }
+
+  config = apr_hash_get(cfg->aliases,mapcache_config_file,APR_HASH_KEY_STRING);
+  if(!config) {
+    return NULL;
+  }
+
+  mctx->config = config;
   ctx->request = r;
-  ctx->ctx.ctx.connection_pool = cfg->cp;
+  mctx->connection_pool = cfg->cp;
   init_apache_request_context(ctx);
   return ctx;
 }
@@ -227,7 +242,7 @@ static void read_post_body(mapcache_context_apache_request *ctx, mapcache_reques
     }
   } else {
     bytes = p->rule->max_post_len;
-  } 
+  }
 
   bb = apr_brigade_create(mctx->pool, r->connection->bucket_alloc);
   bbin = apr_brigade_create(mctx->pool, r->connection->bucket_alloc);
@@ -343,11 +358,18 @@ static int mod_mapcache_request_handler(request_rec *r)
 
 
   apache_ctx = apache_request_context_create(r);
+
+  if(!apache_ctx) {
+    return DECLINED;
+  }
+
   global_ctx = (mapcache_context*)apache_ctx;
   global_ctx->supports_redirects = 1;
   global_ctx->headers_in = r->headers_in;
 
   params = mapcache_http_parse_param_string(global_ctx, r->args);
+
+  //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mapcache dispatch %s",r->path_info);
 
   mapcache_service_dispatch_request(global_ctx,&request,r->path_info,params,global_ctx->config);
   if(GC_HAS_ERROR(global_ctx) || !request) {
@@ -419,7 +441,7 @@ static int mod_mapcache_request_handler(request_rec *r)
           apr_table_set(req_proxy->headers, "X-Forwarded-Host", buf);
         }
       }
-      
+
       if ((buf = apr_table_get(r->headers_in, "X-Forwarded-Server"))) {
         apr_table_set(req_proxy->headers, "X-Forwarded-Server", apr_psprintf(global_ctx->pool, "%s, %s", buf, r->server->server_hostname));
       } else {
@@ -503,13 +525,14 @@ static int mapcache_hook_intercept(request_rec *r)
   mapcache_server_cfg *sconfig = ap_get_module_config(r->server->module_config, &mapcache_module);
   apr_hash_index_t *entry;
 
-  if (!sconfig->aliases)
+  if (!sconfig || !sconfig->aliases)
     return DECLINED;
 
   if (r->uri[0] != '/' && r->uri[0])
     return DECLINED;
 
   entry = apr_hash_first(r->pool,sconfig->aliases);
+  //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "running mapcache alias matching");
 
   /* loop through the entries to find one where the alias matches */
   while (entry) {
@@ -518,12 +541,15 @@ static int mapcache_hook_intercept(request_rec *r)
     apr_ssize_t aliaslen;
     mapcache_cfg *c;
     apr_hash_this(entry,(const void**)&alias,&aliaslen,(void**)&c);
+    //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cheking mapcache alias %s against %s",r->uri,c->endpoint);
 
     if((l=mapcache_alias_matches(r->uri, c->endpoint))>0) {
       r->handler = "mapcache";
-      r->filename = c->configFile;
-      r->path_info = &(r->uri[l]);
-      return OK;
+      apr_table_set(r->notes,"mapcache_config_file",c->configFile);
+      //r->path_info = &(r->uri[l]);
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting config %s for alias %s",c->configFile,c->endpoint);
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting pathinfo to %s",r->path_info);
+      return DECLINED;
     }
 
     entry = apr_hash_next(entry);
