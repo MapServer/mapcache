@@ -73,6 +73,19 @@ struct mapcache_context_apache_request {
   request_rec *request;
 };
 
+typedef struct mapcache_alias_entry mapcache_alias_entry;
+
+struct mapcache_alias_entry {
+  char *endpoint;
+  char *configfile;
+  mapcache_cfg *cfg;
+  mapcache_connection_pool *cp;
+};
+
+struct mapcache_server_cfg {
+  apr_array_header_t *aliases; /**< list of mapcache configurations aliased to a server uri */
+};
+
 void apache_context_server_log(mapcache_context *c, mapcache_log_level level, char *message, ...)
 {
   mapcache_context_apache_server *ctx = (mapcache_context_apache_server*)c;
@@ -183,8 +196,9 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
 {
   mapcache_context_apache_request *ctx = apr_pcalloc(r->pool, sizeof(mapcache_context_apache_request));
   mapcache_server_cfg *cfg = NULL;
-  mapcache_cfg *config = NULL;
-  const char *mapcache_config_file;
+  const char *mapcache_alias;
+  mapcache_alias_entry *alias_entry;
+  int i;
   mapcache_context *mctx = (mapcache_context*)ctx;
 
   mctx->pool = r->pool;
@@ -194,25 +208,30 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
 
   /* lookup the configuration object given the configuration file name */
   cfg = ap_get_module_config(r->server->module_config, &mapcache_module);
-  if(!cfg) {
+  if(!cfg || !cfg->aliases) {
     return NULL;
   }
-  mapcache_config_file = apr_table_get(r->notes,"mapcache_config_file");
+
+  mapcache_alias = apr_table_get(r->notes,"mapcache_alias_entry");
   //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "using mapcache config %s", mapcache_config_file);
-  if(!mapcache_config_file) {
+  if(!mapcache_alias) {
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "mapcache module bug? no mapcache_alias_entry found");
     return NULL;
   }
 
-  config = apr_hash_get(cfg->aliases,mapcache_config_file,APR_HASH_KEY_STRING);
-  if(!config) {
-    return NULL;
-  }
+  for(i=0; i<cfg->aliases->nelts; i++) {
+    alias_entry = APR_ARRAY_IDX(cfg->aliases,i,mapcache_alias_entry*);
+    if(strcmp(alias_entry->endpoint,mapcache_alias))
+      continue;
 
-  mctx->config = config;
-  ctx->request = r;
-  mctx->connection_pool = cfg->cp;
-  init_apache_request_context(ctx);
-  return ctx;
+    mctx->config = alias_entry->cfg;
+    ctx->request = r;
+    mctx->connection_pool = alias_entry->cp;
+    init_apache_request_context(ctx);
+    return ctx;
+  }
+  ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "mapcache module bug? no mapcache_alias_entry found for %s",mapcache_alias);
+  return NULL;
 }
 
 static mapcache_context_apache_server* apache_server_context_create(server_rec *s, apr_pool_t *pool)
@@ -327,16 +346,19 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
-  int rv;
 #ifdef APR_HAS_THREADS
   apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
 #endif
   for( ; s ; s=s->next) {
     mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
-    rv = mapcache_connection_pool_create(&(cfg->cp),pool);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a mapcache connection pool for child process");
-    if(rv!=APR_SUCCESS) {
-      ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+    int i,rv;
+    for(i=0;i<cfg->aliases->nelts;i++) {
+      mapcache_alias_entry *alias_entry = APR_ARRAY_IDX(cfg->aliases,i,mapcache_alias_entry*);
+      rv = mapcache_connection_pool_create(&(alias_entry->cp),pool);
+      ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a child process mapcache connection pool on server %s for alias %s", s->server_hostname, alias_entry->endpoint);
+      if(rv!=APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+      }
     }
   }
 }
@@ -520,39 +542,35 @@ static int mapcache_alias_matches(const char *uri, const char *alias_fakename)
   return urip - uri;
 }
 
-static int mapcache_hook_intercept(request_rec *r)
+static int mapcache_hook_fixups(request_rec *r)
 {
-  mapcache_server_cfg *sconfig = ap_get_module_config(r->server->module_config, &mapcache_module);
-  apr_hash_index_t *entry;
+  int i;
+  //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "running mapcache fixup on %s (handler:%s,filename:%s)",r->uri,r->handler,r->filename);
+  if(!r->handler) {
+    mapcache_server_cfg *sconfig = ap_get_module_config(r->server->module_config, &mapcache_module);
+    mapcache_alias_entry *alias_entry;
 
-  if (!sconfig || !sconfig->aliases)
-    return DECLINED;
-
-  if (r->uri[0] != '/' && r->uri[0])
-    return DECLINED;
-
-  entry = apr_hash_first(r->pool,sconfig->aliases);
-  //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "running mapcache alias matching");
-
-  /* loop through the entries to find one where the alias matches */
-  while (entry) {
-    int l = 0;
-    const char *alias;
-    apr_ssize_t aliaslen;
-    mapcache_cfg *c;
-    apr_hash_this(entry,(const void**)&alias,&aliaslen,(void**)&c);
-    //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cheking mapcache alias %s against %s",r->uri,c->endpoint);
-
-    if((l=mapcache_alias_matches(r->uri, c->endpoint))>0) {
-      r->handler = "mapcache";
-      apr_table_set(r->notes,"mapcache_config_file",c->configFile);
-      //r->path_info = &(r->uri[l]);
-      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting config %s for alias %s",c->configFile,c->endpoint);
-      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting pathinfo to %s",r->path_info);
+    if (!sconfig || !sconfig->aliases)
       return DECLINED;
-    }
 
-    entry = apr_hash_next(entry);
+    if (r->uri[0] != '/' && r->uri[0])
+      return DECLINED;
+
+    /* loop through the entries to find one where the alias matches */
+    for(i=0; i<sconfig->aliases->nelts; i++) {
+      int l;
+      alias_entry = APR_ARRAY_IDX(sconfig->aliases,i,mapcache_alias_entry*);
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cheking mapcache alias %s against %s",r->uri,alias_entry->endpoint);
+
+      if((l=mapcache_alias_matches(r->uri, alias_entry->endpoint))>0) {
+        r->handler = apr_pstrdup(r->pool,"mapcache");
+        apr_table_set(r->notes,"mapcache_alias_entry",alias_entry->endpoint);
+        r->path_info = &(r->uri[l]);
+        //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting config %s for alias %s",alias_entry->configfile,alias_entry->endpoint);
+        //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "using pathinfo %s from uri %s",r->path_info,r->uri);
+        return OK;
+      }
+    }
   }
 
   return DECLINED;
@@ -561,21 +579,17 @@ static int mapcache_hook_intercept(request_rec *r)
 
 static void mod_mapcache_register_hooks(apr_pool_t *p)
 {
-  static const char * const p1[] = { "mod_alias.c", "mod_rewrite.c", NULL };
-  static const char * const n1[]= { "mod_userdir.c",
-                                    "mod_vhost_alias.c", NULL
-                                  };
   ap_hook_child_init(mod_mapcache_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_post_config(mod_mapcache_post_config, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_handler(mod_mapcache_request_handler, NULL, NULL, APR_HOOK_MIDDLE);
-  ap_hook_translate_name(mapcache_hook_intercept, p1, n1, APR_HOOK_MIDDLE);
+  ap_hook_fixups(mapcache_hook_fixups, NULL, NULL, APR_HOOK_MIDDLE);
 
 }
 
 static void* mod_mapcache_create_server_conf(apr_pool_t *pool, server_rec *s)
 {
   mapcache_server_cfg *cfg = apr_pcalloc(pool, sizeof(mapcache_server_cfg));
-  cfg->aliases = NULL;
+  cfg->aliases = apr_array_make(pool,1,sizeof(mapcache_alias_entry*));
   return cfg;
 }
 
@@ -586,38 +600,63 @@ static void *mod_mapcache_merge_server_conf(apr_pool_t *p, void *base_, void *vh
   mapcache_server_cfg *vhost = (mapcache_server_cfg*)vhost_;
   mapcache_server_cfg *cfg = apr_pcalloc(p,sizeof(mapcache_server_cfg));
 
-  if (base->aliases && vhost->aliases) {
-    cfg->aliases = apr_hash_overlay(p, vhost->aliases,base->aliases);
-  } else if (vhost->aliases) {
-    cfg->aliases = apr_hash_copy(p,vhost->aliases);
-  } else if (base->aliases) {
-    cfg->aliases = apr_hash_copy(p,base->aliases);
+  cfg->aliases = apr_array_append(p, vhost->aliases,base->aliases);
+
+#if 0
+  {
+    mapcache_alias_entry *e;
+    int i;
+    fprintf(stderr,"#### merge called ####\n");
+    for(i=0;i<base->aliases->nelts;i++) {
+      e = APR_ARRAY_IDX(base->aliases,i,mapcache_alias_entry*);
+      fprintf(stderr,"merge base: have alias %s on %s\n",e->configfile,e->endpoint);
+    }
+    for(i=0;i<vhost->aliases->nelts;i++) {
+      e = APR_ARRAY_IDX(vhost->aliases,i,mapcache_alias_entry*);
+      fprintf(stderr,"merge vhosts: have alias %s on %s\n",e->configfile,e->endpoint);
+    }
+    for(i=0;i<cfg->aliases->nelts;i++) {
+      e = APR_ARRAY_IDX(cfg->aliases,i,mapcache_alias_entry*);
+      fprintf(stderr,"merge result: have alias %s on %s\n",e->configfile,e->endpoint);
+    }
   }
+#endif
   return cfg;
 }
 
 static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *alias, const char* configfile)
 {
-  mapcache_server_cfg *sconfig = ap_get_module_config(cmd->server->module_config, &mapcache_module);
-  mapcache_cfg *config = mapcache_configuration_create(cmd->pool);
-  mapcache_context *ctx = (mapcache_context*)apache_server_context_create(cmd->server,cmd->pool);
-  char *msg = NULL;
-  config->configFile = apr_pstrdup(cmd->pool,configfile);
-  config->endpoint = alias;
-  mapcache_configuration_parse(ctx,configfile,config,0);
+  mapcache_server_cfg *sconfig;
+  mapcache_alias_entry *alias_entry;
+  mapcache_context *ctx;
+
+  const char *err = ap_check_cmd_context(cmd, NOT_IN_DIRECTORY|NOT_IN_FILES|NOT_IN_HTACCESS);
+  if (err) {
+    return err;
+  }
+
+  sconfig = ap_get_module_config(cmd->server->module_config, &mapcache_module);
+  if(!sconfig || !sconfig->aliases)
+    return "no mapcache module config, server bug?";
+
+  alias_entry = apr_pcalloc(cmd->pool,sizeof(mapcache_alias_entry));
+  ctx = (mapcache_context*)apache_server_context_create(cmd->server,cmd->pool);
+
+  alias_entry->cfg = mapcache_configuration_create(cmd->pool);
+  alias_entry->configfile = apr_pstrdup(cmd->pool,configfile);
+  alias_entry->endpoint = apr_pstrdup(cmd->pool,alias);
+  mapcache_configuration_parse(ctx,alias_entry->configfile,alias_entry->cfg,0);
   if(GC_HAS_ERROR(ctx)) {
     return ctx->get_error_message(ctx);
   }
-  mapcache_configuration_post_config(ctx, config);
+  mapcache_configuration_post_config(ctx, alias_entry->cfg);
   if(GC_HAS_ERROR(ctx)) {
     return ctx->get_error_message(ctx);
   }
-  ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on alias %s", config->configFile, alias);
-  if(!sconfig->aliases) {
-    sconfig->aliases = apr_hash_make(cmd->pool);
-  }
-  apr_hash_set(sconfig->aliases,configfile,APR_HASH_KEY_STRING,config);
-  return msg;
+  APR_ARRAY_PUSH(sconfig->aliases,mapcache_alias_entry*) = alias_entry;
+  ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on endpoint %s", alias_entry->configfile, alias_entry->endpoint);
+
+  return NULL;
 }
 
 

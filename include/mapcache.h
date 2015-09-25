@@ -1158,10 +1158,6 @@ MS_DLL_EXPORT apr_table_t *mapcache_http_parse_param_string(mapcache_context *ct
 
 /** @{ */
 
-struct mapcache_server_cfg {
-  apr_hash_t *aliases; /**< list of mapcache configurations aliased to a server uri */
-  mapcache_connection_pool *cp;
-};
 
 
 
@@ -1237,8 +1233,6 @@ void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_
  * a configuration that will be served
  */
 struct mapcache_cfg {
-  char *configFile; /**< the filename from which this configuration was loaded */
-
   /**
    * a list of services that will be responded to
    */
@@ -1293,11 +1287,6 @@ struct mapcache_cfg {
   mapcache_locker *locker;
 
   int threaded_fetching;
-
-  /**
-   * the uri where the base of the service is mapped
-   */
-  const char *endpoint;
 
   /* for fastcgi only */
   int autoreload; /* should the modification time of the config file be recorded
