@@ -81,6 +81,7 @@ struct mapcache_alias_entry {
 struct mapcache_server_cfg {
   apr_array_header_t *aliases; /**< list of mapcache configurations aliased to a server uri */
 };
+static int mapcache_alias_matches(const char *uri, const char *alias_fakename);
 
 void apache_context_server_log(mapcache_context *c, mapcache_log_level level, char *message, ...)
 {
@@ -357,6 +358,154 @@ static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
   }
 }
 
+static int mod_mapcache_quick_handler(request_rec *r, int lookup) {
+  mapcache_server_cfg *sconfig = ap_get_module_config(r->server->module_config, &mapcache_module);
+  mapcache_alias_entry *alias_entry;
+  int i;
+
+  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mapcache quick handler hook on uri %s",r->uri);
+
+  if (!sconfig || !sconfig->aliases)
+    return DECLINED;
+
+  if (r->uri[0] != '/' && r->uri[0])
+    return DECLINED;
+
+  /* loop through the entries to find one where the alias matches */
+  for(i=0; i<sconfig->aliases->nelts; i++) {
+    int l;
+    alias_entry = APR_ARRAY_IDX(sconfig->aliases,i,mapcache_alias_entry*);
+    //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cheking mapcache alias %s against %s",r->uri,alias_entry->endpoint);
+
+    if((l=mapcache_alias_matches(r->uri, alias_entry->endpoint))>0) {
+      apr_table_t *params;
+      mapcache_request *request = NULL;
+      mapcache_context_apache_request *apache_ctx = apr_pcalloc(r->pool, sizeof(mapcache_context_apache_request));
+      mapcache_http_response *http_response = NULL;
+      mapcache_context *ctx = (mapcache_context*)apache_ctx;
+      ctx->pool = r->pool;
+#ifdef APR_HAS_THREADS
+      ctx->threadlock = thread_mutex;
+#endif
+
+      if (r->method_number != M_GET && r->method_number != M_POST) {
+        return HTTP_METHOD_NOT_ALLOWED;
+      }
+      r->path_info = &(r->uri[l]);
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting config %s for alias %s",alias_entry->configfile,alias_entry->endpoint);
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "using pathinfo %s from uri %s",r->path_info,r->uri);
+      ctx->config = alias_entry->cfg;
+      apache_ctx->request = r;
+      ctx->connection_pool = alias_entry->cp;
+      init_apache_request_context(apache_ctx);
+
+
+      ctx->supports_redirects = 1;
+      ctx->headers_in = r->headers_in;
+
+      params = mapcache_http_parse_param_string(ctx, r->args);
+
+      //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mapcache dispatch %s",r->path_info);
+
+      mapcache_service_dispatch_request(ctx,&request,r->path_info,params,ctx->config);
+      if(GC_HAS_ERROR(ctx) || !request) {
+        return write_http_response(apache_ctx,
+                                   mapcache_core_respond_to_error(ctx));
+      }
+
+      if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
+        mapcache_request_get_capabilities *req_caps = (mapcache_request_get_capabilities*)request;
+        request_rec *original;
+        char *url;
+        if(r->main)
+          original = r->main;
+        else
+          original = r;
+        url = ap_construct_url(r->pool,original->uri,original);
+
+        /*
+     * remove the path_info from the end of the url (we want the url of the base of the service)
+     * TODO: is there an apache api to access this ?
+     */
+        if(*(original->path_info) && strcmp(original->path_info,"/")) {
+          char *end = strstr(url,original->path_info);
+          if(end) {
+            /* make sure our url ends with a single '/' */
+            if(*end == '/') {
+              char *slash = end;
+              while((*(--slash))=='/') end--;
+              end++;
+            }
+            *end = '\0';
+          }
+        }
+        http_response = mapcache_core_get_capabilities(ctx,request->service,req_caps,
+                                                       url,original->path_info,ctx->config);
+      } else if( request->type == MAPCACHE_REQUEST_GET_TILE) {
+        mapcache_request_get_tile *req_tile = (mapcache_request_get_tile*)request;
+        http_response = mapcache_core_get_tile(ctx,req_tile);
+      } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
+        const char *buf;
+        mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
+        if(r->method_number == M_POST) {
+          read_post_body(apache_ctx, req_proxy);
+          if(GC_HAS_ERROR(ctx)) {
+            return write_http_response(apache_ctx, mapcache_core_respond_to_error(ctx));
+          }
+          if(!req_proxy->headers) {
+            req_proxy->headers = apr_table_make(ctx->pool, 2);
+          }
+          apr_table_set(req_proxy->headers, "Content-Type", r->content_type);
+          if((buf = apr_table_get(r->headers_in,"X-Forwarded-For"))) {
+#if (AP_SERVER_MAJORVERSION_NUMBER == 2) && (AP_SERVER_MINORVERSION_NUMBER < 4)
+            apr_table_set(req_proxy->headers, "X-Forwarded-For", apr_psprintf(ctx->pool,"%s, %s", buf, r->connection->remote_ip));
+#else
+            apr_table_set(req_proxy->headers, "X-Forwarded-For", apr_psprintf(ctx->pool,"%s, %s", buf, r->connection->client_ip));
+#endif
+          } else {
+#if (AP_SERVER_MAJORVERSION_NUMBER == 2) && (AP_SERVER_MINORVERSION_NUMBER < 4)
+            apr_table_set(req_proxy->headers, "X-Forwarded-For", r->connection->remote_ip);
+#else
+            apr_table_set(req_proxy->headers, "X-Forwarded-For", r->connection->client_ip);
+#endif
+          }
+          if ((buf = apr_table_get(r->headers_in, "Host"))) {
+            const char *buf2;
+            if((buf2 = apr_table_get(r->headers_in,"X-Forwarded-Host"))) {
+              apr_table_set(req_proxy->headers, "X-Forwarded-Host", apr_psprintf(ctx->pool,"%s, %s",buf2,buf));
+            } else {
+              apr_table_set(req_proxy->headers, "X-Forwarded-Host", buf);
+            }
+          }
+
+          if ((buf = apr_table_get(r->headers_in, "X-Forwarded-Server"))) {
+            apr_table_set(req_proxy->headers, "X-Forwarded-Server", apr_psprintf(ctx->pool, "%s, %s", buf, r->server->server_hostname));
+          } else {
+            apr_table_set(req_proxy->headers, "X-Forwarded-Server", r->server->server_hostname);
+          }
+        }
+        http_response = mapcache_core_proxy_request(ctx, req_proxy);
+      } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
+        mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
+        http_response = mapcache_core_get_map(ctx,req_map);
+      } else if( request->type == MAPCACHE_REQUEST_GET_FEATUREINFO) {
+        mapcache_request_get_feature_info *req_fi = (mapcache_request_get_feature_info*)request;
+        http_response = mapcache_core_get_featureinfo(ctx,req_fi);
+      } else {
+        ctx->set_error(ctx,500,"###BUG### unknown request type");
+      }
+
+      if(GC_HAS_ERROR(ctx)) {
+        return write_http_response(apache_ctx,
+                                   mapcache_core_respond_to_error(ctx));
+      }
+      return write_http_response(apache_ctx,http_response);
+    }
+  }
+
+  return DECLINED;
+}
+
 static int mod_mapcache_request_handler(request_rec *r)
 {
   apr_table_t *params;
@@ -576,6 +725,7 @@ static void mod_mapcache_register_hooks(apr_pool_t *p)
   ap_hook_child_init(mod_mapcache_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_post_config(mod_mapcache_post_config, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_handler(mod_mapcache_request_handler, NULL, NULL, APR_HOOK_MIDDLE);
+  //ap_hook_quick_handler(mod_mapcache_quick_handler, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(mapcache_hook_fixups, NULL, NULL, APR_HOOK_MIDDLE);
 
 }
