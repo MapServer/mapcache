@@ -64,7 +64,7 @@ static apr_status_t mapcache_connection_container_destructor(void *conn_, void *
   mapcache_pooled_connection *pc = pcc->head;
   while(pc) {
     mapcache_pooled_connection *this = pc;
-    this->private->destructor(this->connection, pcc->pool);
+    this->private->destructor(this->connection);
     free(this->private->key);
     pc = this->private->next;
     free(this);
@@ -72,6 +72,7 @@ static apr_status_t mapcache_connection_container_destructor(void *conn_, void *
   free(pcc);
   return MAPCACHE_SUCCESS;
 }
+
 
 apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool) {
   apr_status_t rv;
@@ -126,7 +127,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   /*
   ctx->log(ctx, MAPCACHE_DEBUG, "calling constructor for pooled connection (%s)", key);
   */
-  constructor(ctx, &pc->connection, params, pcc->pool);
+  constructor(ctx, &pc->connection, params);
   if(GC_HAS_ERROR(ctx)) {
     free(pc);
     apr_reslist_release(ctx->connection_pool->connexions, pcc);
@@ -150,7 +151,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
       count++;
     }
     ctx->log(ctx, MAPCACHE_DEBUG, "tearing down pooled connection (%s) to make room", opc->private->key);
-    opc->private->destructor(opc->connection, pcc->pool);
+    opc->private->destructor(opc->connection);
     free(opc->private->key);
     free(opc->private);
     free(opc);
@@ -172,7 +173,7 @@ void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, mapca
       } else {
         pcc->head = pc->private->next;
       }
-      pc->private->destructor(pc->connection, pcc->pool);
+      pc->private->destructor(pc->connection);
       free(pc->private->key);
       free(pc);
     }

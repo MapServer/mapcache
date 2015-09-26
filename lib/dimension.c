@@ -324,7 +324,7 @@ struct sqlite_dimension_conn {
   int n_statements;
 };
 
-void mapcache_sqlite_dimension_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
+void mapcache_sqlite_dimension_connection_constructor(mapcache_context *ctx, void **conn_, void *params)
 {
   int ret;
   int flags;
@@ -343,7 +343,7 @@ void mapcache_sqlite_dimension_connection_constructor(mapcache_context *ctx, voi
   sqlite3_busy_timeout(conn->handle, 300000);
 }
 
-void mapcache_sqlite_dimension_connection_destructor(void *conn_, apr_pool_t *pool)
+void mapcache_sqlite_dimension_connection_destructor(void *conn_)
 {
   struct sqlite_dimension_conn *conn = (struct sqlite_dimension_conn*) conn_;
   while(conn->n_statements) {

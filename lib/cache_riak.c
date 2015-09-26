@@ -49,7 +49,7 @@ struct riak_conn_params {
   mapcache_cache_riak *cache;
 };
 
-void mapcache_riak_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool) {
+void mapcache_riak_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
     mapcache_cache_riak *cache = ((struct riak_conn_params*)params)->cache;
     struct RIACK_CONNECTION_OPTIONS options;
     struct RIACK_CLIENT *client = riack_new_client(0);
@@ -76,7 +76,7 @@ void mapcache_riak_connection_constructor(mapcache_context *ctx, void **conn_, v
     *conn_ = client;
 }
 
-void mapcache_riak_connection_destructor(void *conn_, apr_pool_t *process_pool) {
+void mapcache_riak_connection_destructor(void *conn_) {
     struct RIACK_CLIENT *client = (struct RIACK_CLIENT *)conn_;
     riack_free(client);
 }

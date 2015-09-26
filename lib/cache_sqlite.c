@@ -106,7 +106,7 @@ static void mapcache_sqlite_release_conn(mapcache_context *ctx, mapcache_pooled_
   mapcache_connection_pool_release_connection(ctx,conn);
 }
 
-void mapcache_sqlite_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *process_pool)
+void mapcache_sqlite_connection_constructor(mapcache_context *ctx, void **conn_, void *params)
 {
   int ret;
   int flags;  
@@ -144,7 +144,7 @@ void mapcache_sqlite_connection_constructor(mapcache_context *ctx, void **conn_,
   conn->nstatements = sq_params->cache->n_prepared_statements;
 }
 
-void mapcache_sqlite_connection_destructor(void *conn_, apr_pool_t *process_pool)
+void mapcache_sqlite_connection_destructor(void *conn_)
 {
   struct sqlite_conn *conn = (struct sqlite_conn*) conn_;
   int i;

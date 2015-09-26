@@ -40,7 +40,7 @@ struct mapcache_memcache_pooled_connection {
   apr_pool_t *pool;
 };
 
-void mapcache_memcache_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *process_pool) {
+void mapcache_memcache_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
   struct mapcache_memcache_conn_param *param = params;
   mapcache_cache_memcache *cache = param->cache;
   struct mapcache_memcache_pooled_connection *pc;
@@ -65,7 +65,7 @@ void mapcache_memcache_connection_constructor(mapcache_context *ctx, void **conn
   *conn_ = pc;
 }
 
-void mapcache_memcache_connection_destructor(void *conn_, apr_pool_t *process_pool) {
+void mapcache_memcache_connection_destructor(void *conn_) {
   struct mapcache_memcache_pooled_connection *pc = conn_;
   apr_pool_destroy(pc->pool);
   free(pc);
