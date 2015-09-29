@@ -80,6 +80,7 @@ struct mapcache_alias_entry {
 
 struct mapcache_server_cfg {
   apr_array_header_t *aliases; /**< list of mapcache configurations aliased to a server uri */
+  apr_array_header_t *quickaliases; /**< list of mapcache configurations aliased to a server uri */
 };
 static int mapcache_alias_matches(const char *uri, const char *alias_fakename);
 
@@ -355,6 +356,14 @@ static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
         ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
       }
     }
+    for(i=0;i<cfg->quickaliases->nelts;i++) {
+      mapcache_alias_entry *alias_entry = APR_ARRAY_IDX(cfg->quickaliases,i,mapcache_alias_entry*);
+      rv = mapcache_connection_pool_create(&(alias_entry->cp),pool);
+      ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a child process mapcache connection pool on server %s for alias %s", s->server_hostname, alias_entry->endpoint);
+      if(rv!=APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "failed to create mapcache connection pool");
+      }
+    }
   }
 }
 
@@ -365,16 +374,20 @@ static int mod_mapcache_quick_handler(request_rec *r, int lookup) {
 
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mapcache quick handler hook on uri %s",r->uri);
 
-  if (!sconfig || !sconfig->aliases)
+  if (!sconfig || !sconfig->quickaliases)
     return DECLINED;
 
   if (r->uri[0] != '/' && r->uri[0])
     return DECLINED;
+  
+  if(lookup) {
+    return DECLINED;
+  }
 
   /* loop through the entries to find one where the alias matches */
-  for(i=0; i<sconfig->aliases->nelts; i++) {
+  for(i=0; i<sconfig->quickaliases->nelts; i++) {
     int l;
-    alias_entry = APR_ARRAY_IDX(sconfig->aliases,i,mapcache_alias_entry*);
+    alias_entry = APR_ARRAY_IDX(sconfig->quickaliases,i,mapcache_alias_entry*);
     //ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cheking mapcache alias %s against %s",r->uri,alias_entry->endpoint);
 
     if((l=mapcache_alias_matches(r->uri, alias_entry->endpoint))>0) {
@@ -725,7 +738,7 @@ static void mod_mapcache_register_hooks(apr_pool_t *p)
   ap_hook_child_init(mod_mapcache_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_post_config(mod_mapcache_post_config, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_handler(mod_mapcache_request_handler, NULL, NULL, APR_HOOK_MIDDLE);
-  //ap_hook_quick_handler(mod_mapcache_quick_handler, NULL, NULL, APR_HOOK_MIDDLE);
+  ap_hook_quick_handler(mod_mapcache_quick_handler, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(mapcache_hook_fixups, NULL, NULL, APR_HOOK_MIDDLE);
 
 }
@@ -734,6 +747,7 @@ static void* mod_mapcache_create_server_conf(apr_pool_t *pool, server_rec *s)
 {
   mapcache_server_cfg *cfg = apr_pcalloc(pool, sizeof(mapcache_server_cfg));
   cfg->aliases = apr_array_make(pool,1,sizeof(mapcache_alias_entry*));
+  cfg->quickaliases = apr_array_make(pool,1,sizeof(mapcache_alias_entry*));
   return cfg;
 }
 
@@ -745,6 +759,7 @@ static void *mod_mapcache_merge_server_conf(apr_pool_t *p, void *base_, void *vh
   mapcache_server_cfg *cfg = apr_pcalloc(p,sizeof(mapcache_server_cfg));
 
   cfg->aliases = apr_array_append(p, vhost->aliases,base->aliases);
+  cfg->quickaliases = apr_array_append(p, vhost->quickaliases,base->quickaliases);
 
 #if 0
   {
@@ -768,7 +783,7 @@ static void *mod_mapcache_merge_server_conf(apr_pool_t *p, void *base_, void *vh
   return cfg;
 }
 
-static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *alias, const char* configfile)
+static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *alias, const char* configfile, const char *quick)
 {
   mapcache_server_cfg *sconfig;
   mapcache_alias_entry *alias_entry;
@@ -806,8 +821,13 @@ static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *ali
   if(mapcache_config_services_enabled(ctx, alias_entry->cfg) <= 0) {
     return "no mapcache <service>s configured/enabled, no point in continuing.";
   }
-  APR_ARRAY_PUSH(sconfig->aliases,mapcache_alias_entry*) = alias_entry;
-  ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on endpoint %s", alias_entry->configfile, alias_entry->endpoint);
+  if(quick && *quick) {
+    APR_ARRAY_PUSH(sconfig->quickaliases,mapcache_alias_entry*) = alias_entry;
+    ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on (quick) endpoint %s", alias_entry->configfile, alias_entry->endpoint);
+  } else {
+    APR_ARRAY_PUSH(sconfig->aliases,mapcache_alias_entry*) = alias_entry;
+    ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on endpoint %s", alias_entry->configfile, alias_entry->endpoint);
+  }
 
   return NULL;
 }
@@ -815,7 +835,7 @@ static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *ali
 
 
 static const command_rec mod_mapcache_cmds[] = {
-  AP_INIT_TAKE2("MapCacheAlias", mapcache_add_alias ,NULL,RSRC_CONF,"Aliased location of configuration file"),
+  AP_INIT_TAKE23("MapCacheAlias", mapcache_add_alias ,NULL,RSRC_CONF,"Aliased location of configuration file"),
   { NULL }
 } ;
 
