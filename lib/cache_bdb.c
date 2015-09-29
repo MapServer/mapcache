@@ -58,56 +58,60 @@ struct bdb_env {
   char *errmsg;
 };
 
-void mapcache_bdb_connection_constructor(mapcache_context *ctx, void **conn_, void *params, apr_pool_t *pool)
+void mapcache_bdb_connection_constructor(mapcache_context *ctx, void **conn_, void *params)
 {
   int ret;
   int env_flags;
   int mode;
   mapcache_cache_bdb *cache = (mapcache_cache_bdb*)params;
-  char *dbfile = apr_pstrcat(pool,cache->basedir,"/",cache->cache.name,".db",NULL);
+  char *dbfile = malloc(strlen(cache->basedir)+strlen(cache->cache.name)+strlen("/.db")+1);
   struct bdb_env *benv = calloc(1,sizeof(struct bdb_env));
+  dbfile[0]=0;
+  strcat(strcat(strcat(strcat(dbfile,cache->basedir),"/"),cache->cache.name),".db"); /*yuk yuk*/
   *conn_ = benv;
 
   ret = db_env_create(&benv->env, 0);
   if(ret) {
     ctx->set_error(ctx, 500, "bdb cache failure for db_env_create: %s", db_strerror(ret));
-    free(benv);
-    return;
+    goto cleanup_error;
   }
   ret = benv->env->set_cachesize(benv->env,0,CACHESIZE,1); /* set a larger cache size than default */
   if(ret) {
     ctx->set_error(ctx, 500, "bdb cache failure for db->set_cachesize: %s", db_strerror(ret));
-    free(benv);
-    return;
+    goto cleanup_error;
   }
   env_flags = DB_INIT_CDB|DB_INIT_MPOOL|DB_CREATE;
   ret = benv->env->open(benv->env,cache->basedir,env_flags,0);
   if(ret) {
     ctx->set_error(ctx,500,"bdb cache failure for env->open: %s", db_strerror(ret));
-    free(benv);
-    return;
+    goto cleanup_error;
   }
 
   if ((ret = db_create(&benv->db, benv->env, 0)) != 0) {
     ctx->set_error(ctx,500,"bdb cache failure for db_create: %s", db_strerror(ret));
-    free(benv);
+    goto cleanup_error;
   }
   mode = DB_BTREE;
   ret = benv->db->set_pagesize(benv->db,PAGESIZE); /* set pagesize to maximum allowed, as tile data is usually pretty large */
   if(ret) {
     ctx->set_error(ctx,500,"bdb cache failure for db->set_pagesize: %s", db_strerror(ret));
-    free(benv);
-    return;
+    goto cleanup_error;
   }
 
   if ((ret = benv->db->open(benv->db, NULL, dbfile, NULL, mode, DB_CREATE, 0664)) != 0) {
     ctx->set_error(ctx,500,"bdb cache failure 1 for db->open: %s", db_strerror(ret));
-    free(benv);
-    return;
+    goto cleanup_error;
   }
+  
+  goto cleanup;
+  
+cleanup_error:
+  free(benv);
+cleanup:
+  free(dbfile);
 }
 
-void mapcache_bdb_connection_destructor(void *conn_, apr_pool_t *pool)
+void mapcache_bdb_connection_destructor(void *conn_)
 {
   struct bdb_env *benv = (struct bdb_env*)conn_;
   benv->db->close(benv->db,0);
