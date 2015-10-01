@@ -663,15 +663,11 @@ void _create_demo_mapguide(mapcache_context *ctx, mapcache_request_get_capabilit
   tileindex_index = apr_hash_first(ctx->pool,ctx->config->tilesets);
   while(tileindex_index) {
     int i,j;
-    char *extension;
     mapcache_tileset *tileset;
     const void *key;
     apr_ssize_t keylen;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
-    extension = "png";
-    if (tileset->format && tileset->format->extension)
-      extension = tileset->format->extension;
     for(j=0; j<tileset->grid_links->nelts; j++) {
       char *resolutions="";
       char *unit="dd";
