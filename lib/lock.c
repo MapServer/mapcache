@@ -190,6 +190,11 @@ mapcache_lock_result mapcache_locker_fallback_aquire_lock(mapcache_context *ctx,
       fallback_lock->locker = child_locker;
       ctx->push_errors(ctx,error);
       return lock_result;
+    } else {
+      /*clear the current error if we still have a fallback lock to try */
+      if(i<locker->lockers->nelts-1) {
+        ctx->clear_errors(ctx);
+      }
     }
     ctx->push_errors(ctx,error);
   }
