@@ -273,10 +273,11 @@ void _mapcache_context_pop_errors(mapcache_context *ctx, void **error)
 void _mapcache_context_push_errors(mapcache_context *ctx, void *error)
 {
   struct _error_log *e = (struct _error_log*)error;
-  ctx->_errcode = e->_errcode;
+  if(e->_errcode)
+    ctx->_errcode = e->_errcode;
   if(e->_errmsg) {
     if(ctx->_errmsg) {
-      ctx->_errmsg = apr_psprintf(ctx->pool,"%s\n%s",ctx->_errmsg,e->_errmsg);
+      ctx->_errmsg = apr_psprintf(ctx->pool,"%s\n%s",e->_errmsg,ctx->_errmsg);
     } else {
       ctx->_errmsg = e->_errmsg;
     }
