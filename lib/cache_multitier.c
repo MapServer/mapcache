@@ -83,7 +83,7 @@ static int _mapcache_cache_multitier_tile_get(mapcache_context *ctx, mapcache_ca
     }
     return MAPCACHE_CACHE_MISS;
   } else {
-    ctx->log(ctx,MAPCACHE_DEBUG,"got tile (%s,z=%d,y=%d,x=%d) from primary cache (%s)",tile->tileset->name, tile->z, tile->y, tile->x, subcache->name);
+    //ctx->log(ctx,MAPCACHE_DEBUG,"got tile (%s,z=%d,y=%d,x=%d) from primary cache (%s)",tile->tileset->name, tile->z, tile->y, tile->x, subcache->name);
     return ret;
   }
 }

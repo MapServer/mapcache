@@ -64,13 +64,13 @@ static int _mapcache_cache_fallback_tile_get(mapcache_context *ctx, mapcache_cac
   if(ret == MAPCACHE_FAILURE) {
     int first_error = ctx->get_error(ctx);
     char *first_error_message = ctx->get_error_message(ctx);
-    ctx->log(ctx,MAPCACHE_WARN,"failed \"GET\" on primary cache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\". Falling back on secondary caches",
+    ctx->log(ctx,MAPCACHE_DEBUG,"failed \"GET\" on primary cache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\". Falling back on secondary caches",
             APR_ARRAY_IDX(cache->caches,0,mapcache_cache*)->name,tile->z,tile->x,tile->y,tile->tileset->name);
     ctx->clear_errors(ctx);
     for(i=1; i<cache->caches->nelts; i++) {
       subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
       if((ret = subcache->tile_get(ctx, subcache, tile)) == MAPCACHE_FAILURE) {
-        ctx->log(ctx,MAPCACHE_WARN,"failed \"GET\" on fallback cache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\". Continuing with other fallback caches if available",
+        ctx->log(ctx,MAPCACHE_DEBUG,"failed \"GET\" on fallback cache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\". Continuing with other fallback caches if available",
                 APR_ARRAY_IDX(cache->caches,0,mapcache_cache*)->name,tile->z,tile->x,tile->y,tile->tileset->name);
         ctx->clear_errors(ctx);
         continue;
@@ -100,7 +100,7 @@ static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_ca
         first_error = ctx->get_error(ctx);
         first_error_message = ctx->get_error_message(ctx);
       }
-      ctx->log(ctx,MAPCACHE_WARN,"failed \"SET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
+      ctx->log(ctx,MAPCACHE_DEBUG,"failed \"SET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
               APR_ARRAY_IDX(cache->caches,i,mapcache_cache*)->name,tile->z,tile->x,tile->y,tile->tileset->name);
       ctx->clear_errors(ctx);
     } else {
@@ -135,7 +135,7 @@ static void _mapcache_cache_fallback_tile_multi_set(mapcache_context *ctx, mapca
         first_error = ctx->get_error(ctx);
         first_error_message = ctx->get_error_message(ctx);
       }
-      ctx->log(ctx,MAPCACHE_WARN,"failed \"MULTISET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
+      ctx->log(ctx,MAPCACHE_DEBUG,"failed \"MULTISET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
               APR_ARRAY_IDX(cache->caches,i,mapcache_cache*)->name,tiles[0].z,tiles[0].x,tiles[0].y,tiles[0].tileset->name);
       ctx->clear_errors(ctx);
     } else {
