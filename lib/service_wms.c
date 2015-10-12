@@ -226,20 +226,20 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_set_attr(wgsxml,"maxy",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.maxy));
     }
 
-    if(tileset->dimension_links) {
-      for(i=0; i<tileset->dimension_links->nelts; i++) {
+    if(tileset->dimensions) {
+      for(i=0; i<tileset->dimensions->nelts; i++) {
         apr_array_header_t *values;
         int value_idx;
         char *dimval = NULL;
-        mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
         ezxml_t dimxml = ezxml_add_child(layerxml,"Dimension",0);
-        ezxml_set_attr(dimxml,"name",dimension_link->name);
-        ezxml_set_attr(dimxml,"default",dimension_link->default_value);
+        ezxml_set_attr(dimxml,"name",dimension->name);
+        ezxml_set_attr(dimxml,"default",dimension->default_value);
 
-        if(dimension_link->dimension->unit) {
-          ezxml_set_attr(dimxml,"units",dimension_link->dimension->unit);
+        if(dimension->unit) {
+          ezxml_set_attr(dimxml,"units",dimension->unit);
         }
-        values = dimension_link->dimension->get_all_ogc_formatted_values(ctx,dimension_link->dimension);
+        values = dimension->get_all_ogc_formatted_values(ctx,dimension,tileset,NULL,NULL);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           if(dimval) {
@@ -656,25 +656,25 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         /*look for dimensions*/
         if(dimtable) {
           const char *value;
-          if(tileset->dimension_links) {
-            for(i=0; i<tileset->dimension_links->nelts; i++) {
+          if(tileset->dimensions) {
+            for(i=0; i<tileset->dimensions->nelts; i++) {
               char *dim_name;
-              mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
-              if(!strcasecmp(dimension_link->name,"TIME") || !strcasecmp(dimension_link->name,"ELEVATION")) {
-                dim_name = dimension_link->name;
+              mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+              if(!strcasecmp(dimension->name,"TIME") || !strcasecmp(dimension->name,"ELEVATION")) {
+                dim_name = dimension->name;
               } else {
-                dim_name = apr_pstrcat(ctx->pool, "dim_", dimension_link->name, NULL);
+                dim_name = apr_pstrcat(ctx->pool, "dim_", dimension->name, NULL);
               }
               if((value = (char*)apr_table_get(params,dim_name)) == NULL) {
-                if(strcasecmp(dimension_link->name,"TIME") && strcasecmp(dimension_link->name,"ELEVATION")) {
+                if(strcasecmp(dimension->name,"TIME") && strcasecmp(dimension->name,"ELEVATION")) {
                   /* also test for the dimension without the DIM_ prefix if the latter was not found in the KVP params */
-                  dim_name = dimension_link->name;
+                  dim_name = dimension->name;
                   value = (char*)apr_table_get(params,dim_name);
                 }
               }
 
               if(value) {
-                apr_table_set(dimtable,dimension_link->name,value);
+                apr_table_set(dimtable,dimension->name,value);
               }
             }
           }
@@ -771,11 +771,11 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
 
       if(fi->map.dimensions) {
         int i;
-        for(i=0; i<tileset->dimension_links->nelts; i++) {
-          mapcache_dimension *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+        for(i=0; i<tileset->dimensions->nelts; i++) {
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
-          if((value = (char*)apr_table_get(params,dimension_link->name)) != NULL) {
-            apr_table_set(fi->map.dimensions,dimension_link->name,value);
+          if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
+            apr_table_set(fi->map.dimensions,dimension->name,value);
           }
         }
       }
@@ -817,7 +817,7 @@ proxies:
       for(j=0; j<rule->match_params->nelts; j++) {
         mapcache_dimension *match_param = APR_ARRAY_IDX(rule->match_params,j,mapcache_dimension*);
         const char *value = apr_table_get(params,match_param->name);
-        if(!value || match_param->validate(ctx,match_param,(char**)&value) == MAPCACHE_FAILURE) {
+        if(!value || match_param->get_values_for_entry(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
           got_a_match = 0;
           break;

@@ -159,7 +159,7 @@ typedef struct mapcache_grid_link mapcache_grid_link;
 typedef struct mapcache_context mapcache_context;
 typedef struct mapcache_dimension mapcache_dimension;
 typedef struct mapcache_dimension_time mapcache_dimension_time;
-typedef struct mapcache_timedimension mapcache_timedimension;
+typedef struct mapcache_dimension_time_sqlite mapcache_dimension_time_sqlite;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
@@ -1550,7 +1550,7 @@ struct mapcache_tileset {
   /**
    * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
    */
-  apr_array_header_t *dimension_links;
+  apr_array_header_t *dimensions;
 
   /**
    * image to be used as a watermark
@@ -1941,35 +1941,32 @@ typedef enum {
   MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
 } mapcache_dimension_assembly_type;
 
-typedef struct {
-  mapcache_dimension *dimension;
-  int skip_validation;
-  mapcache_dimension_assembly_type assembly_type;
-  char *default_value;
-  char *name; /* defaults to the dimension name, but can be overridden at the tileset level */
-} mapcache_dimension_link;
-
 struct mapcache_dimension {
   mapcache_dimension_type type;
-  char *name; /*can be overriden at the tileset level */
+  char *name;
   char *unit;
   apr_table_t *metadata;
-  char *default_value; /* can be overriden at the tileset level */
-  
+  char *default_value;
+  int skip_validation;
+  mapcache_dimension_assembly_type assembly_type;
+
   /**
    * \brief return the list of dimension values that match the requested entry 
    */
-  apr_array_header_t* (*get_values_for_entry)(mapcache_context *ctx, mapcache_dimension *dimension, const char *entry);
+  apr_array_header_t* (*get_values_for_entry)(mapcache_context *ctx, mapcache_dimension *dimension, const char *entry,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
   
   /**
    * \brief return all possible values
    */
-  apr_array_header_t* (*get_all_values)(mapcache_context *ctx, mapcache_dimension *dimension);
-  
+  apr_array_header_t* (*get_all_values)(mapcache_context *ctx, mapcache_dimension *dimension,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
+
   /**
    * \brief return all possible values formatted in a way compatible with OGC capabilities <dimension> element
    */
-  apr_array_header_t* (*get_all_ogc_formatted_values)(mapcache_context *ctx, mapcache_dimension *dimension);
+  apr_array_header_t* (*get_all_ogc_formatted_values)(mapcache_context *ctx, mapcache_dimension *dimension,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
   /**
    * \brief parse the value given in the configuration
@@ -1987,8 +1984,8 @@ struct mapcache_dimension_values {
 struct mapcache_dimension_sqlite {
   mapcache_dimension dimension;
   char *dbfile;
-  char *validate_query;
-  char *list_query;
+  char *get_values_for_entry_query;
+  char *get_all_values_query;
 };
 
 struct mapcache_dimension_regex {
@@ -2001,22 +1998,20 @@ struct mapcache_dimension_regex {
 #endif
 };
 
-struct mapcache_dimension_intervals {
-  mapcache_dimension dimension;
-  int nintervals;
-  mapcache_interval *intervals;
-};
-
 struct mapcache_dimension_time {
   mapcache_dimension dimension;
-  int nintervals;
-  mapcache_interval *intervals;
+};
+
+struct mapcache_dimension_time_sqlite {
+  mapcache_dimension_time tdim;
+  char *dbfile;
+  char *get_values_for_entry_query;
+  char *get_all_values_query;
 };
 
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);

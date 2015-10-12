@@ -47,47 +47,6 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
   }
 }
 
-void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset) {
-  const char *attr = NULL;
-  if(tileset->timedimension) {
-    ctx->set_error(ctx,400,"tileset \"%s\" can only have a single <timedimension>", tileset->name);
-    return;
-  }
-  attr = ezxml_attr(node,"type");
-  if(attr && *attr) {
-    if(!strcmp(attr,"sqlite")) {
-#ifdef USE_SQLITE
-      tileset->timedimension = mapcache_timedimension_sqlite_create(ctx->pool);
-#else
-      ctx->set_error(ctx,400, "failed to add sqlite timedimension: Sqlite support is not available on this build");
-      return;
-#endif
-    } else {
-      ctx->set_error(ctx,400,"unknown \"type\" attribute \"%s\" for %s's <timedimension>. Expecting one of (sqlite)",attr,tileset->name);
-      return;
-    }
-    
-  } else {
-    ctx->set_error(ctx,400,"missing \"type\" attribute for %s's <timedimension>",tileset->name);
-    return;
-  }
-  attr = ezxml_attr(node,"name");
-  if(attr && *attr) {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,attr);
-  } else {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,"TIME");
-  }
-  
-  attr = ezxml_attr(node,"default");
-  if(attr && *attr) {
-    tileset->timedimension->default_value = apr_pstrdup(ctx->pool,attr);
-  } else {
-    ctx->set_error(ctx,400,"no \"default\" attribute for <timedimension> %s",tileset->timedimension->key);
-    return;
-  }
-  tileset->timedimension->configuration_parse_xml(ctx,tileset->timedimension,node);
-}
-
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
@@ -111,13 +70,9 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_values_create(ctx->pool);
       } else if(!strcmp(type,"regex")) {
         dimension = mapcache_dimension_regex_create(ctx->pool);
-      } else if(!strcmp(type,"intervals")) {
-        dimension = mapcache_dimension_intervals_create(ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
         dimension = mapcache_dimension_sqlite_create(ctx->pool);
       } else if(!strcmp(type,"time")) {
-        ctx->set_error(ctx,501,"time dimension type not implemented yet");
-        return;
         dimension = mapcache_dimension_time_create(ctx->pool);
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
@@ -824,12 +779,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     GC_CHECK_ERROR(ctx);
   }
   
-  if ((cur_node = ezxml_child(node,"timedimension")) != NULL) {
-    parseTimeDimension(ctx, cur_node, tileset);
-    GC_CHECK_ERROR(ctx);
-  }
-
-
   if ((cur_node = ezxml_child(node,"cache")) != NULL) {
     mapcache_cache *cache = mapcache_configuration_get_cache(config, cur_node->txt);
     if(!cache) {

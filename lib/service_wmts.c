@@ -370,20 +370,19 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
 
 
-    if(tileset->dimension_links) {
-      for(i=0; i<tileset->dimension_links->nelts; i++) {
+    if(tileset->dimensions) {
+      for(i=0; i<tileset->dimensions->nelts; i++) {
         apr_array_header_t *values;
         int value_idx;
-        mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
-        mapcache_dimension *dimension = dimension_link->dimension;
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
         ezxml_t dim = ezxml_add_child(layer,"Dimension",0);
         ezxml_set_txt(ezxml_add_child(dim,"ows:Identifier",0),dimension->name);
-        ezxml_set_txt(ezxml_add_child(dim,"Default",0),dimension_link->default_value);
+        ezxml_set_txt(ezxml_add_child(dim,"Default",0),dimension->default_value);
 
         if(dimension->unit) {
           ezxml_set_txt(ezxml_add_child(dim,"UOM",0),dimension->unit);
         }
-        values = dimension->get_all_ogc_formatted_values(ctx,dimension);
+        values = dimension->get_all_ogc_formatted_values(ctx,dimension,tileset,NULL,NULL);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           ezxml_set_txt(ezxml_add_child(dim,"Value",0),idval);
@@ -618,14 +617,14 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       }
       matrixset = apr_table_get(params,"TILEMATRIXSET");
       matrix = apr_table_get(params,"TILEMATRIX");
-      if(tileset->dimension_links) {
+      if(tileset->dimensions) {
         int i;
-        dimtable = apr_table_make(ctx->pool,tileset->dimension_links->nelts);
-        for(i=0; i<tileset->dimension_links->nelts; i++) {
-          mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+        dimtable = apr_table_make(ctx->pool,tileset->dimensions->nelts);
+        for(i=0; i<tileset->dimensions->nelts; i++) {
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
-          if((value = apr_table_get(params,dimension_link->name)) != NULL) {
-            apr_table_set(dimtable,dimension_link->name,value);
+          if((value = apr_table_get(params,dimension->name)) != NULL) {
+            apr_table_set(dimtable,dimension->name,value);
           }
         }
       }
@@ -681,15 +680,15 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
         style = key;
         continue;
       }
-      if(tileset->dimension_links) {
+      if(tileset->dimensions) {
         int i;
         if(!dimtable)
-          dimtable = apr_table_make(ctx->pool,tileset->dimension_links->nelts);
+          dimtable = apr_table_make(ctx->pool,tileset->dimensions->nelts);
         i = apr_table_elts(dimtable)->nelts;
-        if(i != tileset->dimension_links->nelts) {
+        if(i != tileset->dimensions->nelts) {
           /*we still have some dimensions to parse*/
-          mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
-          apr_table_set(dimtable,dimension_link->name,key);
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+          apr_table_set(dimtable,dimension->name,key);
           continue;
         }
       }
@@ -844,7 +843,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
   }
 
   if(!fi_j) { /*we have a getTile request*/
-    int i;
 
 #ifdef PEDANTIC_WMTS_FORMAT_CHECK
     if(tileset->format) {
@@ -882,19 +880,19 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
 
     /*populate dimensions*/
-    if(tileset->dimension_links) {
+    if(tileset->dimensions) {
       int d;
-      for(d=0; d<tileset->dimension_links->nelts; d++) {
-        mapcache_dimension *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,d,mapcache_dimension_link*);
-        const char *value = apr_table_get(dimtable,dimension_link->name);
+      for(d=0; d<tileset->dimensions->nelts; d++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+        const char *value = apr_table_get(dimtable,dimension->name);
         if(value) {
-          apr_table_set(req->tiles[i]->dimensions,dimension_link->name,value);
+          apr_table_set(req->tiles[0]->dimensions,dimension->name,value);
         }
       }
     }
-    req->tiles[i]->z = level;
-    req->tiles[i]->x = x;
-    req->tiles[i]->y = y;
+    req->tiles[0]->z = level;
+    req->tiles[0]->x = x;
+    req->tiles[0]->y = y;
     mapcache_tileset_tile_validate(ctx,req->tiles[0]);
     if(GC_HAS_ERROR(ctx)) {
       if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
@@ -950,13 +948,13 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     fi->map.width = grid_link->grid->tile_sx;
     fi->map.height = grid_link->grid->tile_sy;
 
-    if(tileset->dimension_links) {
+    if(tileset->dimensions) {
       int d;
-      for(d=0; d<tileset->dimension_links->nelts; d++) {
-        mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,d,mapcache_dimension_link*);
-        const char *value = apr_table_get(dimtable,dimension_link->name);
+      for(d=0; d<tileset->dimensions->nelts; d++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+        const char *value = apr_table_get(dimtable,dimension->name);
         if(value) {
-          apr_table_set(fi->map.dimensions,dimension_link->name,value);
+          apr_table_set(fi->map.dimensions,dimension->name,value);
         }
       }
     }

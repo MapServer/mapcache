@@ -534,12 +534,6 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
       apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
     }
   }
-  if(tileset->timedimension) {
-    if(!tile->dimensions) {
-      tile->dimensions = apr_table_make(pool,1);
-    }
-    apr_table_set(tile->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
-  }
   return tile;
 }
 
@@ -588,12 +582,6 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
       apr_table_set(map->dimensions,dimension->name,dimension->default_value);
     }
   }
-  if(tileset->timedimension) {
-    if(!map->dimensions) {
-      map->dimensions = apr_table_make(pool,1);
-    }
-    apr_table_set(map->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
-  }
   return map;
 }
 
@@ -606,12 +594,12 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   mapcache_feature_info *fi = (mapcache_feature_info*)apr_pcalloc(pool, sizeof(mapcache_feature_info));
   fi->map.tileset = tileset;
   fi->map.grid_link = grid_link;
-  if(tileset->dimension_links) {
+  if(tileset->dimensions) {
     int i;
-    fi->map.dimensions = apr_table_make(pool,tileset->dimension_links->nelts);
-    for(i=0; i<tileset->dimension_links->nelts; i++) {
-      mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
-      apr_table_set(fi->map.dimensions,dimension_link->name,dimension_link->default_value);
+    fi->map.dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    for(i=0; i<tileset->dimensions->nelts; i++) {
+      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+      apr_table_set(fi->map.dimensions,dimension->name,dimension->default_value);
     }
   }
   return fi;
