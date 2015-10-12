@@ -606,12 +606,12 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   mapcache_feature_info *fi = (mapcache_feature_info*)apr_pcalloc(pool, sizeof(mapcache_feature_info));
   fi->map.tileset = tileset;
   fi->map.grid_link = grid_link;
-  if(tileset->dimensions) {
+  if(tileset->dimension_links) {
     int i;
-    fi->map.dimensions = apr_table_make(pool,tileset->dimensions->nelts);
-    for(i=0; i<tileset->dimensions->nelts; i++) {
-      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(fi->map.dimensions,dimension->name,dimension->default_value);
+    fi->map.dimensions = apr_table_make(pool,tileset->dimension_links->nelts);
+    for(i=0; i<tileset->dimension_links->nelts; i++) {
+      mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+      apr_table_set(fi->map.dimensions,dimension_link->name,dimension_link->default_value);
     }
   }
   return fi;

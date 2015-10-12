@@ -1550,9 +1550,7 @@ struct mapcache_tileset {
   /**
    * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
    */
-  apr_array_header_t *dimensions;
-
-  mapcache_timedimension *timedimension;
+  apr_array_header_t *dimension_links;
 
   /**
    * image to be used as a watermark
@@ -1937,30 +1935,41 @@ typedef enum {
   MAPCACHE_DIMENSION_SQLITE
 } mapcache_dimension_type;
 
+typedef enum {
+  MAPCACHE_DIMENSION_ASSEMBLY_NONE,
+  MAPCACHE_DIMENSION_ASSEMBLY_STACK,
+  MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
+} mapcache_dimension_assembly_type;
+
+typedef struct {
+  mapcache_dimension *dimension;
+  int skip_validation;
+  mapcache_dimension_assembly_type assembly_type;
+  char *default_value;
+  char *name; /* defaults to the dimension name, but can be overridden at the tileset level */
+} mapcache_dimension_link;
+
 struct mapcache_dimension {
   mapcache_dimension_type type;
-  char *name;
+  char *name; /*can be overriden at the tileset level */
   char *unit;
   apr_table_t *metadata;
-  char *default_value;
-  int skip_validation;
-
+  char *default_value; /* can be overriden at the tileset level */
+  
   /**
-   * \brief validate the given value
-   *
-   * \param value is updated in case the given value is correct but has to be represented otherwise,
-   * e.g. to round off a value
-   * \returns MAPCACHE_SUCCESS if the given value is correct for the current dimension
-   * \returns MAPCACHE_FAILURE if not
+   * \brief return the list of dimension values that match the requested entry 
    */
-  int (*validate)(mapcache_context *context, mapcache_dimension *dimension, char **value);
-
+  apr_array_header_t* (*get_values_for_entry)(mapcache_context *ctx, mapcache_dimension *dimension, const char *entry);
+  
   /**
-   * \brief returns a list of values that are authorized for this dimension
-   *
-   * \returns a list of character strings that will be included in the capabilities <dimension> element
+   * \brief return all possible values
    */
-  apr_array_header_t*  (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
+  apr_array_header_t* (*get_all_values)(mapcache_context *ctx, mapcache_dimension *dimension);
+  
+  /**
+   * \brief return all possible values formatted in a way compatible with OGC capabilities <dimension> element
+   */
+  apr_array_header_t* (*get_all_ogc_formatted_values)(mapcache_context *ctx, mapcache_dimension *dimension);
 
   /**
    * \brief parse the value given in the configuration
@@ -2009,38 +2018,6 @@ mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
-
-typedef enum {
-  MAPCACHE_TIMEDIMENSION_ASSEMBLY_STACK,
-  MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE
-} mapcache_timedimension_assembly_type;
-
-typedef enum {
-  MAPCACHE_TIMEDIMENSION_SOURCE_SQLITE
-} mapcache_timedimension_source_type;
-
-MS_DLL_EXPORT apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
-        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value);
-
-struct mapcache_timedimension {
-  mapcache_timedimension_assembly_type assembly_type;
-  void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset,
-        mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
-  apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
-  char *default_value;
-  char *key; /* TIME, hardcoded */
-};
-
-#ifdef USE_SQLITE
-typedef struct mapcache_timedimension_sqlite mapcache_timedimension_sqlite;
-struct mapcache_timedimension_sqlite {
-  mapcache_timedimension timedimension;
-  char *dbfile;
-  char *query;
-};
-mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool);
-#endif
 
 int mapcache_is_axis_inverted(const char *srs);
 

@@ -370,19 +370,20 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
 
 
-    if(tileset->dimensions) {
-      for(i=0; i<tileset->dimensions->nelts; i++) {
+    if(tileset->dimension_links) {
+      for(i=0; i<tileset->dimension_links->nelts; i++) {
         apr_array_header_t *values;
         int value_idx;
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+        mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+        mapcache_dimension *dimension = dimension_link->dimension;
         ezxml_t dim = ezxml_add_child(layer,"Dimension",0);
         ezxml_set_txt(ezxml_add_child(dim,"ows:Identifier",0),dimension->name);
-        ezxml_set_txt(ezxml_add_child(dim,"Default",0),dimension->default_value);
+        ezxml_set_txt(ezxml_add_child(dim,"Default",0),dimension_link->default_value);
 
         if(dimension->unit) {
           ezxml_set_txt(ezxml_add_child(dim,"UOM",0),dimension->unit);
         }
-        values = dimension->print_ogc_formatted_values(ctx,dimension);
+        values = dimension->get_all_ogc_formatted_values(ctx,dimension);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           ezxml_set_txt(ezxml_add_child(dim,"Value",0),idval);
@@ -566,8 +567,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                       *infoformat = NULL, *fi_i = NULL, *fi_j = NULL;
   apr_table_t *dimtable = NULL;
   mapcache_extent *extent = NULL;
-  char *timedim = NULL;
-  apr_array_header_t *timedim_selected; /* the individual time entries that corresponded to the input request */
   mapcache_tileset *tileset = NULL;
   int row,col,level,x,y;
   int kvp = 0;
@@ -619,23 +618,15 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       }
       matrixset = apr_table_get(params,"TILEMATRIXSET");
       matrix = apr_table_get(params,"TILEMATRIX");
-      if(tileset->dimensions) {
+      if(tileset->dimension_links) {
         int i;
-        dimtable = apr_table_make(ctx->pool,tileset->dimensions->nelts);
-        for(i=0; i<tileset->dimensions->nelts; i++) {
-          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+        dimtable = apr_table_make(ctx->pool,tileset->dimension_links->nelts);
+        for(i=0; i<tileset->dimension_links->nelts; i++) {
+          mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
           const char *value;
-          if((value = apr_table_get(params,dimension->name)) != NULL) {
-            apr_table_set(dimtable,dimension->name,value);
+          if((value = apr_table_get(params,dimension_link->name)) != NULL) {
+            apr_table_set(dimtable,dimension_link->name,value);
           }
-        }
-      }
-      if(tileset->timedimension) {
-        const char* value;
-        if((value = apr_table_get(params,tileset->timedimension->key)) != NULL) {
-          timedim = apr_pstrdup(ctx->pool,value);
-        } else {
-          timedim = apr_pstrdup(ctx->pool,tileset->timedimension->default_value);
         }
       }
       if(!strcasecmp(str,"getfeatureinfo")) {
@@ -690,21 +681,17 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
         style = key;
         continue;
       }
-      if(tileset->dimensions) {
+      if(tileset->dimension_links) {
         int i;
         if(!dimtable)
-          dimtable = apr_table_make(ctx->pool,tileset->dimensions->nelts);
+          dimtable = apr_table_make(ctx->pool,tileset->dimension_links->nelts);
         i = apr_table_elts(dimtable)->nelts;
-        if(i != tileset->dimensions->nelts) {
+        if(i != tileset->dimension_links->nelts) {
           /*we still have some dimensions to parse*/
-          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-          apr_table_set(dimtable,dimension->name,key);
+          mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,i,mapcache_dimension_link*);
+          apr_table_set(dimtable,dimension_link->name,key);
           continue;
         }
-      }
-      if(!timedim && tileset->timedimension) {
-        timedim = key;
-        continue;
       }
       if(!matrixset) {
         matrixset = key;
@@ -766,38 +753,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     ctx->set_error(ctx,404, "received request with invalid style \"%s\" (expecting \"default\")",style);
     if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","style");
     return;
-  }
-
-  /*validate dimensions*/
-  if(tileset->dimensions) {
-    int i;
-    if(!dimtable) {
-      ctx->set_error(ctx,404, "received request with no dimensions");
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","dim");
-      return;
-    }
-
-    for(i=0; i<tileset->dimensions->nelts; i++) {
-      char *tmpval;
-      int ok;
-      const char *value;
-      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      if(dimension->skip_validation) continue;
-      value = apr_table_get(dimtable,dimension->name);
-      if(value) {
-        tmpval = apr_pstrdup(ctx->pool,value);
-        ok = dimension->validate(ctx,dimension,&tmpval);
-        GC_CHECK_ERROR(ctx);
-        if(ok != MAPCACHE_SUCCESS) {
-          ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
-                  dimension->name, value);
-          if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
-          return;
-        }
-        /* re-set the eventually modified value in the dimension table */
-        apr_table_set(dimtable,dimension->name,tmpval);
-      }
-    }
   }
 
   if(!matrixset) {
@@ -882,7 +837,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
   }
 
 
-  if(fi_j || timedim) {
+  if(fi_j) {
     //we need the extent of the request, compute it here
     extent = apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
     mapcache_grid_get_extent(ctx,grid_link->grid,x,y,level,extent);
@@ -916,56 +871,34 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                                        ctx->pool,sizeof(mapcache_request_get_tile));
     
     ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
-    if(timedim) {
-      timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
-              tileset->timedimension, tileset, grid_link->grid, extent, timedim);
-      GC_CHECK_ERROR(ctx);
-      if(!timedim_selected || timedim_selected->nelts == 0) {
-        ctx->set_error(ctx, 404, "no matching entry for given TIME dimension");
-        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TIME");
-        return;
-      }
-      req->ntiles = timedim_selected->nelts;
-    } else {
-      req->ntiles = 1;
-    }
+    req->ntiles = 1;
     req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,req->ntiles * sizeof(mapcache_tile*));
 
-    for(i=0;i<req->ntiles;i++) {
-      req->tiles[i] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-      if(!req->tiles[i]) {
-        ctx->set_error(ctx, 500, "failed to allocate tile");
-        if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
-        return;
-      }
+    req->tiles[0] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
+    if(!req->tiles[0]) {
+      ctx->set_error(ctx, 500, "failed to allocate tile");
+      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
+      return;
+    }
 
-      /*populate dimensions*/
-      if(tileset->dimensions) {
-        int d;
-        for(d=0; d<tileset->dimensions->nelts; d++) {
-          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
-          const char *value = apr_table_get(dimtable,dimension->name);
-          if(value) {
-            apr_table_set(req->tiles[i]->dimensions,dimension->name,value);
-          }
+    /*populate dimensions*/
+    if(tileset->dimension_links) {
+      int d;
+      for(d=0; d<tileset->dimension_links->nelts; d++) {
+        mapcache_dimension *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,d,mapcache_dimension_link*);
+        const char *value = apr_table_get(dimtable,dimension_link->name);
+        if(value) {
+          apr_table_set(req->tiles[i]->dimensions,dimension_link->name,value);
         }
       }
-      if(tileset->timedimension) {
-        apr_table_set(req->tiles[i]->dimensions,tileset->timedimension->key,
-                APR_ARRAY_IDX(timedim_selected,i,char*));
-      }
-
-      req->tiles[i]->z = level;
-      req->tiles[i]->x = x;
-      req->tiles[i]->y = y;
-      if(i==0) {
-        /* no need to validate all the tiles as they all have the same x,y,z */
-        mapcache_tileset_tile_validate(ctx,req->tiles[0]);
-        if(GC_HAS_ERROR(ctx)) {
-          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
-          return;
-        }
-      }
+    }
+    req->tiles[i]->z = level;
+    req->tiles[i]->x = x;
+    req->tiles[i]->y = y;
+    mapcache_tileset_tile_validate(ctx,req->tiles[0]);
+    if(GC_HAS_ERROR(ctx)) {
+      if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
+      return;
     }
 
     *request = (mapcache_request*)req;
@@ -1017,13 +950,13 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     fi->map.width = grid_link->grid->tile_sx;
     fi->map.height = grid_link->grid->tile_sy;
 
-    if(tileset->dimensions) {
+    if(tileset->dimension_links) {
       int d;
-      for(d=0; d<tileset->dimensions->nelts; d++) {
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
-        const char *value = apr_table_get(dimtable,dimension->name);
+      for(d=0; d<tileset->dimension_links->nelts; d++) {
+        mapcache_dimension_link *dimension_link = APR_ARRAY_IDX(tileset->dimension_links,d,mapcache_dimension_link*);
+        const char *value = apr_table_get(dimtable,dimension_link->name);
         if(value) {
-          apr_table_set(fi->map.dimensions,dimension->name,value);
+          apr_table_set(fi->map.dimensions,dimension_link->name,value);
         }
       }
     }
