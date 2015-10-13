@@ -456,7 +456,22 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
     return;
   }
 #endif
-  mt->map.tileset->source->render_map(ctx, &mt->map);
+  if(mt->map.tileset->dimensions && !mt->tiles[0].dimensions_exploded) {
+    /* we need to store the resulting composition */
+    int count = 1;
+    apr_array_header_t **subdimensions = apr_pcalloc(ctx->pool,mt->map.tileset->dimensions->nelts * sizeof(apr_array_header_t*));
+    for(i=0;i<mt->map.tileset->dimensions->nelts;i++) {
+      /* count how many images we are going to need to merge */
+      mapcache_dimension *dim = APR_ARRAY_IDX(mt->map.tileset->dimensions,i,mapcache_dimension*);
+      subdimensions[i] = dim->get_entries_for_value(ctx,dim,apr_table_get(mt->map.dimensions,dim->name),
+                                                    mt->map.tileset,&(mt->map.extent),mt->map.grid_link->grid);
+      count *= subdimensions[i]->nelts;
+    }
+    if(count == 0) {    
+    }
+  } else {
+    mt->map.tileset->source->render_map(ctx, &mt->map);
+  }
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
@@ -534,6 +549,7 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
       apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
     }
   }
+  tile->dimensions_exploded = 0;
   return tile;
 }
 
@@ -550,6 +566,7 @@ mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
   tile->y = src->y;
   tile->z = src->z;
   tile->allow_redirect = src->allow_redirect;
+  tile->dimensions_exploded = src->dimensions_exploded;
   return tile;
 }
 

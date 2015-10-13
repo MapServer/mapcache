@@ -1400,6 +1400,10 @@ struct mapcache_tile {
   apr_time_t mtime; /**< last modification time */
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 
+  /* flag to indicate that the dimensions stored in the dimension table have already been split up
+   * into sub-dimensions */
+  int dimensions_exploded;
+  
   apr_table_t *dimensions;
   /**
    * flag stating the tile is empty (i.e. fully transparent).
@@ -1948,6 +1952,7 @@ struct mapcache_dimension {
   apr_table_t *metadata;
   char *default_value;
   int skip_validation;
+  int store_compositions;
   mapcache_dimension_assembly_type assembly_type;
 
   /**
