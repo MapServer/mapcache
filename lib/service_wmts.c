@@ -382,7 +382,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         if(dimension->unit) {
           ezxml_set_txt(ezxml_add_child(dim,"UOM",0),dimension->unit);
         }
-        values = dimension->get_all_ogc_formatted_values(ctx,dimension,tileset,NULL,NULL);
+        values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           ezxml_set_txt(ezxml_add_child(dim,"Value",0),idval);

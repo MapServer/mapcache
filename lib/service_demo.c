@@ -553,7 +553,7 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
         for(dim=0;dim<tileset->dimensions->nelts;dim++) {
           int id;
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,dim,mapcache_dimension*);
-          apr_array_header_t *dimvals = dimension->get_all_values(ctx,dimension,tileset,NULL,NULL);
+          apr_array_header_t *dimvals = dimension->get_all_entries(ctx,dimension,tileset,NULL,NULL);
           for(id=0;id<dimvals->nelts;id++) {
             char *idval;
             char *dimparam_wms;
@@ -874,7 +874,7 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
         for(dim=0;dim<tileset->dimensions->nelts;dim++) {
           int id;
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,dim,mapcache_dimension*);
-          apr_array_header_t *dimvals = dimension->get_all_values(ctx,dimension,tileset,NULL,NULL);
+          apr_array_header_t *dimvals = dimension->get_all_entries(ctx,dimension,tileset,NULL,NULL);
           GC_CHECK_ERROR(ctx);
           for(id=0;id<dimvals->nelts;id++) {
             char *idval;

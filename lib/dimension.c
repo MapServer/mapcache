@@ -57,7 +57,7 @@ time_t timegm(struct tm *tm)
 }
 #endif
 
-static apr_array_header_t* _mapcache_dimension_regex_get_values_for_entry(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
+static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_regex *dimension = (mapcache_dimension_regex*)dim;
@@ -76,7 +76,7 @@ static apr_array_header_t* _mapcache_dimension_regex_get_values_for_entry(mapcac
   return values;
 }
 
-static apr_array_header_t* _mapcache_dimension_regex_get_all_values(mapcache_context *ctx, mapcache_dimension *dim,
+static apr_array_header_t* _mapcache_dimension_regex_get_all_entries(mapcache_context *ctx, mapcache_dimension *dim,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_regex *dimension = (mapcache_dimension_regex*)dim;
@@ -123,7 +123,7 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
 
 }
 
-static apr_array_header_t* _mapcache_dimension_values_get_values_for_entry(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
+static apr_array_header_t* _mapcache_dimension_values_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   int i;
@@ -144,7 +144,7 @@ static apr_array_header_t* _mapcache_dimension_values_get_values_for_entry(mapca
   return values;
 }
 
-static apr_array_header_t* _mapcache_dimension_values_get_all_values(mapcache_context *ctx, mapcache_dimension *dim,
+static apr_array_header_t* _mapcache_dimension_values_get_all_entries(mapcache_context *ctx, mapcache_dimension *dim,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_values *dimension = (mapcache_dimension_values*)dim;
@@ -198,20 +198,10 @@ mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
   mapcache_dimension_values *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_values));
   dimension->dimension.type = MAPCACHE_DIMENSION_VALUES;
   dimension->nvalues = 0;
-  dimension->dimension.get_values_for_entry = _mapcache_dimension_values_get_values_for_entry;
+  dimension->dimension.get_entries_for_value = _mapcache_dimension_values_get_entries_for_value;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_values_parse_xml;
-  dimension->dimension.get_all_values = _mapcache_dimension_values_get_all_values;
-  dimension->dimension.get_all_ogc_formatted_values = _mapcache_dimension_values_get_all_values;
-  return (mapcache_dimension*)dimension;
-}
-
-mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool)
-{
-  mapcache_dimension_time *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_time));
-  dimension->dimension.type = MAPCACHE_DIMENSION_TIME;
-//   dimension->dimension.validate = _mapcache_dimension_time_validate;
-//   dimension->dimension.parse = _mapcache_dimension_time_parse;
-//   dimension->dimension.print_ogc_formatted_values = _mapcache_dimension_time_print;
+  dimension->dimension.get_all_entries = _mapcache_dimension_values_get_all_entries;
+  dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_values_get_all_entries;
   return (mapcache_dimension*)dimension;
 }
 
@@ -222,10 +212,10 @@ mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool)
 #ifndef USE_PCRE
   dimension->regex = (regex_t*)apr_pcalloc(pool, sizeof(regex_t));
 #endif
-  dimension->dimension.get_values_for_entry = _mapcache_dimension_regex_get_values_for_entry;
+  dimension->dimension.get_entries_for_value = _mapcache_dimension_regex_get_entries_for_value;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_regex_parse_xml;
-  dimension->dimension.get_all_values = _mapcache_dimension_regex_get_all_values;
-  dimension->dimension.get_all_ogc_formatted_values = _mapcache_dimension_regex_get_all_values;
+  dimension->dimension.get_all_entries = _mapcache_dimension_regex_get_all_entries;
+  dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_regex_get_all_entries;
   return (mapcache_dimension*)dimension;
 }
 
@@ -289,7 +279,7 @@ static void _sqlite_dimension_release_conn(mapcache_context *ctx, mapcache_poole
 }
 
 static void _mapcache_dimension_sqlite_bind_parameters(mapcache_context *ctx, sqlite3_stmt *stmt, sqlite3 *handle,
-                                                       char *value,
+                                                       const char *value,
                                                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid) {
   int paramidx,ret;
   paramidx = sqlite3_bind_parameter_index(stmt, ":dim");
@@ -356,7 +346,7 @@ static void _mapcache_dimension_sqlite_bind_parameters(mapcache_context *ctx, sq
     }
   }
 }
-static apr_array_header_t* _mapcache_dimension_sqlite_get_values_for_entry(mapcache_context *ctx, mapcache_dimension *dim, char *value,
+static apr_array_header_t* _mapcache_dimension_sqlite_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
                                                                            mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
@@ -408,7 +398,7 @@ cleanup:
   return values;
 }
 
-static apr_array_header_t* _mapcache_dimension_sqlite_get_all_values(mapcache_context *ctx, mapcache_dimension *dim,
+static apr_array_header_t* _mapcache_dimension_sqlite_get_all_entries(mapcache_context *ctx, mapcache_dimension *dim,
                                 mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_sqlite *dimension = (mapcache_dimension_sqlite*)dim;
@@ -493,62 +483,12 @@ static void _mapcache_dimension_sqlite_parse_xml(mapcache_context *ctx, mapcache
 
 
 static void _bind_sqlite_dimension_time_params(mapcache_context *ctx, sqlite3_stmt *stmt,
-        sqlite3 *handle, mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent,
+        sqlite3 *handle, const char *dim_value, mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent,
         time_t start, time_t end)
 {
   int paramidx,ret;
-  paramidx = sqlite3_bind_parameter_index(stmt, ":tileset");
-  if (paramidx) {
-    ret = sqlite3_bind_text(stmt, paramidx, tileset->name, -1, SQLITE_STATIC);
-    if(ret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "failed to bind :tileset: %s", sqlite3_errmsg(handle));
-      return;
-    }
-  }
-
-  if(grid) {
-    paramidx = sqlite3_bind_parameter_index(stmt, ":gridsrs");
-    if (paramidx) {
-      ret = sqlite3_bind_text(stmt, paramidx, grid->srs, -1, SQLITE_STATIC);
-      if(ret != SQLITE_OK) {
-        ctx->set_error(ctx,400, "failed to bind :gridsrs %s", sqlite3_errmsg(handle));
-        return;
-      }
-    }
-  }
-
-  paramidx = sqlite3_bind_parameter_index(stmt, ":minx");
-  if (paramidx) {
-    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->minx:-DBL_MAX);
-    if(ret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "failed to bind :minx %s", sqlite3_errmsg(handle));
-      return;
-    }
-  }
-  paramidx = sqlite3_bind_parameter_index(stmt, ":miny");
-  if (paramidx) {
-    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->miny:-DBL_MAX);
-    if(ret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "failed to bind :miny %s", sqlite3_errmsg(handle));
-      return;
-    }
-  }
-  paramidx = sqlite3_bind_parameter_index(stmt, ":maxx");
-  if (paramidx) {
-    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->maxx:DBL_MAX);
-    if(ret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "failed to bind :maxx %s", sqlite3_errmsg(handle));
-      return;
-    }
-  }
-  paramidx = sqlite3_bind_parameter_index(stmt, ":maxy");
-  if (paramidx) {
-    ret = sqlite3_bind_double(stmt, paramidx, extent?extent->maxy:DBL_MAX);
-    if(ret != SQLITE_OK) {
-      ctx->set_error(ctx,400, "failed to bind :maxy %s", sqlite3_errmsg(handle));
-      return;
-    }
-  }
+  
+  _mapcache_dimension_sqlite_bind_parameters(ctx,stmt,handle,dim_value,tileset,extent,grid);
 
   paramidx = sqlite3_bind_parameter_index(stmt, ":start_timestamp");
   if (paramidx) {
@@ -569,10 +509,10 @@ static void _bind_sqlite_dimension_time_params(mapcache_context *ctx, sqlite3_st
   }
 }
 
-apr_array_header_t *_mapcache_dimension_time_sqlite_get_entries(mapcache_context *ctx, mapcache_dimension_time *dim,
-        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end) {
-  mapcache_dimension_time_sqlite *sdim = (mapcache_dimension_time_sqlite*)dim;
-  int ret;
+apr_array_header_t *_mapcache_dimension_time_get_entries(mapcache_context *ctx, mapcache_dimension_time *dim, const char *dim_value,
+        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid, time_t *intervals, int n_intervals) {
+  mapcache_dimension_sqlite *sdim = (mapcache_dimension_sqlite*)dim;
+  int i,ret;
   apr_array_header_t *time_ids = NULL;
   mapcache_pooled_connection *pc;
   struct sqlite_dimension_conn *conn;
@@ -586,41 +526,46 @@ apr_array_header_t *_mapcache_dimension_time_sqlite_get_entries(mapcache_context
     conn->n_statements = 1;
   }
   if(!conn->prepared_statements[0]) {
-    ret = sqlite3_prepare_v2(conn->handle, sdim->query, -1, &conn->prepared_statements[0], NULL);
+    ret = sqlite3_prepare_v2(conn->handle, sdim->get_values_for_entry_query, -1, &conn->prepared_statements[0], NULL);
     if(ret != SQLITE_OK) {
       ctx->set_error(ctx, 500, "time sqlite backend failed on preparing query: %s", sqlite3_errmsg(conn->handle));
       _sqlite_dimension_release_conn(ctx, pc);
       return NULL;
     }
   }
+  
+  for(i=0;i<n_intervals;i++) {
+    _bind_sqlite_dimension_time_params(ctx,conn->prepared_statements[0],conn->handle,dim_value,tileset,grid,extent,intervals[i*2],intervals[i*2+1]);
+    if(GC_HAS_ERROR(ctx)) {
+        _sqlite_dimension_release_conn(ctx, pc);
+        return NULL;
+      }
 
-  _bind_sqlite_dimension_time_params(ctx,conn->prepared_statements[0],conn->handle,tileset,grid,extent,start,end);
-  if(GC_HAS_ERROR(ctx)) {
-    _sqlite_dimension_release_conn(ctx, pc);
-    return NULL;
+    time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
+    do {
+        ret = sqlite3_step(conn->prepared_statements[0]);
+        if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
+            ctx->set_error(ctx, 500, "sqlite backend failed on dimension_time query : %s (%d)", sqlite3_errmsg(conn->handle), ret);
+            _sqlite_dimension_release_conn(ctx, pc);
+            return NULL;
+          }
+        if(ret == SQLITE_ROW) {
+            const char* time_id = (const char*) sqlite3_column_text(conn->prepared_statements[0], 0);
+            APR_ARRAY_PUSH(time_ids,char*) = apr_pstrdup(ctx->pool,time_id);
+          }
+      } while (ret == SQLITE_ROW || ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
+    sqlite3_reset(conn->prepared_statements[0]);
   }
-
-  time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
-  do {
-    ret = sqlite3_step(conn->prepared_statements[0]);
-    if (ret != SQLITE_DONE && ret != SQLITE_ROW && ret != SQLITE_BUSY && ret != SQLITE_LOCKED) {
-      ctx->set_error(ctx, 500, "sqlite backend failed on dimension_time query : %s (%d)", sqlite3_errmsg(conn->handle), ret);
-      _sqlite_dimension_release_conn(ctx, pc);
-      return NULL;
-    }
-    if(ret == SQLITE_ROW) {
-      const char* time_id = (const char*) sqlite3_column_text(conn->prepared_statements[0], 0);
-      APR_ARRAY_PUSH(time_ids,char*) = apr_pstrdup(ctx->pool,time_id);
-    }
-  } while (ret == SQLITE_ROW || ret == SQLITE_BUSY || ret == SQLITE_LOCKED);
-  sqlite3_reset(conn->prepared_statements[0]);
   _sqlite_dimension_release_conn(ctx, pc);
   return time_ids;
 }
 
-apr_array_header_t *_mapcache_dimension_time_sqlite_get_all_entries(mapcache_context *ctx, mapcache_dimension_time *dim,
-        mapcache_tileset *tileset) {
-  return _mapcache_dimension_time_sqlite_get_entries(ctx,dim,tileset,NULL,NULL,0,INT_MAX);
+
+apr_array_header_t* _mapcache_dimension_time_get_all_entries(mapcache_context *ctx, mapcache_dimension *dim,
+        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid) {
+  mapcache_dimension_time *tdim = (mapcache_dimension_time*)dim;
+  time_t all[2] = {0,INT_MAX};
+  return _mapcache_dimension_time_get_entries(ctx,tdim,NULL,tileset,extent,grid,all,1);
 }
 #endif
 
@@ -635,22 +580,23 @@ typedef enum {
 
 
 #ifdef USE_SQLITE
-void _mapcache_dimension_time_sqlite_parse_xml(mapcache_context *ctx, mapcache_dimension_time *dim, ezxml_t node) {
-  mapcache_dimension_time_sqlite *sdim = (mapcache_dimension_time_sqlite*)dim;
+void _mapcache_dimension_time_parse_xml(mapcache_context *ctx, mapcache_dimension *dim, ezxml_t node) {
+  mapcache_dimension_sqlite *sdim = (mapcache_dimension_sqlite*)dim;
+  mapcache_dimension *pdim = (mapcache_dimension*)dim;
   ezxml_t child;
 
   child = ezxml_child(node,"dbfile");
   if(child && child->txt && *child->txt) {
     sdim->dbfile = apr_pstrdup(ctx->pool,child->txt);
   } else {
-    ctx->set_error(ctx,400,"no <dbfile> entry for <dimension_time> %s",dim->key);
+    ctx->set_error(ctx,400,"no <dbfile> entry for <dimension_time> %s",pdim->name);
     return;
   }
   child = ezxml_child(node,"query");
   if(child && child->txt && *child->txt) {
-    sdim->query = apr_pstrdup(ctx->pool,child->txt);
+    sdim->get_values_for_entry_query = apr_pstrdup(ctx->pool,child->txt);
   } else {
-    ctx->set_error(ctx,400,"no <query> entry for <dimension_time> %s",dim->key);
+    ctx->set_error(ctx,400,"no <query> entry for <dimension_time> %s",pdim->name);
     return;
   }
 }
@@ -680,69 +626,85 @@ char *mapcache_ogc_strptime(const char *value, struct tm *ts, mapcache_time_inte
   return NULL;
 }
 
-apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension_time *dimension_time,
-        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value) {
+apr_array_header_t* _mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                                                                   mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid) {
+  
   /* look if supplied value is a predefined key */
   /* split multiple values, loop */
 
   /* extract start and end values */
   struct tm tm_start,tm_end;
-  time_t start,end;
+  time_t *intervals;
   mapcache_time_interval_t tis,tie;
-  char *valueptr = (char*)value;
-  valueptr = mapcache_ogc_strptime(value,&tm_start,&tis);
-  if(!valueptr) {
-    ctx->set_error(ctx,400,"failed to parse time %s",value);
-    return NULL;
-  }
-
-  if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
-    /* we have a second (end) time */
-    if (*valueptr == '/') {
-      valueptr++;
-    }
-    else {
-      valueptr += 2;
-    }
-    valueptr = mapcache_ogc_strptime(valueptr,&tm_end,&tie);
+  char *valueptr = apr_pstrdup(ctx->pool,value);
+  char *last,*key;
+  int count;
+  mapcache_dimension_time *dimension_time = (mapcache_dimension_time*)dimension;
+  
+  /*count how many time entries were supplied*/
+  for(; *value; value++) if(*value == ',') count++;
+  
+  intervals = apr_pcalloc(ctx->pool,2*count*sizeof(time_t));
+  count = 0;
+  
+  
+  /* Split the input on '&' */
+  for (key = apr_strtok(valueptr, ",", &last); key != NULL;
+       key = apr_strtok(NULL, ",", &last)) {
+    valueptr = mapcache_ogc_strptime(key,&tm_start,&tis);
     if(!valueptr) {
-      ctx->set_error(ctx,400,"failed to parse end time in %s",value);
+      ctx->set_error(ctx,400,"failed to parse time %s",value);
       return NULL;
     }
-  } else if(*valueptr == 0) {
-    tie = tis;
-    tm_end = tm_start;
-  } else {
-    ctx->set_error(ctx,400,"failed (2) to parse time %s",value);
-    return NULL;
-  }
-  end = timegm(&tm_end);
-  start = timegm(&tm_start);
-  if(difftime(start,end) == 0) {
-    switch(tie) {
-    case MAPCACHE_TINTERVAL_SECOND:
-      tm_end.tm_sec += 1;
-      break;
-    case MAPCACHE_TINTERVAL_MINUTE:
-      tm_end.tm_min += 1;
-      break;
-    case MAPCACHE_TINTERVAL_HOUR:
-      tm_end.tm_hour += 1;
-      break;
-    case MAPCACHE_TINTERVAL_DAY:
-      tm_end.tm_mday += 1;
-      break;
-    case MAPCACHE_TINTERVAL_MONTH:
-      tm_end.tm_mon += 1;
-      break;
-    case MAPCACHE_TINTERVAL_YEAR:
-      tm_end.tm_year += 1;
-      break;
+  
+    if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
+      /* we have a second (end) time */
+      if (*valueptr == '/') {
+        valueptr++;
+      }
+      else {
+        valueptr += 2;
+      }
+      valueptr = mapcache_ogc_strptime(valueptr,&tm_end,&tie);
+      if(!valueptr) {
+        ctx->set_error(ctx,400,"failed to parse end time in %s",value);
+        return NULL;
+      }
+    } else if(*valueptr == 0) {
+      tie = tis;
+      tm_end = tm_start;
+    } else {
+      ctx->set_error(ctx,400,"failed (2) to parse time %s",value);
+      return NULL;
     }
-    end = timegm(&tm_end);
+    intervals[count*2+1] = timegm(&tm_end);
+    intervals[count*2] = timegm(&tm_start);
+    if(difftime(intervals[count*2],intervals[count*2+1]) == 0) {
+      switch(tie) {
+      case MAPCACHE_TINTERVAL_SECOND:
+        tm_end.tm_sec += 1;
+        break;
+      case MAPCACHE_TINTERVAL_MINUTE:
+        tm_end.tm_min += 1;
+        break;
+      case MAPCACHE_TINTERVAL_HOUR:
+        tm_end.tm_hour += 1;
+        break;
+      case MAPCACHE_TINTERVAL_DAY:
+        tm_end.tm_mday += 1;
+        break;
+      case MAPCACHE_TINTERVAL_MONTH:
+        tm_end.tm_mon += 1;
+        break;
+      case MAPCACHE_TINTERVAL_YEAR:
+        tm_end.tm_year += 1;
+        break;
+      }
+      intervals[count*2+1] = timegm(&tm_end);
+    }
+    count++;
   }
-
-  return dimension_time->get_entries_for_interval(ctx,dimension_time,tileset,grid,extent,start,end);
+  return _mapcache_dimension_time_get_entries(ctx,dimension_time,value,tileset,extent,grid,intervals,count); 
   /* end loop */
 }
 
@@ -752,10 +714,10 @@ mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
   mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
   dimension->dimension.type = MAPCACHE_DIMENSION_SQLITE;
   dimension->dbfile = NULL;
-  dimension->dimension.get_values_for_entry = _mapcache_dimension_sqlite_get_values_for_entry;
+  dimension->dimension.get_entries_for_value = _mapcache_dimension_sqlite_get_entries_for_value;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_sqlite_parse_xml;
-  dimension->dimension.get_all_values = _mapcache_dimension_sqlite_get_all_values;
-  dimension->dimension.get_all_ogc_formatted_values = _mapcache_dimension_sqlite_get_all_values;
+  dimension->dimension.get_all_entries = _mapcache_dimension_sqlite_get_all_entries;
+  dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_sqlite_get_all_entries;
   return (mapcache_dimension*)dimension;
 #else
   return NULL;
@@ -764,14 +726,14 @@ mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
 
 
 #ifdef USE_SQLITE
-mapcache_dimension* mapcache_dimension_time_sqlite_create(apr_pool_t *pool) {
-  mapcache_dimension_time_sqlite *dim = apr_pcalloc(pool, sizeof(mapcache_dimension_time_sqlite));
+mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool) {
+  mapcache_dimension_time *dim = apr_pcalloc(pool, sizeof(mapcache_dimension_time));
   mapcache_dimension *pdim = (mapcache_dimension*)dim;
   pdim->assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
-  pdim->get_values_for_entry = _mapcache_dimension_time_sqlite_get_values_for_entry;
-  pdim->get_all_values = _mapcache_dimension_time_sqlite_get_all_values;
-  pdim->get_all_ogc_formatted_values = _mapcache_dimension_time_sqlite_get_all_values;
-  pdim->configuration_parse_xml = _mapcache_dimension_time_sqlite_parse_xml;
+  pdim->get_entries_for_value = _mapcache_dimension_time_get_entries_for_value;
+  pdim->get_all_entries = _mapcache_dimension_time_get_all_entries;
+  pdim->get_all_ogc_formatted_entries = _mapcache_dimension_time_get_all_entries;
+  pdim->configuration_parse_xml = _mapcache_dimension_time_parse_xml;
   return pdim;
 }
 #endif

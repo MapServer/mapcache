@@ -1208,47 +1208,25 @@ int main(int argc, const char **argv)
   }
 
   /* validate the supplied dimensions */
-  if (!apr_is_empty_array(tileset->dimensions) || tileset->timedimension) {
+  if (!apr_is_empty_array(tileset->dimensions)) {
     int i;
     const char *value;
     dimensions = apr_table_make(ctx.pool,3);
-    if (!apr_is_empty_array(tileset->dimensions)) {
-      for(i=0; i<tileset->dimensions->nelts; i++) {
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-        if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
-          char *tmpval = apr_pstrdup(ctx.pool,value);
-          int ok = dimension->validate(&ctx,dimension,&tmpval);
-          if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
-            return usage(argv[0],"failed to validate dimension");
-            return 1;
-          } else {
-            /* validate may have changed the dimension value, so set that value into the dimensions table */
-            apr_table_setn(dimensions,dimension->name,tmpval);
-          }
-        } else {
-          /* a dimension was not specified on the command line, add the default value */
-          apr_table_setn(dimensions, dimension->name, dimension->default_value);
-        }
+    for(i=0; i<tileset->dimensions->nelts; i++) {
+      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+      apr_array_header_t *dimvals;
+      if((value = apr_table_get(argdimensions,dimension->name)) == NULL) {
+        value = dimension->default_value;
       }
-    }
-    if(tileset->timedimension) {
-      if((value = (char*)apr_table_get(argdimensions,tileset->timedimension->key)) != NULL) {
-        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, grid_link->grid, extent, value);
-        if(GC_HAS_ERROR(&ctx) || !timedim_selected) {
-          return usage(argv[0],"failed to validate time dimension");
-        }
-        if(timedim_selected->nelts == 0) {
-          return usage(argv[0],"Time dimension %s=%s returns no configured entry",tileset->timedimension->key,
-                  value);
-        }
-        if(timedim_selected->nelts > 1) {
-          return usage(argv[0],"Time dimension %s=%s returns more than 1 configured entries",tileset->timedimension->key,
-                  value);
-        }
-        apr_table_set(dimensions,tileset->timedimension->key,APR_ARRAY_IDX(timedim_selected,0,char*));
+      dimvals = dimension->get_entries_for_value(&ctx,dimension,value,tileset,NULL,grid_link->grid);
+      if(GC_HAS_ERROR(&ctx) || dimvals->nelts == 0 ) {
+        return usage(argv[0],"failed to validate dimension");
+        return 1;
+      } else if(dimvals->nelts > 1){
+        return usage(argv[0],"value (%s) for dimension (%s) returns multiple sub-dimensions which is not supported by the seeder",value,dimension->name);
       } else {
-        return usage(argv[0],"tileset references a TIME dimension, but none supplied on commandline. (hint: -D %s=<timestamp>",tileset->timedimension->key);
-
+        /* a dimension was not specified on the command line, add the default value */
+        apr_table_set(dimensions, dimension->name, value);
       }
     }
   }

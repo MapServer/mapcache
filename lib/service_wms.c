@@ -239,7 +239,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         if(dimension->unit) {
           ezxml_set_attr(dimxml,"units",dimension->unit);
         }
-        values = dimension->get_all_ogc_formatted_values(ctx,dimension,tileset,NULL,NULL);
+        values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           if(dimval) {
@@ -817,7 +817,7 @@ proxies:
       for(j=0; j<rule->match_params->nelts; j++) {
         mapcache_dimension *match_param = APR_ARRAY_IDX(rule->match_params,j,mapcache_dimension*);
         const char *value = apr_table_get(params,match_param->name);
-        if(!value || match_param->get_values_for_entry(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
+        if(!value || match_param->get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
           got_a_match = 0;
           break;
