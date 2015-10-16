@@ -886,7 +886,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
         const char *value = apr_table_get(dimtable,dimension->name);
         if(value) {
-          apr_table_set(req->tiles[0]->dimensions,dimension->name,value);
+          mapcache_tile_set_requested_dimension(ctx,req->tiles[0],dimension->name,value);
         }
       }
     }
@@ -954,7 +954,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
         const char *value = apr_table_get(dimtable,dimension->name);
         if(value) {
-          apr_table_set(fi->map.dimensions,dimension->name,value);
+          mapcache_map_set_requested_dimension(ctx,&fi->map,dimension->name,value);
         }
       }
     }

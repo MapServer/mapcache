@@ -164,6 +164,7 @@ typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
+typedef struct mapcache_requested_dimension mapcache_requested_dimension;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
 typedef struct mapcache_connection_pool mapcache_connection_pool;
@@ -783,7 +784,7 @@ struct mapcache_http_response {
 struct mapcache_map {
   mapcache_tileset *tileset;
   mapcache_grid_link *grid_link;
-  apr_table_t *dimensions;
+  apr_array_header_t *dimensions;
   mapcache_buffer *encoded_data;
   mapcache_image *raw_image;
   int nodata; /**< \sa mapcache_tile::nodata */
@@ -1400,11 +1401,8 @@ struct mapcache_tile {
   apr_time_t mtime; /**< last modification time */
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 
-  /* flag to indicate that the dimensions stored in the dimension table have already been split up
-   * into sub-dimensions */
-  int dimensions_exploded;
+  apr_array_header_t *dimensions;
   
-  apr_table_t *dimensions;
   /**
    * flag stating the tile is empty (i.e. fully transparent).
    * if set, this indicates that there was no error per se, but that there was
@@ -1944,6 +1942,21 @@ typedef enum {
   MAPCACHE_DIMENSION_ASSEMBLY_STACK,
   MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
 } mapcache_dimension_assembly_type;
+
+
+struct mapcache_requested_dimension {
+  char *name;
+  char *requested_value;
+  char *cached_value;
+};
+
+void mapcache_tile_set_cached_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);
+void mapcache_map_set_cached_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
+void mapcache_tile_set_requested_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);
+void mapcache_map_set_requested_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
+void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src);
 
 struct mapcache_dimension {
   mapcache_dimension_type type;

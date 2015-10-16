@@ -49,12 +49,11 @@ char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_met
     lockname = apr_pstrcat(ctx->pool,lockname,mt->map.grid_link->grid->name,NULL);
   }
 
-  if(mt->map.dimensions && !apr_is_empty_table(mt->map.dimensions)) {
-    const apr_array_header_t *elts = apr_table_elts(mt->map.dimensions);
+  if(mt->map.dimensions && mt->map.dimensions->nelts>0) {
     int i;
-    for(i=0; i<elts->nelts; i++) {
-      apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
-      char *dimvalue = apr_pstrdup(ctx->pool,entry.val);
+    for(i=0; i<mt->map.dimensions->nelts; i++) {
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(mt->map.dimensions,i,mapcache_requested_dimension*);
+      char *dimvalue = apr_pstrdup(ctx->pool,rdim->cached_value);
       char *iter = dimvalue;
       while(*iter) {
         if(*iter == '/') *iter='_';
@@ -450,37 +449,23 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
   int i;
+  mapcache_tileset *tileset = mt->map.tileset;
 #ifdef DEBUG
-  if(!mt->map.tileset->source || mt->map.tileset->read_only) {
+  if(!tileset->source || tileset->read_only) {
     ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
 #endif
-  if(mt->map.tileset->dimensions && !mt->tiles[0].dimensions_exploded) {
-    /* we need to store the resulting composition */
-    int count = 1;
-    apr_array_header_t **subdimensions = apr_pcalloc(ctx->pool,mt->map.tileset->dimensions->nelts * sizeof(apr_array_header_t*));
-    for(i=0;i<mt->map.tileset->dimensions->nelts;i++) {
-      /* count how many images we are going to need to merge */
-      mapcache_dimension *dim = APR_ARRAY_IDX(mt->map.tileset->dimensions,i,mapcache_dimension*);
-      subdimensions[i] = dim->get_entries_for_value(ctx,dim,apr_table_get(mt->map.dimensions,dim->name),
-                                                    mt->map.tileset,&(mt->map.extent),mt->map.grid_link->grid);
-      count *= subdimensions[i]->nelts;
-    }
-    if(count == 0) {    
-    }
-  } else {
-    mt->map.tileset->source->render_map(ctx, &mt->map);
-  }
+  tileset->source->render_map(ctx, &mt->map);
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
-  if(mt->map.tileset->_cache->tile_multi_set) {
-    mt->map.tileset->_cache->tile_multi_set(ctx, mt->map.tileset->_cache, mt->tiles, mt->ntiles);
+  if(tileset->_cache->tile_multi_set) {
+    tileset->_cache->tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
   } else {
     for(i=0; i<mt->ntiles; i++) {
       mapcache_tile *tile = &(mt->tiles[i]);
-      mt->map.tileset->_cache->tile_set(ctx, mt->map.tileset->_cache, tile);
+      tileset->_cache->tile_set(ctx, tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
     }
   }
@@ -543,13 +528,16 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
   tile->grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    tile->dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    tile->dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->name = dimension->name;
+      APR_ARRAY_PUSH(tile->dimensions,mapcache_requested_dimension*) = rdim;
     }
   }
-  tile->dimensions_exploded = 0;
   return tile;
 }
 
@@ -559,14 +547,11 @@ mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
   tile->tileset = src->tileset;
   tile->expires = src->expires;
   tile->grid_link = src->grid_link;
-  if(src->dimensions) {
-    tile->dimensions = apr_table_clone(pool,src->dimensions);
-  }
+  tile->dimensions = mapcache_requested_dimensions_clone(pool, src->dimensions);
   tile->x = src->x;
   tile->y = src->y;
   tile->z = src->z;
   tile->allow_redirect = src->allow_redirect;
-  tile->dimensions_exploded = src->dimensions_exploded;
   return tile;
 }
 
@@ -576,7 +561,7 @@ mapcache_map* mapcache_tileset_map_clone(apr_pool_t *pool, mapcache_map *src)
   map->tileset = src->tileset;
   map->expires = src->expires;
   map->grid_link = src->grid_link;
-  map->dimensions = apr_table_clone(pool,src->dimensions);
+  map->dimensions = mapcache_requested_dimensions_clone(pool, src->dimensions);
   map->height = src->height;
   map->width = src->width;
   map->extent = src->extent;
@@ -593,10 +578,14 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
   map->grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    map->dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    map->dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(map->dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->name = dimension->name;
+      APR_ARRAY_PUSH(map->dimensions,mapcache_requested_dimension*) = rdim;
     }
   }
   return map;
@@ -613,10 +602,14 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   fi->map.grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    fi->map.dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    fi->map.dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(fi->map.dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->name = dimension->name;
+      APR_ARRAY_PUSH(fi->map.dimensions,mapcache_requested_dimension*) = rdim;
     }
   }
   return fi;

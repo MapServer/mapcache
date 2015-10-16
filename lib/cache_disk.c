@@ -119,11 +119,15 @@ static void _mapcache_cache_disk_base_tile_key(mapcache_context *ctx, mapcache_c
                       tile->grid_link->grid->name,
                       NULL);
   if(tile->dimensions) {
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val,"/.",'#');
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      char *dimval;
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->name);
+        return;
+      }
+      dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
       *path = apr_pstrcat(ctx->pool,*path,"/",dimval,NULL);
     }
   }
@@ -198,12 +202,17 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
                                             tile->grid_link->grid->nlevels - tile->z - 1));
     if(tile->dimensions) {
       char *dimstring="";
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
+      int i = tile->dimensions->nelts;
       while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-        char *dimval = apr_pstrdup(ctx->pool,entry->val);
-        char *iter = dimval;
+        mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i, mapcache_requested_dimension*);
+        char *dimval;
+        char *iter;
+        if(!entry->cached_value) {
+          ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->name);
+          return;
+        }
+        dimval = apr_pstrdup(ctx->pool,entry->cached_value);
+        iter = dimval;
         while(*iter) {
           /* replace dangerous characters by '#' */
           if(*iter == '.' || *iter == '/') {
@@ -211,7 +220,7 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
           }
           iter++;
         }
-        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
+        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->name,"#",dimval,NULL);
       }
       *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
     }
@@ -253,12 +262,17 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
                                           tile->grid_link->grid->nlevels - tile->z - 1));
   if(tile->dimensions) {
     char *dimstring="";
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      char *dimval = apr_pstrdup(ctx->pool,entry->val);
-      char *iter = dimval;
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i, mapcache_requested_dimension*);
+      char *dimval;
+      char *iter;
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->name);
+        return;
+      }
+      dimval = apr_pstrdup(ctx->pool,entry->cached_value);
+      iter = dimval;
       while(*iter) {
         /* replace dangerous characters by '#' */
         if(*iter == '.' || *iter == '/') {
@@ -266,7 +280,7 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
         }
         iter++;
       }
-      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
+      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->name,"#",dimval,NULL);
     }
     *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
   }

@@ -198,11 +198,10 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
               tile->grid_link->grid->name);
     if(tile->dimensions && strstr(*path,"{dim}")) {
       char *dimstring="";
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
+      int i = tile->dimensions->nelts;
       while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-        const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val,"/.",'#');
+        mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",dimval,NULL);
       }
       *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);

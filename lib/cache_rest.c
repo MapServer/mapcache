@@ -377,11 +377,14 @@ static void _mapcache_cache_rest_tile_url(mapcache_context *ctx, mapcache_tile *
           tile->grid_link->grid->nlevels - tile->z - 1));
   if(tile->dimensions) {
     char *dimstring="";
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",entry->val,NULL);
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not defined",entry->name);
+        return;
+      }
+      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->name,"#",entry->cached_value,NULL);
     }
     *url = mapcache_util_str_replace(ctx->pool,*url, "{dim}", dimstring);
   }

@@ -597,7 +597,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         int i;
         mapcache_tileset *tileset = main_tileset;
         mapcache_grid_link *grid_link = main_grid_link;
-        apr_table_t *dimtable = NULL;
+        apr_array_header_t *dimtable = NULL;
 
         if(layeridx) {
           /*
@@ -674,7 +674,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
               }
 
               if(value) {
-                apr_table_set(dimtable,dimension->name,value);
+                mapcache_set_requested_dimension(ctx,dimtable,dimension->name,value);
+                GC_CHECK_ERROR(ctx);
               }
             }
           }
@@ -775,7 +776,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
           if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
-            apr_table_set(fi->map.dimensions,dimension->name,value);
+            mapcache_map_set_cached_dimension(ctx,&fi->map,dimension->name,value);
+            GC_CHECK_ERROR(ctx);
           }
         }
       }

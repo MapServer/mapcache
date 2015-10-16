@@ -57,6 +57,68 @@ time_t timegm(struct tm *tm)
 }
 #endif
 
+apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src) {
+  apr_array_header_t *ret = NULL;
+  if(src) {
+    int i;
+    ret = apr_array_make(pool,src->nelts,sizeof(mapcache_requested_dimension*));
+    for(i=0; i<src->nelts; i++) {
+      mapcache_requested_dimension *tiledim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      mapcache_requested_dimension *srcdim = APR_ARRAY_IDX(src,i,mapcache_requested_dimension*);
+      *tiledim = *srcdim;
+      APR_ARRAY_PUSH(ret,mapcache_requested_dimension*) = tiledim;
+    }
+  }
+  return ret;
+}
+
+void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value) {
+  int i;
+  if(!dimensions || !dimensions->nelts>0) {
+    ctx->set_error(ctx,500,"BUG: no dimensions configure for tile/map");
+    return;
+  }
+  for(i=0;i<dimensions->nelts;i++) {
+    mapcache_requested_dimension *dim = APR_ARRAY_IDX(dimensions,i,mapcache_requested_dimension*);
+    if(!strcasecmp(dim->name,name)) {
+      dim->requested_value = value?apr_pstrdup(ctx->pool,value):NULL;
+      return;
+    }
+  }
+  ctx->set_error(ctx,500,"BUG: dimension (%s) not found in tile/map",name);
+}
+
+void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value) {
+  int i;
+  if(!dimensions || !dimensions->nelts>0) {
+    ctx->set_error(ctx,500,"BUG: no dimensions configure for tile/map");
+    return;
+  }
+  for(i=0;i<dimensions->nelts;i++) {
+    mapcache_requested_dimension *dim = APR_ARRAY_IDX(dimensions,i,mapcache_requested_dimension*);
+    if(!strcasecmp(dim->name,name)) {
+      dim->cached_value = value?apr_pstrdup(ctx->pool,value):NULL;
+      return;
+    }
+  }
+  ctx->set_error(ctx,500,"BUG: dimension (%s) not found in tile/map",name);
+}
+
+void mapcache_tile_set_cached_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value) {
+  mapcache_set_cached_dimension(ctx,tile->dimensions,name,value);
+}
+
+void mapcache_map_set_cached_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value) {
+  mapcache_set_cached_dimension(ctx,map->dimensions,name,value);
+}
+void mapcache_tile_set_requested_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value) {
+  mapcache_set_requested_dimension(ctx,tile->dimensions,name,value);
+}
+
+void mapcache_map_set_requested_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value) {
+  mapcache_set_requested_dimension(ctx,map->dimensions,name,value);
+}
+
 static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dim, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {

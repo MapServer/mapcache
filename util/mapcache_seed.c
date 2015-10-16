@@ -71,7 +71,7 @@ mapcache_tileset *tileset;
 mapcache_tileset *tileset_transfer;
 mapcache_cfg *cfg;
 mapcache_context ctx;
-apr_table_t *dimensions=NULL;
+apr_array_header_t *dimensions=NULL;
 int minzoom=-1;
 int maxzoom=-1;
 mapcache_grid_link *grid_link;
@@ -470,7 +470,7 @@ void cmd_worker()
   if(nprocesses >= 1) nworkers = nprocesses;
   apr_pool_create(&cmd_ctx.pool,ctx.pool);
   tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
-  tile->dimensions = dimensions;
+  tile->dimensions = mapcache_requested_dimensions_clone(ctx.pool,dimensions);
   if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
     do {
       tile->x = x;
@@ -555,7 +555,7 @@ void seed_worker()
   apr_pool_create(&seed_ctx.pool,ctx.pool);
   apr_pool_create(&tpool,ctx.pool);
   tile = mapcache_tileset_tile_create(tpool, tileset, grid_link);
-  tile->dimensions = dimensions;
+  tile->dimensions = mapcache_requested_dimensions_clone(ctx.pool,dimensions);
   while(1) {
     struct seed_cmd cmd;
     apr_status_t ret;
@@ -1211,23 +1211,15 @@ int main(int argc, const char **argv)
   if (!apr_is_empty_array(tileset->dimensions)) {
     int i;
     const char *value;
-    dimensions = apr_table_make(ctx.pool,3);
+    dimensions = apr_array_make(ctx.pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_array_header_t *dimvals;
+      mapcache_requested_dimension *rdim = apr_pcalloc(ctx.pool,sizeof(mapcache_requested_dimension));
+      rdim->name = dimension->name;
       if((value = apr_table_get(argdimensions,dimension->name)) == NULL) {
         value = dimension->default_value;
       }
-      dimvals = dimension->get_entries_for_value(&ctx,dimension,value,tileset,NULL,grid_link->grid);
-      if(GC_HAS_ERROR(&ctx) || dimvals->nelts == 0 ) {
-        return usage(argv[0],"failed to validate dimension");
-        return 1;
-      } else if(dimvals->nelts > 1){
-        return usage(argv[0],"value (%s) for dimension (%s) returns multiple sub-dimensions which is not supported by the seeder",value,dimension->name);
-      } else {
-        /* a dimension was not specified on the command line, add the default value */
-        apr_table_set(dimensions, dimension->name, value);
-      }
+      APR_ARRAY_PUSH(dimensions,mapcache_requested_dimension*)=rdim;
     }
   }
 

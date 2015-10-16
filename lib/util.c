@@ -335,21 +335,20 @@ char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, 
 {
   char *key = apr_pstrdup(ctx->pool,"");
   if(tile->dimensions) {
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     if(i>1) {
       while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
+        mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
         if(i) {
-          key = apr_pstrcat(ctx->pool,key,entry->val,(sanitized_chars?sanitize_to:"#"),NULL);
+          key = apr_pstrcat(ctx->pool,key,entry->cached_value,(sanitized_chars?sanitize_to:"#"),NULL);
         } else {
-          key = apr_pstrcat(ctx->pool,key,entry->val,NULL);
+          key = apr_pstrcat(ctx->pool,key,entry->cached_value,NULL);
         }
       }
       return key;
     } else if(i) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,0,apr_table_entry_t));
-      key = apr_pstrdup(ctx->pool,entry->val);
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,0,mapcache_requested_dimension*);
+      key = apr_pstrdup(ctx->pool,entry->cached_value);
     }
     if(sanitized_chars)
       key = mapcache_util_str_sanitize(ctx->pool,key,sanitized_chars,*sanitize_to);
