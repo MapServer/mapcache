@@ -381,10 +381,10 @@ static void _mapcache_cache_rest_tile_url(mapcache_context *ctx, mapcache_tile *
     while(i--) {
       mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
       if(!entry->cached_value) {
-        ctx->set_error(ctx,500,"BUG: dimension (%s) not defined",entry->name);
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not defined",entry->dimension->name);
         return;
       }
-      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->name,"#",entry->cached_value,NULL);
+      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",entry->cached_value,NULL);
     }
     *url = mapcache_util_str_replace(ctx->pool,*url, "{dim}", dimstring);
   }

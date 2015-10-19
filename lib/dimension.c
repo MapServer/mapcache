@@ -80,7 +80,7 @@ void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t 
   }
   for(i=0;i<dimensions->nelts;i++) {
     mapcache_requested_dimension *dim = APR_ARRAY_IDX(dimensions,i,mapcache_requested_dimension*);
-    if(!strcasecmp(dim->name,name)) {
+    if(!strcasecmp(dim->dimension->name,name)) {
       dim->requested_value = value?apr_pstrdup(ctx->pool,value):NULL;
       return;
     }
@@ -96,7 +96,7 @@ void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *di
   }
   for(i=0;i<dimensions->nelts;i++) {
     mapcache_requested_dimension *dim = APR_ARRAY_IDX(dimensions,i,mapcache_requested_dimension*);
-    if(!strcasecmp(dim->name,name)) {
+    if(!strcasecmp(dim->dimension->name,name)) {
       dim->cached_value = value?apr_pstrdup(ctx->pool,value):NULL;
       return;
     }

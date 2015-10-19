@@ -1183,8 +1183,8 @@ typedef enum {
 
 struct mapcache_locker{
   mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock);
-  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
-  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
+  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, void *lock);
+  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, void *lock);
 
   void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
   mapcache_lock_mode type;
@@ -1553,6 +1553,8 @@ struct mapcache_tileset {
    * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
    */
   apr_array_header_t *dimensions;
+  
+  int store_dimension_assemblies;/**< should multiple sub-dimensions be assembled dynamically (per-request) or should they be cached once assembled */
 
   /**
    * image to be used as a watermark
@@ -1664,7 +1666,7 @@ void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *til
 
 
 MS_DLL_EXPORT int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock);
-MS_DLL_EXPORT void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock);
+MS_DLL_EXPORT void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, void *lock);
 
 MS_DLL_EXPORT mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
 MS_DLL_EXPORT void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
@@ -1945,7 +1947,7 @@ typedef enum {
 
 
 struct mapcache_requested_dimension {
-  char *name;
+  mapcache_dimension *dimension;
   char *requested_value;
   char *cached_value;
 };

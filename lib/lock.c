@@ -66,12 +66,12 @@ int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *l
     while(rv != MAPCACHE_LOCK_NOENT) {
       unsigned int waited = apr_time_as_msec(apr_time_now()-start_wait);
       if(waited > locker->timeout*1000) {
-        mapcache_unlock_resource(ctx,locker,resource, *lock);
+        mapcache_unlock_resource(ctx,locker,*lock);
         ctx->log(ctx,MAPCACHE_ERROR,"deleting a possibly stale lock after waiting on it for %g seconds",waited/1000.0);
         return MAPCACHE_FALSE;
       }
       apr_sleep(locker->retry_interval * 1000000);
-      rv = locker->ping_lock(ctx,locker,resource, *lock);
+      rv = locker->ping_lock(ctx,locker, *lock);
     }
     return MAPCACHE_FALSE;
   }
@@ -114,12 +114,11 @@ mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, map
   }
 }
 
-mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapcache_locker *self, void *lock) {
   apr_finfo_t info;
   apr_status_t rv;
   char *lockname;
-  mapcache_locker_disk *ldisk = (mapcache_locker_disk*)self;
-  lockname = lock_filename_for_resource(ctx,ldisk,resource);
+  lockname = (char*)lock;
   rv = apr_stat(&info,lockname,0,ctx->pool);
   if(APR_STATUS_IS_ENOENT(rv)) {
     return MAPCACHE_LOCK_NOENT;
@@ -128,15 +127,14 @@ mapcache_lock_result mapcache_locker_disk_ping_lock(mapcache_context *ctx, mapca
   }
 }
 
-void mapcache_locker_disk_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock)
+void mapcache_locker_disk_release_lock(mapcache_context *ctx, mapcache_locker *self, void *lock)
 {
-  mapcache_locker_disk *ld = (mapcache_locker_disk*)self;
-  char *lockname = lock_filename_for_resource(ctx,ld,resource);
+  char *lockname = (char*)lock;
   apr_file_remove(lockname,ctx->pool);
 }
 
-void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock) {
-  locker->release_lock(ctx, locker, resource, lock);
+void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, void *lock) {
+  locker->release_lock(ctx, locker, lock);
 }
 
 void mapcache_locker_disk_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
@@ -165,14 +163,14 @@ struct mapcache_locker_fallback_lock {
   void *lock; /*the opaque lock returned by the locker*/
 };
 
-void mapcache_locker_fallback_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+void mapcache_locker_fallback_release_lock(mapcache_context *ctx, mapcache_locker *self, void *lock) {
   struct mapcache_locker_fallback_lock *flock = lock;
-  flock->locker->release_lock(ctx,flock->locker,resource,flock->lock);
+  flock->locker->release_lock(ctx,flock->locker,flock->lock);
 }
 
-mapcache_lock_result mapcache_locker_fallback_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+mapcache_lock_result mapcache_locker_fallback_ping_lock(mapcache_context *ctx, mapcache_locker *self, void *lock) {
   struct mapcache_locker_fallback_lock *flock = lock;
-  return flock->locker->ping_lock(ctx,flock->locker,resource,flock->lock);
+  return flock->locker->ping_lock(ctx,flock->locker,flock->lock);
 }
 
 mapcache_lock_result mapcache_locker_fallback_aquire_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock) {
@@ -288,16 +286,19 @@ apr_memcache_t* create_memcache(mapcache_context *ctx, mapcache_locker_memcache 
   return memcache;
 }
 
-mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+typedef struct {
+  apr_memcache_t *memcache;
+  char *lockname;
+} mapcache_lock_memcache;
+
+mapcache_lock_result mapcache_locker_memcache_ping_lock(mapcache_context *ctx, mapcache_locker *self, void *lock) {
   apr_status_t rv;
   char *one;
   size_t ione;
-  mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
-  char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = (apr_memcache_t*)lock;
-  if(!memcache)
+  mapcache_lock_memcache *mlock = (mapcache_lock_memcache*)lock;
+  if(!mlock || !mlock->lockname || !mlock->memcache)
     return MAPCACHE_LOCK_NOENT;
-  rv = apr_memcache_getp(memcache,ctx->pool,key,&one,&ione,NULL);
+  rv = apr_memcache_getp(mlock->memcache,ctx->pool,mlock->lockname,&one,&ione,NULL);
   if(rv == APR_SUCCESS)
     return MAPCACHE_LOCK_LOCKED;
   else
@@ -309,13 +310,14 @@ mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx,
   apr_status_t rv;
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   char errmsg[120];
-  char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = create_memcache(ctx,lm);
+  mapcache_lock_memcache *mlock = apr_pcalloc(ctx->pool, sizeof(mapcache_lock_memcache));
+  mlock->lockname = memcache_key_for_resource(ctx, lm, resource);
+  mlock->memcache = create_memcache(ctx,lm);
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_LOCK_NOENT;
   }
-  *lock = memcache;
-  rv = apr_memcache_add(memcache,key,"1",1,self->timeout,0);
+  *lock = mlock;
+  rv = apr_memcache_add(mlock->memcache,mlock->lockname,"1",1,self->timeout,0);
   if( rv == APR_SUCCESS) {
     return MAPCACHE_LOCK_AQUIRED;
   } else if ( rv == APR_EEXIST ) {
@@ -326,20 +328,18 @@ mapcache_lock_result mapcache_locker_memcache_aquire_lock(mapcache_context *ctx,
   }
 }
 
-void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock) {
+void mapcache_locker_memcache_release_lock(mapcache_context *ctx, mapcache_locker *self, void *lock) {
   apr_status_t rv;
-  mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
+  mapcache_lock_memcache *mlock = (mapcache_lock_memcache*)lock;
   char errmsg[120];
-  char *key = memcache_key_for_resource(ctx, lm, resource);
-  apr_memcache_t *memcache = (apr_memcache_t*)lock;
-  if(!memcache) {
+  if(!mlock || !mlock->memcache || !mlock->lockname) {
     /*error*/
     return;
   }
 
-  rv = apr_memcache_delete(memcache,key,0);
+  rv = apr_memcache_delete(mlock->memcache,mlock->lockname,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
-    ctx->set_error(ctx,500,"memcache: failed to delete key %s: %s", key, apr_strerror(rv,errmsg,120));
+    ctx->set_error(ctx,500,"memcache: failed to delete key %s: %s", mlock->lockname, apr_strerror(rv,errmsg,120));
   }
 
 }
