@@ -86,9 +86,10 @@ mapcache_lock_result mapcache_locker_disk_aquire_lock(mapcache_context *ctx, map
 
   assert(self->type == MAPCACHE_LOCKER_DISK);
   ldisk = (mapcache_locker_disk*)self;
-  *lock = NULL; /*unused*/
 
   lockname = lock_filename_for_resource(ctx,ldisk,resource);
+  *lock = lockname;
+  
   /* create the lockfile */
   rv = apr_file_open(&lockfile,lockname,APR_WRITE|APR_CREATE|APR_EXCL|APR_XTHREAD,APR_OS_DEFAULT,ctx->pool);
 

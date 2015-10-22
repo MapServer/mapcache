@@ -48,7 +48,7 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool)
  * \brief compute the extent of a given tile in the grid given its x, y, and z.
  * \returns \extent the tile's extent
  */
-void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
+void mapcache_grid_get_tile_extent(mapcache_context *ctx, mapcache_grid *grid,
                               int x, int y, int z, mapcache_extent *bbox)
 {
   double res  = grid->levels[z]->resolution;
@@ -68,6 +68,65 @@ void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
     case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
     case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
       ctx->set_error(ctx,500,"grid origin not implemented");
+  }
+}
+
+void mapcache_grid_get_metatile_extent(mapcache_context *ctx, mapcache_tile *tile, mapcache_extent *extent) {
+  mapcache_grid *grid = tile->grid_link->grid;
+  double res = grid->levels[tile->z]->resolution;
+  double gbuffer,gwidth,gheight,fullgwidth,fullgheight;
+  mapcache_tileset *tileset = tile->tileset;
+  int mtx,mty,blx,bly,mtsx,mtsy;
+  mtx = tile->x / tileset->metasize_x;
+  if(tile->x < 0)
+    mtx --;
+  mty = tile->y / tileset->metasize_y;
+  if(tile->y < 0)
+    mty --;
+  blx = mtx * tileset->metasize_x;
+  bly = mty * tileset->metasize_y;
+
+  /* adjust the size of the the metatile so it does not extend past the grid limits.
+   * If we don't do this, we end up with cut labels on the edges of the tile grid
+   */
+  if(blx+tileset->metasize_x-1 >= grid->levels[tile->z]->maxx) {
+    mtsx = grid->levels[tile->z]->maxx - blx;
+  } else {
+    mtsx = tileset->metasize_x;
+  }
+  if(bly+tileset->metasize_y-1 >= grid->levels[tile->z]->maxy) {
+    mtsy = grid->levels[tile->z]->maxy - bly;
+  } else {
+    mtsy = tileset->metasize_y;
+  }
+
+  /* buffer in geographical units */
+  gbuffer = res * tileset->metabuffer;
+
+  /* adjusted metatile size in geographical units */
+  gwidth = res * mtsx * grid->tile_sx;
+  gheight = res * mtsy * grid->tile_sy;
+
+  /* configured metatile size in geographical units */
+  fullgwidth = res * tileset->metasize_x * grid->tile_sx;
+  fullgheight = res * tileset->metasize_y * grid->tile_sy;
+
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      extent->minx = grid->extent.minx + mtx * fullgwidth - gbuffer;
+      extent->miny = grid->extent.miny + mty * fullgheight - gbuffer;
+      extent->maxx = extent->minx + gwidth + 2 * gbuffer;
+      extent->maxy = extent->miny + gheight + 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      extent->minx = grid->extent.minx + mtx * fullgwidth - gbuffer;
+      extent->maxy = grid->extent.maxy - mty * fullgheight + gbuffer;
+      extent->maxx = extent->minx + gwidth + 2 * gbuffer;
+      extent->miny = extent->maxy - gheight - 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      ctx->set_error(ctx,500,"origin not implemented");
   }
 }
 

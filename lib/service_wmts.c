@@ -839,7 +839,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
   if(fi_j) {
     //we need the extent of the request, compute it here
     extent = apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
-    mapcache_grid_get_extent(ctx,grid_link->grid,x,y,level,extent);
+    mapcache_grid_get_tile_extent(ctx,grid_link->grid,x,y,level,extent);
   }
 
   if(!fi_j) { /*we have a getTile request*/

@@ -424,9 +424,9 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
    */
 
 
-  mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
+  mapcache_grid_get_tile_extent(cmd_ctx, grid_link->grid,
                            curx, cury, curz, &bboxbl);
-  mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
+  mapcache_grid_get_tile_extent(cmd_ctx, grid_link->grid,
                            curx+tileset->metasize_x-1, cury+tileset->metasize_y-1, curz, &bboxtr);
   epsilon = (bboxbl.maxx-bboxbl.minx)*0.01;
   mapcache_grid_get_xy(cmd_ctx,grid_link->grid,
@@ -578,10 +578,10 @@ void seed_worker()
           /* temporarily clear error state so we don't mess up with error handling in the locker */
           void *error;
           seed_ctx.pop_errors(&seed_ctx,&error);
-          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt), lock);
+          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, lock);
           seed_ctx.push_errors(&seed_ctx,error);
         } else {
-          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt), lock);
+          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, lock);
         }
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
@@ -1215,10 +1215,11 @@ int main(int argc, const char **argv)
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
       mapcache_requested_dimension *rdim = apr_pcalloc(ctx.pool,sizeof(mapcache_requested_dimension));
-      rdim->name = dimension->name;
+      rdim->dimension = dimension;
       if((value = apr_table_get(argdimensions,dimension->name)) == NULL) {
         value = dimension->default_value;
       }
+      rdim->requested_value = apr_pstrdup(ctx.pool,value);
       APR_ARRAY_PUSH(dimensions,mapcache_requested_dimension*)=rdim;
     }
   }

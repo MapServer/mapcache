@@ -72,7 +72,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
         t->x = i;
         t->y = j;
         t->z = 0;
-        mapcache_grid_get_extent(ctx, t->grid_link->grid,
+        mapcache_grid_get_tile_extent(ctx, t->grid_link->grid,
                                  t->x, t->y, t->z, &bb);
 
         caps = apr_psprintf(ctx->pool, "%s"
@@ -102,7 +102,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
   } else {
     mapcache_extent bbox;
 
-    mapcache_grid_get_extent(ctx, request->tile->grid_link->grid,
+    mapcache_grid_get_tile_extent(ctx, request->tile->grid_link->grid,
                              request->tile->x, request->tile->y, request->tile->z, &bbox);
 
 
@@ -144,7 +144,7 @@ void _create_capabilities_kml(mapcache_context *ctx, mapcache_request_get_capabi
           t->x = (request->tile->x << 1) + i;
           t->y = (request->tile->y << 1) + j;
           t->z = request->tile->z + 1;
-          mapcache_grid_get_extent(ctx, t->grid_link->grid,
+          mapcache_grid_get_tile_extent(ctx, t->grid_link->grid,
                                    t->x, t->y, t->z, &bb);
 
           caps = apr_psprintf(ctx->pool, "%s"

@@ -57,6 +57,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
     char *skip_validation = (char*)ezxml_attr(dimension_node,"skip_validation");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
+    char *assembly = (char*)ezxml_attr(dimension_node,"assembly");
 
     mapcache_dimension *dimension = NULL;
 
@@ -98,6 +99,15 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     } else {
       ctx->set_error(ctx,400,"dimension \"%s\" has no \"default\" attribute",dimension->name);
       return;
+    }
+    
+    if(assembly && *assembly) {
+      if(strcasecmp(assembly,"stack")==0) {
+        dimension->assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
+      } else if(strcasecmp(assembly,"none")) {
+        ctx->set_error(ctx,400,"dimension \"%s\" has invalid \"assembly\" attribute (expecting \"none\" or \"stack\")",dimension->name);
+        return;
+      }
     }
 
     dimension->configuration_parse_xml(ctx,dimension,dimension_node);

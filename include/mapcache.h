@@ -1533,6 +1533,7 @@ struct mapcache_tileset {
   int auto_expire;
 
   int read_only;
+  int subdimension_read_only;
 
   /**
    * the cache in which the tiles should be stored
@@ -1694,8 +1695,11 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool);
 const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid);
 const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid);
 
-MS_DLL_EXPORT void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
+MS_DLL_EXPORT void mapcache_grid_get_tile_extent(mapcache_context *ctx, mapcache_grid *grid,
                               int x, int y, int z, mapcache_extent *bbox);
+
+MS_DLL_EXPORT void mapcache_grid_get_metatile_extent(mapcache_context *ctx, mapcache_tile *tile, mapcache_extent *bbox);
+
 /**
  * \brief compute x y value for given lon/lat (dx/dy) and given zoomlevel
  * @param ctx
