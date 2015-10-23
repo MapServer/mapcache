@@ -485,7 +485,7 @@ struct mapcache_cache_composite_cache_link {
   int minzoom;
   int maxzoom;
   apr_array_header_t *grids;
-  apr_array_header_t *dimensions; //TODO
+  apr_table_t *dimensions; /* key/value pairs of dimensions */
 };
 
 struct mapcache_cache_composite {

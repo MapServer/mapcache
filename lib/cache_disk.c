@@ -200,12 +200,13 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
                                         apr_psprintf(ctx->pool,"%d",
                                             tile->grid_link->grid->nlevels - tile->z - 1));
-    if(tile->dimensions) {
+    if(tile->dimensions && strstr(*path,"{dim")) {
       char *dimstring="";
       int i = tile->dimensions->nelts;
       while(i--) {
         mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i, mapcache_requested_dimension*);
         char *dimval;
+        char *single_dim;
         char *iter;
         if(!entry->cached_value) {
           ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->dimension->name);
@@ -221,6 +222,10 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
           iter++;
         }
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",dimval,NULL);
+        single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+        if(strstr(*path,single_dim)) {
+          *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+        }
       }
       *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
     }

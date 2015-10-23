@@ -59,11 +59,31 @@ static mapcache_cache* _mapcache_composite_cache_get(mapcache_context *ctx, mapc
       /* not found */
       if(j == cache_link->grids->nelts) continue;
     }
+    if(cache_link->dimensions) {
+      const apr_array_header_t *array = apr_table_elts(cache_link->dimensions);
+      apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
+      int j;
+      if(!tile->dimensions) continue; /* the cache link refers to dimensions, but this tile does not have any, it cannot match */
+      
+      for (j = 0; j < array->nelts; j++) {
+        char *dim = elts[j].key;
+        char *dimval = elts[j].val;
+        int k;
+        for(k=0;k<tile->dimensions->nelts;k++) {
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          if(!strcmp(rdim->dimension->name,dim) && !strcmp(rdim->cached_value,dimval))
+            break;
+        }
+        if(k == tile->dimensions->nelts) break; /* no tile dimension matched the current cache dimension */
+      }
+      if(j != array->nelts) continue; /* we broke out early from the cache dimension loop, so at least one was not correct */
+    }
     return cache_link->cache;
   }
   ctx->set_error(ctx, 500, "no cache matches for given tile request");
   return NULL;
 }
+
 static int _mapcache_cache_composite_tile_exists(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   mapcache_cache_composite *cache = (mapcache_cache_composite*)pcache;
@@ -167,6 +187,37 @@ static void _mapcache_cache_composite_configuration_parse_xml(mapcache_context *
         return;
       }
       cachelink->minzoom = zoom;
+    }
+    sZoom = (char*)ezxml_attr(cur_node,"grids");
+    if(sZoom) {
+      char *grids = apr_pstrdup(ctx->pool,sZoom),*key,*last;
+      for(key = apr_strtok(grids, ",", &last); key; key = apr_strtok(NULL,",",&last)) {
+        /*loop through grids*/
+        if(!cachelink->grids) {
+          cachelink->grids =apr_array_make(ctx->pool,1,sizeof(char*));
+        }
+        APR_ARRAY_PUSH(cachelink->grids,char*) = key;
+      }
+    }
+    sZoom = (char*)ezxml_attr(cur_node,"dimensions");
+    if(sZoom) {
+      char *dims = apr_pstrdup(ctx->pool,sZoom),*key,*last;
+      for(key = apr_strtok(dims, ",", &last); key; key = apr_strtok(NULL,",",&last)) {
+        char *dimname;
+        /*loop through dims*/
+        if(!cachelink->dimensions) {
+          cachelink->dimensions =apr_table_make(ctx->pool,1);
+        }
+        dimname = key;
+        while(*key && *key!='=') key++;
+        if(!(*key)) {
+          ctx->set_error(ctx,400,"failed to parse composite cache dimensions. expecting dimensions=\"dim1=val1,dim2=val2\"");
+          return;
+        }
+        *key = 0;
+        key++;
+        apr_table_set(cachelink->dimensions,dimname,key);
+      }
     }
     
     APR_ARRAY_PUSH(cache->cache_links,mapcache_cache_composite_cache_link*) = cachelink;

@@ -492,7 +492,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->format = NULL;
   tileset->grid_links = NULL;
   tileset->config = NULL;
-  tileset->store_dimension_assemblies = 1;
+  tileset->store_dimension_assemblies = 0;
   return tileset;
 }
 
@@ -834,8 +834,8 @@ static void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, 
         }
         tile->tileset->_cache->tile_set(ctx, tile->tileset->_cache, tile);
         GC_CHECK_ERROR(ctx);
-        return;
       }
+      return;
     } else {
       for(j=0;j<n_subtiles;j++) {
         /* clone the existing subtiles if we have more than one sub-dimension to assemble for the the current dimension */
