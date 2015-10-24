@@ -75,14 +75,17 @@ static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_cache_
   if(strstr(*path,"{grid}"))
     *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}",
                                       tile->grid_link->grid->name);
-  if(tile->dimensions && strstr(*path,"{dim}")) {
+  if(tile->dimensions && strstr(*path,"{dim")) {
     char *dimstring="";
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val,"/.",'#');
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      const char *dimval = mapcache_util_str_sanitize(ctx->pool,rdim->cached_value,"/.",'#');
+      char *dim_key = apr_pstrcat(ctx->pool,"{dim:",rdim->dimension->name,"}",NULL);
       dimstring = apr_pstrcat(ctx->pool,dimstring,"#",dimval,NULL);
+      if(strstr(*path,dim_key)) {
+        *path = mapcache_util_str_replace(ctx->pool,*path, dim_key, dimval);
+      }
     }
     *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
   }
@@ -680,7 +683,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
       x = (tile->x / cache->count_x)*(cache->count_x);
       y = (tile->y / cache->count_y)*(cache->count_y) + ntilesy - 1;
 
-      mapcache_grid_get_extent(ctx, tile->grid_link->grid,
+      mapcache_grid_get_tile_extent(ctx, tile->grid_link->grid,
                                x,y,tile->z,&bbox);
       adfTiePoints[0] = 0.0;
       adfTiePoints[1] = 0.0;
@@ -735,7 +738,7 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
 close_tiff:
   if(hTIFF)
     MyTIFFClose(hTIFF);
-  mapcache_unlock_resource(ctx,cache->locker?cache->locker:ctx->config->locker,filename, lock);
+  mapcache_unlock_resource(ctx,cache->locker?cache->locker:ctx->config->locker, lock);
 #else
   ctx->set_error(ctx,500,"tiff write support disabled by default");
 #endif

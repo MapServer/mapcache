@@ -818,6 +818,16 @@ static void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, 
                                                                                      tile->tileset, &extent, tile->grid_link->grid);
     if(GC_HAS_ERROR(ctx)) /* invalid dimension given */
       goto cleanup;
+#ifdef DEBUG
+    {
+      char *dims = "";
+      int i;
+      for(i=0;i<single_subdimension->nelts;i++)
+        dims = apr_pstrcat(ctx->pool,dims,APR_ARRAY_IDX(single_subdimension,i,char*)," ",NULL);
+      ctx->log(ctx,MAPCACHE_DEBUG,"tile (%d,%d,%d) dimension (%s) returned: %s",
+             tile->z,tile->y,tile->x,rdim->dimension->name,dims);
+    }
+#endif
 
     if(single_subdimension->nelts == 0) {
       /* not an error, but no subdimension was found: we need to return an empty tile */  

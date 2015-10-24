@@ -700,7 +700,7 @@ apr_array_header_t* _mapcache_dimension_time_get_entries_for_value(mapcache_cont
   mapcache_time_interval_t tis,tie;
   char *valueptr = apr_pstrdup(ctx->pool,value);
   char *last,*key;
-  int count;
+  int count=0;
   mapcache_dimension_time *dimension_time = (mapcache_dimension_time*)dimension;
   
   /*count how many time entries were supplied*/
