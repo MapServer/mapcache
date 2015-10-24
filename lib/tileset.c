@@ -492,7 +492,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->format = NULL;
   tileset->grid_links = NULL;
   tileset->config = NULL;
-  tileset->store_dimension_assemblies = 0;
+  tileset->store_dimension_assemblies = 1;
   return tileset;
 }
 
@@ -860,14 +860,14 @@ static void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, 
       for(j=0;j<n_subtiles;j++) {
         mapcache_tile_set_cached_dimension(ctx,APR_ARRAY_IDX(subtiles,j,mapcache_subtile).tile,rdim->dimension->name,
                                            APR_ARRAY_IDX(single_subdimension,j%single_subdimension->nelts,char*));
+
       }
     }
   }
   
-  tile->nodata = 1;
-  tile->encoded_data = NULL;
-  tile->raw_image = NULL;
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
+  /* note that subtiles[0].tile == tile */
+
   for(i=0; i<subtiles->nelts; i++) {
     mapcache_tile *subtile = APR_ARRAY_IDX(subtiles,i,mapcache_subtile).tile;
     mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */

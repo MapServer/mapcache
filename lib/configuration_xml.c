@@ -120,6 +120,9 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     return;
   }
   tileset->dimensions = dimensions;
+  dimension_node = ezxml_child(node,"store_assemblies");
+  if(dimension_node && dimension_node->txt && !strcmp(dimension_node->txt,"false"))
+    tileset->store_dimension_assemblies = 0;
 }
 
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
