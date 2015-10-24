@@ -27,6 +27,7 @@
  *****************************************************************************/
 
 #include "mapcache.h"
+#include <apr_strings.h>
 
 static mapcache_cache_composite_cache_link* _mapcache_cache_link_create(apr_pool_t *pool) {
   mapcache_cache_composite_cache_link *cl = apr_pcalloc(pool, sizeof(mapcache_cache_composite_cache_link));
