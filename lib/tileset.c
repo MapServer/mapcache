@@ -902,19 +902,29 @@ static void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, 
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
   }
   if(tile->tileset->store_dimension_assemblies) {
+    int already_stored = 1; /*depending on the type of dimension, we may have no nead to store the resulting tile*/
+    
+    if(n_subtiles != 1) 
+      already_stored = 0; /*if we had to merge multiple subdimensions, then we always have to store the resulting assembly*/
+    
     /* set the key for the dimension so it can be stored with the requested dimension */
     for(j=0;j<tile->dimensions->nelts;j++) {
       mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,j,mapcache_requested_dimension*);
+      if(strcmp(dim->cached_value,dim->requested_value)) {
+        already_stored = 0; /*the subdimension is different than the requested dimension, we need to store the resulting tile*/
+      }
       dim->cached_value = dim->requested_value;
     }
-    if(tile->nodata) {
-      tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
-      tile->raw_image->has_alpha = MC_ALPHA_YES;
-      tile->raw_image->is_blank = MC_EMPTY_YES;
-      tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+    if(!already_stored) {
+      if(tile->nodata) {
+        tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+        tile->raw_image->has_alpha = MC_ALPHA_YES;
+        tile->raw_image->is_blank = MC_EMPTY_YES;
+        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+      }
+      tile->tileset->_cache->tile_set(ctx, tile->tileset->_cache, tile);
+      GC_CHECK_ERROR(ctx);
     }
-    tile->tileset->_cache->tile_set(ctx, tile->tileset->_cache, tile);
-    GC_CHECK_ERROR(ctx);
   }
   
 cleanup:

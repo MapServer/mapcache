@@ -95,7 +95,8 @@ typedef enum {
   MAPCACHE_CMD_STOP,
   MAPCACHE_CMD_DELETE,
   MAPCACHE_CMD_SKIP,
-  MAPCACHE_CMD_TRANSFER
+  MAPCACHE_CMD_TRANSFER,
+  MAPCACHE_CMD_STOP_RECURSION
 } cmd;
 
 typedef enum {
@@ -317,7 +318,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 #ifdef USE_CLIPPERS
   /* check we are in the requested features before checking the tile */
   if(nClippers > 0 && ogr_features_intersect_tile(ctx,tile) == 0)
-    return MAPCACHE_CMD_SKIP;
+    return MAPCACHE_CMD_STOP_RECURSION;
 #endif
 
   tile_exists = force?0:tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
@@ -406,6 +407,9 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
     cmd.command = action;
     push_queue(cmd);
   }
+  
+  if(action == MAPCACHE_CMD_STOP_RECURSION)
+    return;
 
   //recurse into our 4 child metatiles
 
