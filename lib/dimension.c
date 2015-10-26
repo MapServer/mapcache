@@ -135,6 +135,9 @@ static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapca
     APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
   }
 #endif
+  else {
+    ctx->set_error(ctx,400,"failed to validate requested value for dimension (%s)",dim->name);
+  }
   return values;
 }
 
@@ -202,6 +205,9 @@ static apr_array_header_t* _mapcache_dimension_values_get_entries_for_value(mapc
         APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
         break;
     }
+  }
+  if(i == dimension->nvalues) {
+    ctx->set_error(ctx,400,"failed to validate requested value for dimension (%s)",dim->name);
   }
   return values;
 }

@@ -55,7 +55,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *name = (char*)ezxml_attr(dimension_node,"name");
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
-    char *skip_validation = (char*)ezxml_attr(dimension_node,"skip_validation");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
     char *assembly = (char*)ezxml_attr(dimension_node,"assembly");
 
@@ -75,6 +74,8 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_sqlite_create(ctx->pool);
       } else if(!strcmp(type,"time")) {
         dimension = mapcache_dimension_time_create(ctx->pool);
+      } else if(!strcmp(type,"composite")) {
+        dimension = mapcache_dimension_composite_create(ctx->pool);
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -90,10 +91,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       dimension->unit = apr_pstrdup(ctx->pool,unit);
     }
     
-    if(skip_validation && !strcmp(skip_validation,"true")) {
-      dimension->skip_validation = MAPCACHE_TRUE;
-    }
-
     if(default_value && *default_value) {
       dimension->default_value = apr_pstrdup(ctx->pool,default_value);
     } else {

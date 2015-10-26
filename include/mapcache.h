@@ -164,6 +164,7 @@ typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
+typedef struct mapcache_dimension_composite mapcache_dimension_composite;
 typedef struct mapcache_requested_dimension mapcache_requested_dimension;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
@@ -1970,7 +1971,6 @@ struct mapcache_dimension {
   char *unit;
   apr_table_t *metadata;
   char *default_value;
-  int skip_validation;
   int store_compositions;
   mapcache_dimension_assembly_type assembly_type;
 
@@ -2026,10 +2026,16 @@ struct mapcache_dimension_time {
   mapcache_dimension_sqlite dimension;
 };
 
+struct mapcache_dimension_composite {
+  mapcache_dimension dimension;
+  apr_array_header_t *dimensions;
+};
+
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_composite_create(apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);
 
