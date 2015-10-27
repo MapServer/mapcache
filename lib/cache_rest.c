@@ -41,6 +41,41 @@ typedef struct {
   size_t offset;
 } buffer_struct;
 
+struct rest_conn_params {
+  mapcache_cache_rest *cache;
+};
+
+void mapcache_rest_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
+  CURL *curl_handle = curl_easy_init();
+  if(!curl_handle) {
+    ctx->set_error(ctx,500,"failed to create curl handle");
+    *conn_ = NULL;
+    return;
+  }
+  *conn_ = curl_handle;
+}
+
+void mapcache_rest_connection_destructor(void *conn_) {
+  CURL *curl_handle = (CURL*) conn_;
+  curl_easy_cleanup(curl_handle);
+}
+
+static mapcache_pooled_connection* _rest_get_connection(mapcache_context *ctx, mapcache_cache_rest *cache, mapcache_tile *tile)
+{
+  mapcache_pooled_connection *pc;
+  struct rest_conn_params params;
+
+  params.cache = cache;
+
+  pc = mapcache_connection_pool_get_connection(ctx,cache->cache.name,mapcache_rest_connection_constructor,
+          mapcache_rest_connection_destructor, &params);
+  if(!GC_HAS_ERROR(ctx) && pc && pc->connection) {
+    curl_easy_reset((CURL*)pc->connection);
+  }
+
+  return pc;
+}
+
 static size_t buffer_read_callback(void *ptr, size_t size, size_t nmemb, void *stream)
 {
   buffer_struct *buffer = (buffer_struct*)stream;
@@ -140,19 +175,11 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
 }
 
-static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers) {
+static int _head_request(mapcache_context *ctx, CURL *curl, char *url, apr_table_t *headers) {
 
-  CURL *curl;
   CURLcode res;
   long http_code;
-
-  curl = curl_easy_init();
-
-  if(!curl) {
-    ctx->set_error(ctx,500,"failed to create curl handle");
-    return -1;
-  }
-
+  
   _set_headers(ctx, curl, headers);
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
@@ -173,23 +200,13 @@ static int _head_request(mapcache_context *ctx, char *url, apr_table_t *headers)
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
-  /* always cleanup */
-  curl_easy_cleanup(curl);
-
   return (int)http_code;
 }
 
-static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *headers) {
+static int _delete_request(mapcache_context *ctx, CURL *curl, char *url, apr_table_t *headers) {
 
-  CURL *curl;
   CURLcode res;
   long http_code;
-
-  curl = curl_easy_init();
-  if(!curl) {
-    ctx->set_error(ctx,500,"failed to create curl handle");
-    return -1;
-  }
 
   _set_headers(ctx, curl, headers);
 
@@ -211,24 +228,14 @@ static int _delete_request(mapcache_context *ctx, char *url, apr_table_t *header
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
-  /* always cleanup */
-  curl_easy_cleanup(curl);
-
   return (int)http_code;
 }
 
-static mapcache_buffer* _get_request(mapcache_context *ctx, char *url, apr_table_t *headers) {
+static mapcache_buffer* _get_request(mapcache_context *ctx, CURL *curl, char *url, apr_table_t *headers) {
 
-  CURL *curl;
   CURLcode res;
   mapcache_buffer *data = NULL;
   long http_code;
-
-  curl = curl_easy_init();
-  if(!curl) {
-    ctx->set_error(ctx,500,"failed to create curl handle");
-    return NULL;
-  }
 
   _set_headers(ctx, curl, headers);
 
@@ -276,9 +283,6 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, char *url, apr_table
       data = NULL; /* not an error */
     }
   }
-
-  /* always cleanup */
-  curl_easy_cleanup(curl);
 
   return data;
 }
@@ -781,6 +785,9 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   char *url;
   apr_table_t *headers;
   int status;
+  mapcache_pooled_connection *pc;
+  CURL *curl;
+  
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.has_tile, &url);
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.has_tile);
   if(rcache->rest.add_headers) {
@@ -789,8 +796,17 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   if(rcache->rest.has_tile.add_headers) {
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
+  
+  
+  pc = _rest_get_connection(ctx, rcache, tile);
+  if(GC_HAS_ERROR(ctx))
+    return MAPCACHE_FAILURE;
+  
+  curl = pc->connection;
 
-  status = _head_request(ctx, url, headers);
+  status = _head_request(ctx, curl, url, headers);
+  
+  mapcache_connection_pool_release_connection(ctx,pc);
 
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
@@ -807,6 +823,8 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   char *url;
   apr_table_t *headers;
   int status;
+  mapcache_pooled_connection *pc;
+  CURL *curl;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.delete_tile, &url);
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.delete_tile);
   if(rcache->rest.add_headers) {
@@ -816,7 +834,13 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  status = _delete_request(ctx, url, headers);
+  pc = _rest_get_connection(ctx, rcache, tile);
+  GC_CHECK_ERROR(ctx);
+  
+  curl = pc->connection;
+
+  status = _delete_request(ctx, curl, url, headers);
+  mapcache_connection_pool_release_connection(ctx,pc);
   GC_CHECK_ERROR(ctx);
 
   if(status!=200 && status!=202 && status!=204) {
@@ -837,6 +861,8 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
+  mapcache_pooled_connection *pc;
+  CURL *curl;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.get_tile, &url);
   if(tile->allow_redirect && rcache->use_redirects) {
     tile->redirect = url;
@@ -849,7 +875,15 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   if(rcache->rest.get_tile.add_headers) {
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
-  tile->encoded_data = _get_request(ctx, url, headers);
+  
+  pc = _rest_get_connection(ctx, rcache, tile);
+  if(GC_HAS_ERROR(ctx))
+    return MAPCACHE_FAILURE;
+  
+  curl = pc->connection;
+
+  tile->encoded_data = _get_request(ctx, curl, url, headers);
+  mapcache_connection_pool_release_connection(ctx,pc);
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
 
@@ -863,13 +897,13 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
-  CURL *curl = curl_easy_init();
+  mapcache_pooled_connection *pc;
+  CURL *curl;
   int i;
-
-  if(!curl) {
-    ctx->set_error(ctx,500,"failed to create curl handle");
-    return;
-  }
+  
+  pc = _rest_get_connection(ctx, rcache, &tiles[0]);
+  GC_CHECK_ERROR(ctx);
+  curl = pc->connection;
 
   for(i=0; i<ntiles; i++) {
 	mapcache_tile *tile;
@@ -912,7 +946,7 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
 
 multi_put_cleanup:
   /* always cleanup */
-  curl_easy_cleanup(curl);
+  mapcache_connection_pool_release_connection(ctx,pc);
 
 }
 

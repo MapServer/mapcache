@@ -805,5 +805,12 @@ mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool) {
   return pdim;
 }
 #endif
+mapcache_dimension* mapcache_dimension_composite_create(apr_pool_t *pool) {
+  mapcache_dimension_composite *dim = apr_pcalloc(pool,sizeof(mapcache_dimension_composite));
+  mapcache_dimension *pdim = (mapcache_dimension*)dim;
+  return pdim;
+  
+}
+
 /* vim: ts=2 sts=2 et sw=2
 */
