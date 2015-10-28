@@ -784,7 +784,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
-  int status;
+  int status,i;
   mapcache_pooled_connection *pc;
   CURL *curl;
   
@@ -796,18 +796,23 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   if(rcache->rest.has_tile.add_headers) {
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
-  
-  
-  pc = _rest_get_connection(ctx, rcache, tile);
-  if(GC_HAS_ERROR(ctx))
-    return MAPCACHE_FAILURE;
-  
-  curl = pc->connection;
 
-  status = _head_request(ctx, curl, url, headers);
-  
-  mapcache_connection_pool_release_connection(ctx,pc);
+  for(i=0;i<3;i++) { /* retry 3 times */
+    if(i)
+      ctx->clear_errors(ctx);
+    pc = _rest_get_connection(ctx, rcache, tile);
+    if(GC_HAS_ERROR(ctx))
+      return MAPCACHE_FAILURE;
 
+    curl = pc->connection;
+
+    status = _head_request(ctx, curl, url, headers);
+
+    mapcache_connection_pool_release_connection(ctx,pc);
+
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
 
@@ -822,7 +827,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
-  int status;
+  int status,i;
   mapcache_pooled_connection *pc;
   CURL *curl;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.delete_tile, &url);
@@ -834,13 +839,19 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  pc = _rest_get_connection(ctx, rcache, tile);
-  GC_CHECK_ERROR(ctx);
-  
-  curl = pc->connection;
+  for(i=0;i<3;i++) {
+    if(i)
+      ctx->clear_errors(ctx);
+    pc = _rest_get_connection(ctx, rcache, tile);
+    GC_CHECK_ERROR(ctx);
 
-  status = _delete_request(ctx, curl, url, headers);
-  mapcache_connection_pool_release_connection(ctx,pc);
+    curl = pc->connection;
+
+    status = _delete_request(ctx, curl, url, headers);
+    mapcache_connection_pool_release_connection(ctx,pc);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
   GC_CHECK_ERROR(ctx);
 
   if(status!=200 && status!=202 && status!=204) {
@@ -863,6 +874,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   apr_table_t *headers;
   mapcache_pooled_connection *pc;
   CURL *curl;
+  int i;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.get_tile, &url);
   if(tile->allow_redirect && rcache->use_redirects) {
     tile->redirect = url;
@@ -876,14 +888,20 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
   
-  pc = _rest_get_connection(ctx, rcache, tile);
-  if(GC_HAS_ERROR(ctx))
-    return MAPCACHE_FAILURE;
-  
-  curl = pc->connection;
+  for(i=0;i<3;i++) {
+    if(i)
+      ctx->clear_errors(ctx);
+    pc = _rest_get_connection(ctx, rcache, tile);
+    if(GC_HAS_ERROR(ctx))
+      return MAPCACHE_FAILURE;
 
-  tile->encoded_data = _get_request(ctx, curl, url, headers);
-  mapcache_connection_pool_release_connection(ctx,pc);
+    curl = pc->connection;
+
+    tile->encoded_data = _get_request(ctx, curl, url, headers);
+    mapcache_connection_pool_release_connection(ctx,pc);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
 
@@ -899,55 +917,60 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
   apr_table_t *headers;
   mapcache_pooled_connection *pc;
   CURL *curl;
-  int i;
-  
-  pc = _rest_get_connection(ctx, rcache, &tiles[0]);
-  GC_CHECK_ERROR(ctx);
-  curl = pc->connection;
+  int i,j;
 
-  for(i=0; i<ntiles; i++) {
-	mapcache_tile *tile;
-    if(i)
-      curl_easy_reset(curl);
-    tile = tiles + i;
-    _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
-    headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+  for(j=0;j<3;j++) {
+    if(j)
+      ctx->clear_errors(ctx);
+    pc = _rest_get_connection(ctx, rcache, &tiles[0]);
+    GC_CHECK_ERROR(ctx);
+    curl = pc->connection;
 
-    if(!tile->encoded_data) {
-      tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+    for(i=0; i<ntiles; i++) {
+      mapcache_tile *tile;
+      if(i)
+        curl_easy_reset(curl);
+      tile = tiles + i;
+      _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
+      headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+
+      if(!tile->encoded_data) {
+        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+        if(GC_HAS_ERROR(ctx)) {
+          goto multi_put_cleanup;
+        }
+      }
+
+      apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
+      if(tile->tileset->format && tile->tileset->format->mime_type)
+        apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
+      else {
+        mapcache_image_format_type imgfmt = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
+        if(imgfmt == GC_JPEG) {
+          apr_table_set(headers, "Content-Type", "image/jpeg");
+        } else if (imgfmt == GC_PNG) {
+          apr_table_set(headers, "Content-Type", "image/png");
+        }
+      }
+
+      if(rcache->rest.add_headers) {
+        rcache->rest.add_headers(ctx,rcache,tile,url,headers);
+      }
+      if(rcache->rest.set_tile.add_headers) {
+        rcache->rest.set_tile.add_headers(ctx,rcache,tile,url,headers);
+      }
+      _put_request(ctx, curl, tile->encoded_data, url, headers);
       if(GC_HAS_ERROR(ctx)) {
         goto multi_put_cleanup;
       }
     }
 
-    apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
-    if(tile->tileset->format && tile->tileset->format->mime_type)
-      apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
-    else {
-      mapcache_image_format_type imgfmt = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
-      if(imgfmt == GC_JPEG) {
-        apr_table_set(headers, "Content-Type", "image/jpeg");
-      } else if (imgfmt == GC_PNG) {
-        apr_table_set(headers, "Content-Type", "image/png");
-      }
-    }
-
-    if(rcache->rest.add_headers) {
-      rcache->rest.add_headers(ctx,rcache,tile,url,headers);
-    }
-    if(rcache->rest.set_tile.add_headers) {
-      rcache->rest.set_tile.add_headers(ctx,rcache,tile,url,headers);
-    }
-    _put_request(ctx, curl, tile->encoded_data, url, headers);
-    if(GC_HAS_ERROR(ctx)) {
-      goto multi_put_cleanup;
-    }
-  }
-
 multi_put_cleanup:
-  /* always cleanup */
-  mapcache_connection_pool_release_connection(ctx,pc);
-
+    /* always cleanup */
+    mapcache_connection_pool_release_connection(ctx,pc);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
 }
 
 /**
