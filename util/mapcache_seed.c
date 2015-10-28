@@ -321,7 +321,40 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
     return MAPCACHE_CMD_STOP_RECURSION;
 #endif
 
-  tile_exists = force?0:tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
+  if(force) {
+    tile_exists = 0;
+  } else {
+    int i;
+    if(tile->tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      for(i=0; i<tile->dimensions->nelts; i++) {
+        mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        rdim->cached_value = rdim->requested_value;
+      }
+    } else {
+      if(tile->dimensions) {
+        mapcache_extent extent;
+        mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          apr_array_header_t *rdim_vals;
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          if(GC_HAS_ERROR(ctx)) {
+            return MAPCACHE_CMD_SKIP;
+          }
+          if(rdim_vals->nelts > 1) {
+            ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return MAPCACHE_CMD_SKIP;
+          }
+          if(rdim_vals->nelts == 0) {
+            ctx->set_error(ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return MAPCACHE_CMD_SKIP;
+          }
+          rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
+        }
+      }
+    }
+    tile_exists = tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
+  }
 
   /* if the tile exists and a time limit was specified, check the tile modification date */
   if(tile_exists) {
@@ -559,7 +592,9 @@ void seed_worker()
   apr_pool_create(&seed_ctx.pool,ctx.pool);
   apr_pool_create(&tpool,ctx.pool);
   tile = mapcache_tileset_tile_create(tpool, tileset, grid_link);
-  tile->dimensions = mapcache_requested_dimensions_clone(ctx.pool,dimensions);
+  if(dimensions) {
+    tile->dimensions = mapcache_requested_dimensions_clone(tpool,dimensions);
+  }
   while(1) {
     struct seed_cmd cmd;
     apr_status_t ret;
@@ -570,23 +605,43 @@ void seed_worker()
     tile->x = cmd.x;
     tile->y = cmd.y;
     tile->z = cmd.z;
+    tile->nodata = 0;
+    tile->encoded_data = NULL;
+    tile->raw_image = NULL;
+    if(tile->dimensions) {
+      int i;
+      if(tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+        mapcache_extent extent;
+        mapcache_grid_get_tile_extent(&seed_ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          apr_array_header_t *rdim_vals;
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim_vals = rdim->dimension->get_entries_for_value(&seed_ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          GC_CHECK_ERROR(&seed_ctx);
+          if(rdim_vals->nelts > 1) {
+            seed_ctx.set_error(&seed_ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return;
+          }
+          if(rdim_vals->nelts == 0) {
+            seed_ctx.set_error(&seed_ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return;
+          }
+          rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
+        }
+      } else {
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim->cached_value = NULL;
+        }
+      }
+    }
     if(cmd.command == MAPCACHE_CMD_SEED) {
-      /* aquire a lock on the metatile ?*/
-      mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-      void *lock;
-      int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, seed_ctx.config->locker, mapcache_tileset_metatile_resource_key(&seed_ctx,mt), &lock);
-      if(isLocked == MAPCACHE_TRUE) {
+      if(!tile->dimensions || tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+        mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
         /* this will query the source to create the tiles, and save them to the cache */
         mapcache_tileset_render_metatile(&seed_ctx, mt);
-        if(GC_HAS_ERROR(&seed_ctx)) {
-          /* temporarily clear error state so we don't mess up with error handling in the locker */
-          void *error;
-          seed_ctx.pop_errors(&seed_ctx,&error);
-          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, lock);
-          seed_ctx.push_errors(&seed_ctx,error);
-        } else {
-          mapcache_unlock_resource(&seed_ctx, seed_ctx.config->locker, lock);
-        }
+      } else {
+        mapcache_tileset_tile_get_with_subdimensions(&seed_ctx,tile);
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
       int i;
@@ -1225,6 +1280,14 @@ int main(int argc, const char **argv)
       }
       rdim->requested_value = apr_pstrdup(ctx.pool,value);
       APR_ARRAY_PUSH(dimensions,mapcache_requested_dimension*)=rdim;
+    }
+    if(tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      if(!tileset->store_dimension_assemblies) {
+        return usage(argv[0],"cannot seed a layer with dimension assembling and no caching of resulting assembly");
+      }
+      if(tileset->metasize_x != 1 || tileset->metasize_y != 1) {
+        return usage(argv[0],"cannot seed a layer with dimension assembling and metatiling enabled (hint: rerun with -M 1,1 to disable metatiling");
+      }
     }
   }
 

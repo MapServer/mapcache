@@ -56,7 +56,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
-    char *assembly = (char*)ezxml_attr(dimension_node,"assembly");
 
     mapcache_dimension *dimension = NULL;
 
@@ -74,8 +73,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_sqlite_create(ctx->pool);
       } else if(!strcmp(type,"time")) {
         dimension = mapcache_dimension_time_create(ctx->pool);
-      } else if(!strcmp(type,"composite")) {
-        dimension = mapcache_dimension_composite_create(ctx->pool);
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -84,6 +81,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
       return;
     }
+    GC_CHECK_ERROR(ctx);
 
     dimension->name = apr_pstrdup(ctx->pool,name);
 
@@ -98,14 +96,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       return;
     }
     
-    if(assembly && *assembly) {
-      if(strcasecmp(assembly,"stack")==0) {
-        dimension->assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
-      } else if(strcasecmp(assembly,"none")) {
-        ctx->set_error(ctx,400,"dimension \"%s\" has invalid \"assembly\" attribute (expecting \"none\" or \"stack\")",dimension->name);
-        return;
-      }
-    }
 
     dimension->configuration_parse_xml(ctx,dimension,dimension_node);
     GC_CHECK_ERROR(ctx);
@@ -116,10 +106,27 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     ctx->set_error(ctx, 400, "<dimensions> for tileset \"%s\" has no dimensions defined (expecting <dimension> children)",tileset->name);
     return;
   }
+  
   tileset->dimensions = dimensions;
   dimension_node = ezxml_child(node,"store_assemblies");
   if(dimension_node && dimension_node->txt && !strcmp(dimension_node->txt,"false"))
     tileset->store_dimension_assemblies = 0;
+  
+  dimension_node = ezxml_child(node,"assembly_type");
+  if(dimension_node) {
+    if(!strcmp(dimension_node->txt,"stack")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
+    } else if(!strcmp(dimension_node->txt,"animate")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE;
+      ctx->set_error(ctx,400,"animate dimension assembly mode not implemented");
+      return;
+    } else if(strcmp(dimension_node->txt,"none")) {
+      ctx->set_error(ctx,400,"unknown dimension assembly mode (%s). Can be one of \"stack\" or \"none\"",dimension_node->txt);
+      return;
+    } else {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_NONE;
+    }
+  }
 }
 
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)

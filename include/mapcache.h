@@ -171,6 +171,22 @@ typedef struct mapcache_extent_i mapcache_extent_i;
 typedef struct mapcache_connection_pool mapcache_connection_pool;
 typedef struct mapcache_locker mapcache_locker;
 
+typedef enum {
+  MAPCACHE_DIMENSION_VALUES,
+  MAPCACHE_DIMENSION_REGEX,
+  MAPCACHE_DIMENSION_INTERVALS,
+  MAPCACHE_DIMENSION_TIME,
+  MAPCACHE_DIMENSION_SQLITE
+} mapcache_dimension_type;
+
+typedef enum {
+  MAPCACHE_DIMENSION_ASSEMBLY_NONE,
+  MAPCACHE_DIMENSION_ASSEMBLY_STACK,
+  MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
+} mapcache_dimension_assembly_type;
+
+
+
 /** \defgroup utility Utility */
 /** @{ */
 
@@ -1557,6 +1573,8 @@ struct mapcache_tileset {
   apr_array_header_t *dimensions;
   
   int store_dimension_assemblies;/**< should multiple sub-dimensions be assembled dynamically (per-request) or should they be cached once assembled */
+  
+  mapcache_dimension_assembly_type dimension_assembly_type;
 
   /**
    * image to be used as a watermark
@@ -1618,6 +1636,7 @@ void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset
 
 mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
 MS_DLL_EXPORT void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * \brief delete tile from cache
@@ -1936,21 +1955,6 @@ typedef struct {
   double resolution;
 } mapcache_interval;
 
-typedef enum {
-  MAPCACHE_DIMENSION_VALUES,
-  MAPCACHE_DIMENSION_REGEX,
-  MAPCACHE_DIMENSION_INTERVALS,
-  MAPCACHE_DIMENSION_TIME,
-  MAPCACHE_DIMENSION_SQLITE
-} mapcache_dimension_type;
-
-typedef enum {
-  MAPCACHE_DIMENSION_ASSEMBLY_NONE,
-  MAPCACHE_DIMENSION_ASSEMBLY_STACK,
-  MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
-} mapcache_dimension_assembly_type;
-
-
 struct mapcache_requested_dimension {
   mapcache_dimension *dimension;
   char *requested_value;
@@ -1971,8 +1975,6 @@ struct mapcache_dimension {
   char *unit;
   apr_table_t *metadata;
   char *default_value;
-  int store_compositions;
-  mapcache_dimension_assembly_type assembly_type;
 
   /**
    * \brief return the list of dimension values that match the requested entry 
@@ -2026,16 +2028,10 @@ struct mapcache_dimension_time {
   mapcache_dimension_sqlite dimension;
 };
 
-struct mapcache_dimension_composite {
-  mapcache_dimension dimension;
-  apr_array_header_t *dimensions;
-};
-
 mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_composite_create(apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);
 

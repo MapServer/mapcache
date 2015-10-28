@@ -493,6 +493,7 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->grid_links = NULL;
   tileset->config = NULL;
   tileset->store_dimension_assemblies = 1;
+  tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_NONE;
   return tileset;
 }
 
@@ -516,6 +517,7 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
   dst->wgs84bbox = src->wgs84bbox;
   dst->format = src->format;
   dst->store_dimension_assemblies = src->store_dimension_assemblies;
+  dst->dimension_assembly_type = src->dimension_assembly_type;
   return dst;
 }
 
@@ -773,7 +775,7 @@ typedef struct {
 
 static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ctx, mapcache_tile *tile, int read_only);
 
-static void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
+void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
   apr_array_header_t *subtiles;
   mapcache_extent extent;
   mapcache_subtile st;
@@ -1069,29 +1071,29 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
     return;
   }
   if(tile->dimensions) {
-    int i;
-    mapcache_requested_dimension *rdim;
-    mapcache_extent extent;
-    for(i=0; i<tile->dimensions->nelts; i++) {
-      rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-      if(rdim->dimension->assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE)
-        return mapcache_tileset_tile_get_with_subdimensions(ctx,tile);
-    }
-    mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
-    for(i=0; i<tile->dimensions->nelts; i++) {
-      apr_array_header_t *rdim_vals;
-      rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-      rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
-      GC_CHECK_ERROR(ctx);
-      if(rdim_vals->nelts > 1) {
-        ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
-        return;
+    if(tile->tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      return mapcache_tileset_tile_get_with_subdimensions(ctx,tile);
+    } else {
+      int i;
+      mapcache_requested_dimension *rdim;
+      mapcache_extent extent;
+      
+      mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+      for(i=0; i<tile->dimensions->nelts; i++) {
+        apr_array_header_t *rdim_vals;
+        rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+        GC_CHECK_ERROR(ctx);
+        if(rdim_vals->nelts > 1) {
+          ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+          return;
+        }
+        if(rdim_vals->nelts == 0) {
+          ctx->set_error(ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+          return;
+        }
+        rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
       }
-      if(rdim_vals->nelts == 0) {
-        ctx->set_error(ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
-        return;
-      }
-      rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
     }
   }
   return mapcache_tileset_tile_get_without_subdimensions(ctx,tile, (tile->tileset->read_only||!tile->tileset->source)?1:0);

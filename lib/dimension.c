@@ -788,28 +788,25 @@ mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
   dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_sqlite_get_all_entries;
   return (mapcache_dimension*)dimension;
 #else
+  ctx->set_error(ctx,400,"Sqlite dimension support requires SQLITE support to be built in");
   return NULL;
 #endif
 }
 
 
-#ifdef USE_SQLITE
 mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool) {
+#ifdef USE_SQLITE
   mapcache_dimension_time *dim = apr_pcalloc(pool, sizeof(mapcache_dimension_time));
   mapcache_dimension *pdim = (mapcache_dimension*)dim;
-  pdim->assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
   pdim->get_entries_for_value = _mapcache_dimension_time_get_entries_for_value;
   pdim->get_all_entries = _mapcache_dimension_time_get_all_entries;
   pdim->get_all_ogc_formatted_entries = _mapcache_dimension_time_get_all_entries;
   pdim->configuration_parse_xml = _mapcache_dimension_time_parse_xml;
   return pdim;
-}
+#else
+  ctx->set_error(ctx,400,"TIME dimension support requires SQLITE support to be built in");
+  return NULL;
 #endif
-mapcache_dimension* mapcache_dimension_composite_create(apr_pool_t *pool) {
-  mapcache_dimension_composite *dim = apr_pcalloc(pool,sizeof(mapcache_dimension_composite));
-  mapcache_dimension *pdim = (mapcache_dimension*)dim;
-  return pdim;
-  
 }
 
 /* vim: ts=2 sts=2 et sw=2
