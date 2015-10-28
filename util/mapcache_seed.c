@@ -641,7 +641,7 @@ void seed_worker()
         /* this will query the source to create the tiles, and save them to the cache */
         mapcache_tileset_render_metatile(&seed_ctx, mt);
       } else {
-        mapcache_tileset_tile_get_with_subdimensions(&seed_ctx,tile);
+        mapcache_tileset_tile_set_get_with_subdimensions(&seed_ctx,tile);
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
       int i;

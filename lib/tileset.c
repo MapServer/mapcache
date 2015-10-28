@@ -775,35 +775,11 @@ typedef struct {
 
 static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ctx, mapcache_tile *tile, int read_only);
 
-void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
+void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
   apr_array_header_t *subtiles;
   mapcache_extent extent;
   mapcache_subtile st;
-  int ret,i,j,k,n_subtiles = 1;
-  assert(tile->dimensions);
-  if(tile->tileset->store_dimension_assemblies) {
-    for(i=0;i<tile->dimensions->nelts;i++) {
-      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-      dim->cached_value = dim->requested_value;
-    }
-    ret = mapcache_tileset_tile_get_readonly(ctx,tile);
-    GC_CHECK_ERROR(ctx);
-    if(ret == MAPCACHE_SUCCESS) {
-      /* update the tile expiration time */
-      if(tile->tileset->auto_expire && tile->mtime) {
-        apr_time_t now = apr_time_now();
-        apr_time_t expire_time = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
-        tile->expires = apr_time_sec(expire_time-now);
-      }
-      return;
-    }
-    for(i=0;i<tile->dimensions->nelts;i++) {
-      /* unset the cached dimension we setup earlier on */
-      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-      dim->cached_value = NULL;
-    }
-  }
-  
+  int i,j,k,n_subtiles = 1;
   /* we can be here in two cases:
    * - either we didn't look up the tile directly (need to split dimension into sub-dimension and reassemble dynamically)
    * - either the direct lookup failed and we need to render/assemble the tiles from subdimensions
@@ -813,7 +789,7 @@ void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcach
   APR_ARRAY_PUSH(subtiles,mapcache_subtile) = st;
   mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
   if(GC_HAS_ERROR(ctx)) goto cleanup;
-  
+
   for(i=0;i<tile->dimensions->nelts; i++) {
     mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
     apr_array_header_t *single_subdimension = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
@@ -832,7 +808,7 @@ void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcach
 #endif
 
     if(single_subdimension->nelts == 0) {
-      /* not an error, but no subdimension was found: we need to return an empty tile */  
+      /* not an error, but no subdimension was found: we need to return an empty tile */
       tile->nodata = 1;
       if(tile->tileset->store_dimension_assemblies) {
         tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
@@ -866,7 +842,7 @@ void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcach
       }
     }
   }
-  
+
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
   /* note that subtiles[0].tile == tile */
 
@@ -905,10 +881,10 @@ void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcach
   }
   if(tile->tileset->store_dimension_assemblies) {
     int already_stored = 1; /*depending on the type of dimension, we may have no nead to store the resulting tile*/
-    
-    if(n_subtiles != 1) 
+
+    if(n_subtiles != 1)
       already_stored = 0; /*if we had to merge multiple subdimensions, then we always have to store the resulting assembly*/
-    
+
     /* set the key for the dimension so it can be stored with the requested dimension */
     for(j=0;j<tile->dimensions->nelts;j++) {
       mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,j,mapcache_requested_dimension*);
@@ -928,9 +904,38 @@ void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcach
       GC_CHECK_ERROR(ctx);
     }
   }
-  
+
 cleanup:
   return;
+}
+
+void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
+  int i,ret;
+  assert(tile->dimensions);
+  if(tile->tileset->store_dimension_assemblies) {
+    for(i=0;i<tile->dimensions->nelts;i++) {
+      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      dim->cached_value = dim->requested_value;
+    }
+    ret = mapcache_tileset_tile_get_readonly(ctx,tile);
+    GC_CHECK_ERROR(ctx);
+    if(ret == MAPCACHE_SUCCESS) {
+      /* update the tile expiration time */
+      if(tile->tileset->auto_expire && tile->mtime) {
+        apr_time_t now = apr_time_now();
+        apr_time_t expire_time = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
+        tile->expires = apr_time_sec(expire_time-now);
+      }
+      return;
+    }
+    for(i=0;i<tile->dimensions->nelts;i++) {
+      /* unset the cached dimension we setup earlier on */
+      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      dim->cached_value = NULL;
+    }
+  }
+  return mapcache_tileset_tile_set_get_with_subdimensions(ctx,tile);
+  
 }
 
 /**

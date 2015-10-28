@@ -1636,7 +1636,7 @@ void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset
 
 mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
 MS_DLL_EXPORT void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
-MS_DLL_EXPORT void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * \brief delete tile from cache
