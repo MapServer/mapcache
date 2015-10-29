@@ -169,7 +169,7 @@ int push_queue(struct seed_cmd cmd)
 
 int pop_queue(struct seed_cmd *cmd)
 {
-  int ret;
+  int ret,retries=0;
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
@@ -185,6 +185,10 @@ int pop_queue(struct seed_cmd *cmd)
 #endif
 
   ret = apr_queue_pop(work_queue, (void**)&pcmd);
+  while(ret == APR_EINTR && retries<10) {
+    retries++;
+    ret = apr_queue_pop(work_queue, (void**)&pcmd);
+  }
   if(ret == APR_SUCCESS) {
     *cmd = *pcmd;
     free(pcmd);
@@ -194,7 +198,7 @@ int pop_queue(struct seed_cmd *cmd)
 
 int trypop_queue(struct seed_cmd *cmd)
 {
-  int ret;
+  int ret,retries=0;
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
@@ -212,6 +216,10 @@ int trypop_queue(struct seed_cmd *cmd)
   }
 #endif
   ret = apr_queue_trypop(work_queue,(void**)&pcmd);
+  while(ret == APR_EINTR && retries<10) {
+    retries++;
+    ret = apr_queue_trypop(work_queue,(void**)&pcmd);
+  }
   if(ret == APR_SUCCESS) {
     *cmd = *pcmd;
     free(pcmd);
@@ -722,8 +730,13 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
   cur=0;
   last_time=0;
   while(1) {
+    int retries = 0;
     struct seed_status *st;
     apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
+    while(ret == APR_EINTR && retries<10) {
+      retries++;
+      ret = apr_queue_pop(log_queue, (void**)&st);
+    }
     if(ret != APR_SUCCESS || !st) break;
     if(st->status == MAPCACHE_STATUS_FINISHED)
       return NULL;
