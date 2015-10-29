@@ -797,7 +797,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<rcache->retry_count;i++) {
+  for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
       ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
@@ -841,7 +841,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<rcache->retry_count;i++) {
+  for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
       ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
@@ -892,7 +892,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
   
-  for(i=0;i<rcache->retry_count;i++) {
+  for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
       ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
@@ -1025,6 +1025,10 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
   }
   if ((cur_node = ezxml_child(node,"retries")) != NULL) {
     dcache->retry_count = atoi(cur_node->txt);
+    if(dcache->retry_count > 10) {
+      ctx->set_error(ctx,400,"rest cache retry count of %d is unreasonably large. max is 10",dcache->retry_count);
+      return;
+    }
   }
   
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {

@@ -580,7 +580,7 @@ struct mapcache_cache_rest {
   mapcache_cache cache;
   mapcache_rest_configuration rest;
   int use_redirects;
-  int retry_count;
+  unsigned int retry_count;
   mapcache_rest_provider provider;
 };
 
