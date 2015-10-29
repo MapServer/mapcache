@@ -527,6 +527,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
           break;
         case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
         case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+        default:
           ctx->set_error(ctx,500,"origin not implemented");
           return;
       }
@@ -833,6 +834,9 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       x = grid_link->grid->levels[level]->maxx - col - 1;
       y = row;
       break;
+    default:
+      ctx->set_error(ctx,500,"BUG: invalid grid origin");
+      return;
   }
 
 

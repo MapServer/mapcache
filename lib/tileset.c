@@ -306,6 +306,9 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
         ox = (Mx - tile->x) * tile->grid_link->grid->tile_sx;
         oy = (tile->y - my) * tile->grid_link->grid->tile_sy;
         break;
+      default:
+        ctx->set_error(ctx,500,"BUG: invalid grid origin");
+        return NULL;
     }
     if(tile->nodata) continue;
 

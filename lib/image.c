@@ -314,6 +314,9 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
             sx = mt->map.tileset->metabuffer + i * tileimg->w;
             sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->h);
             break;
+          default:
+            ctx->set_error(ctx,500,"BUG: unknown grid origin");
+            return;
         }
         tileimg->data = &(metatile->data[sy*metatile->stride + 4 * sx]);
         if(mt->map.tileset->watermark) {

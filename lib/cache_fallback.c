@@ -90,7 +90,7 @@ static int _mapcache_cache_fallback_tile_get(mapcache_context *ctx, mapcache_cac
 static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   mapcache_cache_fallback *cache = (mapcache_cache_fallback*)pcache;
-  int i,oneok=0,first_error=0;
+  int i,first_error=0;
   char *first_error_message;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
@@ -103,11 +103,9 @@ static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_ca
       ctx->log(ctx,MAPCACHE_DEBUG,"failed \"SET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
               APR_ARRAY_IDX(cache->caches,i,mapcache_cache*)->name,tile->z,tile->x,tile->y,tile->tileset->name);
       ctx->clear_errors(ctx);
-    } else {
-      oneok = 1;
     }
   }
-  if(!oneok) {
+  if(first_error) {
     ctx->set_error(ctx,first_error,first_error_message);
   }
 }
@@ -115,7 +113,7 @@ static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_ca
 static void _mapcache_cache_fallback_tile_multi_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tiles, int ntiles)
 {
   mapcache_cache_fallback *cache = (mapcache_cache_fallback*)pcache;
-  int i,oneok=0,first_error=0;
+  int i,first_error=0;
   char *first_error_message;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
@@ -128,11 +126,9 @@ static void _mapcache_cache_fallback_tile_multi_set(mapcache_context *ctx, mapca
       ctx->log(ctx,MAPCACHE_DEBUG,"failed \"MULTISET\" on subcache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\"",
               APR_ARRAY_IDX(cache->caches,i,mapcache_cache*)->name,tiles[0].z,tiles[0].x,tiles[0].y,tiles[0].tileset->name);
       ctx->clear_errors(ctx);
-    } else {
-      oneok = 1;
     }
   }
-  if(!oneok) {
+  if(first_error) {
     ctx->set_error(ctx,first_error,first_error_message);
   }
 }
