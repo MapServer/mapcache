@@ -1155,11 +1155,11 @@ void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache)
   cache->rest.has_tile.method = MAPCACHE_REST_METHOD_HEAD;
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_REST;
-  cache->cache.tile_delete = _mapcache_cache_rest_delete;
-  cache->cache.tile_get = _mapcache_cache_rest_get;
-  cache->cache.tile_exists = _mapcache_cache_rest_has_tile;
-  cache->cache.tile_set = _mapcache_cache_rest_set;
-  cache->cache.tile_multi_set = _mapcache_cache_rest_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_rest_delete;
+  cache->cache._tile_get = _mapcache_cache_rest_get;
+  cache->cache._tile_exists = _mapcache_cache_rest_has_tile;
+  cache->cache._tile_set = _mapcache_cache_rest_set;
+  cache->cache._tile_multi_set = _mapcache_cache_rest_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_rest_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_rest_configuration_parse_xml;
 }

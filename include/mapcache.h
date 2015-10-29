@@ -456,27 +456,33 @@ struct mapcache_cache {
    * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
    * \memberof mapcache_cache
    */
-  int (*tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  int (*_tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * delete tile from cache
    *
    * \memberof mapcache_cache
    */
-  void (*tile_delete)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  void (*_tile_delete)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
-  int (*tile_exists)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  int (*_tile_exists)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * set tile content to cache
    * \memberof mapcache_cache
    */
-  void (*tile_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
-  void (*tile_multi_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
+  void (*_tile_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  void (*_tile_multi_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
   void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
 };
+
+int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
 /**\class mapcache_cache_disk
  * \brief a mapcache_cache on a filesytem

@@ -92,7 +92,7 @@ static int _mapcache_cache_composite_tile_exists(mapcache_context *ctx, mapcache
   subcache = _mapcache_composite_cache_get(ctx, cache, tile);
   if(GC_HAS_ERROR(ctx) || !subcache)
     return MAPCACHE_FAILURE;
-  return subcache->tile_exists(ctx, subcache, tile);
+  return mapcache_cache_tile_exists(ctx, subcache, tile);
 }
 
 static void _mapcache_cache_composite_tile_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
@@ -102,7 +102,7 @@ static void _mapcache_cache_composite_tile_delete(mapcache_context *ctx, mapcach
   subcache = _mapcache_composite_cache_get(ctx, cache, tile);
   GC_CHECK_ERROR(ctx);
   /*delete the tile itself*/
-  subcache->tile_delete(ctx,subcache,tile);
+  mapcache_cache_tile_delete(ctx,subcache,tile);
 }
 
 /**
@@ -118,7 +118,7 @@ static int _mapcache_cache_composite_tile_get(mapcache_context *ctx, mapcache_ca
   mapcache_cache *subcache;
   subcache = _mapcache_composite_cache_get(ctx, cache, tile);
   GC_CHECK_ERROR_RETURN(ctx);
-  return subcache->tile_get(ctx,subcache,tile);
+  return mapcache_cache_tile_get(ctx,subcache,tile);
 }
 
 static void _mapcache_cache_composite_tile_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
@@ -127,7 +127,7 @@ static void _mapcache_cache_composite_tile_set(mapcache_context *ctx, mapcache_c
   mapcache_cache *subcache;
   subcache = _mapcache_composite_cache_get(ctx, cache, tile);
   GC_CHECK_ERROR(ctx);
-  return subcache->tile_set(ctx,subcache,tile);
+  return mapcache_cache_tile_set(ctx,subcache,tile);
 }
 
 static void _mapcache_cache_composite_tile_multi_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tiles, int ntiles)
@@ -136,14 +136,7 @@ static void _mapcache_cache_composite_tile_multi_set(mapcache_context *ctx, mapc
   mapcache_cache *subcache;
   subcache = _mapcache_composite_cache_get(ctx, cache, &tiles[0]);
   GC_CHECK_ERROR(ctx);
-  if(subcache->tile_multi_set) {
-    return subcache->tile_multi_set(ctx,subcache,tiles,ntiles);
-  } else {
-    int i;
-    for(i=0; i<ntiles; i++) {
-      subcache->tile_set(ctx, subcache, &tiles[i]);
-    }
-  }
+  return mapcache_cache_tile_multi_set(ctx,subcache,tiles,ntiles);
 }
 
 /**
@@ -246,11 +239,11 @@ mapcache_cache* mapcache_cache_composite_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_COMPOSITE;
-  cache->cache.tile_delete = _mapcache_cache_composite_tile_delete;
-  cache->cache.tile_get = _mapcache_cache_composite_tile_get;
-  cache->cache.tile_exists = _mapcache_cache_composite_tile_exists;
-  cache->cache.tile_set = _mapcache_cache_composite_tile_set;
-  cache->cache.tile_multi_set = _mapcache_cache_composite_tile_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_composite_tile_delete;
+  cache->cache._tile_get = _mapcache_cache_composite_tile_get;
+  cache->cache._tile_exists = _mapcache_cache_composite_tile_exists;
+  cache->cache._tile_set = _mapcache_cache_composite_tile_set;
+  cache->cache._tile_multi_set = _mapcache_cache_composite_tile_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_composite_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_composite_configuration_parse_xml;
   return (mapcache_cache*)cache;

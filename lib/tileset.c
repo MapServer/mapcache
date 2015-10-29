@@ -452,7 +452,6 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
  */
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
-  int i;
   mapcache_tileset *tileset = mt->map.tileset;
 #ifdef DEBUG
   if(!tileset->source || tileset->read_only) {
@@ -464,15 +463,7 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
-  if(tileset->_cache->tile_multi_set) {
-    tileset->_cache->tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
-  } else {
-    for(i=0; i<mt->ntiles; i++) {
-      mapcache_tile *tile = &(mt->tiles[i]);
-      tileset->_cache->tile_set(ctx, tileset->_cache, tile);
-      GC_CHECK_ERROR(ctx);
-    }
-  }
+  mapcache_cache_tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
 }
 
 
@@ -747,7 +738,7 @@ void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) 
 }
 
 int mapcache_tileset_tile_get_readonly(mapcache_context *ctx, mapcache_tile *tile) {
-  int ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
+  int ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
   if(GC_HAS_ERROR(ctx))
     return ret;
   
@@ -820,7 +811,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
           mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,j,mapcache_requested_dimension*);
           dim->cached_value = dim->requested_value;
         }
-        tile->tileset->_cache->tile_set(ctx, tile->tileset->_cache, tile);
+        mapcache_cache_tile_set(ctx, tile->tileset->_cache, tile);
         GC_CHECK_ERROR(ctx);
       }
       return;
@@ -900,7 +891,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
         tile->raw_image->is_blank = MC_EMPTY_YES;
         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
       }
-      tile->tileset->_cache->tile_set(ctx, tile->tileset->_cache, tile);
+      mapcache_cache_tile_set(ctx, tile->tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
     }
   }
@@ -961,7 +952,7 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
 {
   int ret;
   mapcache_metatile *mt=NULL;
-  ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
+  ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
@@ -1047,7 +1038,7 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
       /* Else, check for errors and try to fetch the tile from the cache.
       */
       GC_CHECK_ERROR(ctx);
-      ret = tile->tileset->_cache->tile_get(ctx, tile->tileset->_cache, tile);
+      ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
 
       if(ret != MAPCACHE_SUCCESS) {
@@ -1109,7 +1100,7 @@ void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, in
 {
   int i;
   /*delete the tile itself*/
-  tile->tileset->_cache->tile_delete(ctx,tile->tileset->_cache, tile);
+  mapcache_cache_tile_delete(ctx,tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(whole_metatile) {
@@ -1118,7 +1109,7 @@ void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, in
       mapcache_tile *subtile = &mt->tiles[i];
       /* skip deleting the actual tile */
       if(subtile->x == tile->x && subtile->y == tile->y) continue;
-      subtile->tileset->_cache->tile_delete(ctx,subtile->tileset->_cache,subtile);
+      mapcache_cache_tile_delete(ctx,subtile->tileset->_cache,subtile);
       /* silently pass failure if the tile was not found */
       if(ctx->get_error(ctx) == 404) {
         ctx->clear_errors(ctx);

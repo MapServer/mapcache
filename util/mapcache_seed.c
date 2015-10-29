@@ -353,13 +353,13 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         }
       }
     }
-    tile_exists = tileset->_cache->tile_exists(ctx,tileset->_cache,tile);
+    tile_exists = mapcache_cache_tile_exists(ctx,tileset->_cache,tile);
   }
 
   /* if the tile exists and a time limit was specified, check the tile modification date */
   if(tile_exists) {
     if(age_limit) {
-      if(tileset->_cache->tile_get(ctx,tileset->_cache, tile) == MAPCACHE_SUCCESS) {
+      if(mapcache_cache_tile_get(ctx,tileset->_cache, tile) == MAPCACHE_SUCCESS) {
         if(tile->mtime && tile->mtime<age_limit) {
           /* the tile modification time is older than the specified limit */
       if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
@@ -367,7 +367,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         /* if we are in mode transfer, delete it from the dst tileset */
         if (mode == MAPCACHE_CMD_TRANSFER) {
           tile->tileset = tileset_transfer;
-          if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
+          if (mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
         mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
           }
           tile->tileset = tileset;
@@ -389,7 +389,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         /* the tile exists in the source tileset,
            check if the tile exists in the destination cache */
         tile->tileset = tileset_transfer;
-        if (tile->tileset->_cache->tile_exists(ctx,tile->tileset->_cache, tile)) {
+        if (mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
           action = MAPCACHE_CMD_SKIP;
         } else {
           action = MAPCACHE_CMD_TRANSFER;
@@ -650,7 +650,7 @@ void seed_worker()
         mapcache_tile *subtile = &mt->tiles[i];
         mapcache_tileset_tile_get(&seed_ctx, subtile);
         subtile->tileset = tileset_transfer;
-        subtile->tileset->_cache->tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
+        mapcache_cache_tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
@@ -669,6 +669,9 @@ void seed_worker()
         st->status = MAPCACHE_STATUS_OK;
       }
       ret = apr_queue_push(log_queue,(void*)st);
+      while( ret == APR_EINTR) {
+        ret = apr_queue_push(log_queue,(void*)st);
+      }
       if(ret != APR_SUCCESS)
       {
         printf("FATAL ERROR: unable to log progress\n");
@@ -1291,16 +1294,6 @@ int main(int argc, const char **argv)
     }
   }
 
-  {
-  /* start the logging thread */
-    //create the queue where the seeding statuses will be put
-    apr_threadattr_t *log_thread_attrs;
-    apr_queue_create(&log_queue,2,ctx.pool);
-
-    //start the rendering threads.
-    apr_threadattr_create(&log_thread_attrs, ctx.pool);
-    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
-  }
 
   if(nthreads == 0 && nprocesses == 0) {
     nthreads = 1;
@@ -1308,6 +1301,18 @@ int main(int argc, const char **argv)
   if(nthreads >= 1 && nprocesses >= 1) {
     return usage(argv[0],"cannot set both nthreads and nprocesses");
   }
+  
+  {
+  /* start the logging thread */
+    //create the queue where the seeding statuses will be put
+    apr_threadattr_t *log_thread_attrs;
+    apr_queue_create(&log_queue,MAPCACHE_MAX(nthreads,nprocesses),ctx.pool);
+
+    //start the rendering threads.
+    apr_threadattr_create(&log_thread_attrs, ctx.pool);
+    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
+  }
+  
   if(nprocesses > 1) {
 #ifdef USE_FORK
     key_t key;

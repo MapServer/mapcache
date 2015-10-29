@@ -345,10 +345,10 @@ mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_MEMCACHE;
-  cache->cache.tile_get = _mapcache_cache_memcache_get;
-  cache->cache.tile_exists = _mapcache_cache_memcache_has_tile;
-  cache->cache.tile_set = _mapcache_cache_memcache_set;
-  cache->cache.tile_delete = _mapcache_cache_memcache_delete;
+  cache->cache._tile_get = _mapcache_cache_memcache_get;
+  cache->cache._tile_exists = _mapcache_cache_memcache_has_tile;
+  cache->cache._tile_set = _mapcache_cache_memcache_set;
+  cache->cache._tile_delete = _mapcache_cache_memcache_delete;
   cache->cache.configuration_post_config = _mapcache_cache_memcache_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_memcache_configuration_parse_xml;
   return (mapcache_cache*)cache;

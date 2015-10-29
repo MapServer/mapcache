@@ -32,7 +32,7 @@ static int _mapcache_cache_fallback_tile_exists(mapcache_context *ctx, mapcache_
 {
   mapcache_cache_fallback *cache = (mapcache_cache_fallback*)pcache;
   mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,0,mapcache_cache*);
-  return subcache->tile_exists(ctx, subcache, tile);
+  return mapcache_cache_tile_exists(ctx, subcache, tile);
 }
 
 static void _mapcache_cache_fallback_tile_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
@@ -41,7 +41,7 @@ static void _mapcache_cache_fallback_tile_delete(mapcache_context *ctx, mapcache
   int i;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-    subcache->tile_delete(ctx, subcache, tile);
+    mapcache_cache_tile_delete(ctx, subcache, tile);
     ctx->clear_errors(ctx); /* ignore errors */
   }
 }
@@ -59,7 +59,7 @@ static int _mapcache_cache_fallback_tile_get(mapcache_context *ctx, mapcache_cac
   mapcache_cache *subcache;
   int i,ret;
   subcache = APR_ARRAY_IDX(cache->caches,0,mapcache_cache*);
-  ret = subcache->tile_get(ctx, subcache, tile);
+  ret = mapcache_cache_tile_get(ctx, subcache, tile);
   
   if(ret == MAPCACHE_FAILURE) {
     int first_error = ctx->get_error(ctx);
@@ -69,7 +69,7 @@ static int _mapcache_cache_fallback_tile_get(mapcache_context *ctx, mapcache_cac
     ctx->clear_errors(ctx);
     for(i=1; i<cache->caches->nelts; i++) {
       subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-      if((ret = subcache->tile_get(ctx, subcache, tile)) == MAPCACHE_FAILURE) {
+      if((ret = mapcache_cache_tile_get(ctx, subcache, tile)) == MAPCACHE_FAILURE) {
         ctx->log(ctx,MAPCACHE_DEBUG,"failed \"GET\" on fallback cache \"%s\" for tile (z=%d,x=%d,y=%d) of tileset \"%s\". Continuing with other fallback caches if available",
                 APR_ARRAY_IDX(cache->caches,0,mapcache_cache*)->name,tile->z,tile->x,tile->y,tile->tileset->name);
         ctx->clear_errors(ctx);
@@ -94,7 +94,7 @@ static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_ca
   char *first_error_message;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-    subcache->tile_set(ctx, subcache, tile);
+    mapcache_cache_tile_set(ctx, subcache, tile);
     if(GC_HAS_ERROR(ctx)) {
       if(!first_error) {
         first_error = ctx->get_error(ctx);
@@ -119,17 +119,7 @@ static void _mapcache_cache_fallback_tile_multi_set(mapcache_context *ctx, mapca
   char *first_error_message;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-    if(subcache->tile_multi_set) {
-      subcache->tile_multi_set(ctx, subcache, tiles, ntiles);
-    }
-    else {
-      int j;
-      for(j=0;j<ntiles;j++) {
-        subcache->tile_set(ctx,subcache,&tiles[j]);
-        if(GC_HAS_ERROR(ctx))
-          break;
-      }
-    } 
+    mapcache_cache_tile_multi_set(ctx, subcache, tiles, ntiles);
     if(GC_HAS_ERROR(ctx)) {
       if(!first_error) {
         first_error = ctx->get_error(ctx);
@@ -190,11 +180,11 @@ mapcache_cache* mapcache_cache_fallback_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_COMPOSITE;
-  cache->cache.tile_delete = _mapcache_cache_fallback_tile_delete;
-  cache->cache.tile_get = _mapcache_cache_fallback_tile_get;
-  cache->cache.tile_exists = _mapcache_cache_fallback_tile_exists;
-  cache->cache.tile_set = _mapcache_cache_fallback_tile_set;
-  cache->cache.tile_multi_set = _mapcache_cache_fallback_tile_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_fallback_tile_delete;
+  cache->cache._tile_get = _mapcache_cache_fallback_tile_get;
+  cache->cache._tile_exists = _mapcache_cache_fallback_tile_exists;
+  cache->cache._tile_set = _mapcache_cache_fallback_tile_set;
+  cache->cache._tile_multi_set = _mapcache_cache_fallback_tile_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_fallback_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_fallback_configuration_parse_xml;
   return (mapcache_cache*)cache;
