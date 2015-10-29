@@ -991,7 +991,7 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
 
 
   if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
-    int isLocked;
+    int isLocked = MAPCACHE_FALSE;
     void *lock;
 
     /* If the tile does not exist or stale, we must take action before re-asking for it */
