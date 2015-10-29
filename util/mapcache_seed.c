@@ -139,6 +139,8 @@ cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either
 int push_queue(struct seed_cmd cmd)
 {
   struct seed_cmd *pcmd;
+  int retries=0;
+  int ret;
 #ifdef USE_FORK
   if(nprocesses > 1) {
     struct msg_cmd mcmd;
@@ -153,7 +155,16 @@ int push_queue(struct seed_cmd cmd)
 #endif
   pcmd = calloc(1,sizeof(struct seed_cmd));
   *pcmd = cmd;
-  return apr_queue_push(work_queue,pcmd);
+  ret = apr_queue_push(work_queue,pcmd);
+  while (ret == APR_EINTR && retries < 10) {
+    retries++;
+    ret = apr_queue_push(work_queue,pcmd);
+  }
+  if(ret == APR_EINTR) {
+    printf("failed to push tile %d %d %d after 10 retries\n",cmd.z,cmd.y,cmd.x);
+    return APR_EGENERAL;
+  }
+  return ret;
 }
 
 int pop_queue(struct seed_cmd *cmd)
@@ -658,6 +669,7 @@ void seed_worker()
 
     {
       struct seed_status *st = calloc(1,sizeof(struct seed_status));
+      int retries=0;
       st->x=tile->x;
       st->y=tile->y;
       st->z=tile->z;
@@ -669,8 +681,13 @@ void seed_worker()
         st->status = MAPCACHE_STATUS_OK;
       }
       ret = apr_queue_push(log_queue,(void*)st);
-      while( ret == APR_EINTR) {
+      while( ret == APR_EINTR && retries < 10) {
+        retries++;
         ret = apr_queue_push(log_queue,(void*)st);
+      }
+      if( ret == APR_EINTR) {
+        printf("FATAL ERROR: unable to log progress after 10 retries, aborting\n");
+        break;
       }
       if(ret != APR_SUCCESS)
       {
@@ -1381,9 +1398,15 @@ int main(int argc, const char **argv)
     }
   }
   {
+    int retries=0;
+    int ret;
     struct seed_status *st = calloc(1,sizeof(struct seed_status));
     st->status = MAPCACHE_STATUS_FINISHED;
-    apr_queue_push(log_queue,(void*)st);
+    ret = apr_queue_push(log_queue,(void*)st);
+    while (ret == APR_EINTR && retries<10) {
+      retries++;
+      ret = apr_queue_push(log_queue,(void*)st);
+    }
     apr_thread_join(&rv, log_thread);
   }
 
