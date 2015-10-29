@@ -259,7 +259,7 @@ void handle_sig_int(int signal)
 
 void seed_log(mapcache_context *ctx, mapcache_log_level level, char *msg, ...)
 {
-  if(verbose) {
+  if(level >= MAPCACHE_WARN || verbose) {
     va_list args;
     va_start(args,msg);
     vfprintf(stderr,msg,args);

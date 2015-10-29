@@ -797,9 +797,11 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<3;i++) { /* retry 3 times */
-    if(i)
+  for(i=0;i<rcache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+    }
     pc = _rest_get_connection(ctx, rcache, tile);
     if(GC_HAS_ERROR(ctx))
       return MAPCACHE_FAILURE;
@@ -839,9 +841,11 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<3;i++) {
-    if(i)
+  for(i=0;i<rcache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+    }
     pc = _rest_get_connection(ctx, rcache, tile);
     GC_CHECK_ERROR(ctx);
 
@@ -888,9 +892,11 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
   
-  for(i=0;i<3;i++) {
-    if(i)
+  for(i=0;i<rcache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+    }
     pc = _rest_get_connection(ctx, rcache, tile);
     if(GC_HAS_ERROR(ctx))
       return MAPCACHE_FAILURE;
@@ -919,9 +925,11 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
   CURL *curl;
   int i,j;
 
-  for(j=0;j<3;j++) {
-    if(j)
+  for(j=0;j<=rcache->retry_count;j++) {
+    if(j) {
+      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",j,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+    }
     pc = _rest_get_connection(ctx, rcache, &tiles[0]);
     GC_CHECK_ERROR(ctx);
     curl = pc->connection;
@@ -1015,6 +1023,10 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
       dcache->use_redirects = 1;
     }
   }
+  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
+    dcache->retry_count = atoi(cur_node->txt);
+  }
+  
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {
     ezxml_t header_node;
     dcache->rest.common_headers = apr_table_make(ctx->pool,3);
@@ -1146,7 +1158,7 @@ static void _mapcache_cache_rest_configuration_post_config(mapcache_context *ctx
 }
 
 void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache) {
-  cache->retry_count = 0;
+  cache->retry_count = 2;
   cache->use_redirects = 0;
   cache->rest.get_tile.method = MAPCACHE_REST_METHOD_GET;
   cache->rest.set_tile.method = MAPCACHE_REST_METHOD_PUT;
