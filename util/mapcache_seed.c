@@ -283,7 +283,7 @@ void seed_log(mapcache_context *ctx, mapcache_log_level level, char *msg, ...)
     va_start(args,msg);
     vfprintf(stderr,msg,args);
     va_end(args);
-    printf("\n");
+    fprintf(stderr,"\n");
   }
 }
 
@@ -294,7 +294,7 @@ void mapcache_context_seeding_log(mapcache_context *ctx, mapcache_log_level leve
   va_start(args,msg);
   vfprintf(stderr,msg,args);
   va_end(args);
-  printf("\n");
+  fprintf(stderr,"\n");
 }
 
 #ifdef USE_CLIPPERS
