@@ -865,6 +865,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
             goto cleanup;
         }
         mapcache_image_merge(ctx, tile->raw_image, subtile->raw_image);
+        tile->raw_image->has_alpha = MC_ALPHA_UNKNOWN; /* we've merged two images, we now have no idea if it's transparent or not */
         if(GC_HAS_ERROR(ctx))
           goto cleanup;
       }
