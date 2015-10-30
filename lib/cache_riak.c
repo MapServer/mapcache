@@ -280,7 +280,7 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
  * \sa mapcache_cache::tile_set()
  */
 static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
-    char *key;
+    char *key,*content_type;
     int error;
     int connect_error = RIACK_SUCCESS;
     int retries = 3;
@@ -311,6 +311,16 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
         GC_CHECK_ERROR(ctx);
     }
+    content_type = tile->tileset->format?(tile->tileset->format->mime_type?tile->tileset->format->mime_type:NULL):NULL;
+
+    if(!content_type) {
+      /* compute the content-type */
+      mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
+      if(t == GC_PNG)
+        content_type = "image/png";
+      else if(t == GC_JPEG)
+        content_type = "image/jpeg";
+    }
 
     pc = _riak_get_connection(ctx, cache, tile);
     GC_CHECK_ERROR(ctx);
@@ -324,8 +334,8 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
     object.vclock.len = 0;
     object.content_count = 1;
     object.content = &content;
-    content.content_type.value = tile->tileset->format->mime_type;
-    content.content_type.len = strlen(tile->tileset->format->mime_type);
+    content.content_type.value = content_type;
+    content.content_type.len = content_type?strlen(content_type):0;
     content.data = (uint8_t*)tile->encoded_data->buf;
     content.data_len = tile->encoded_data->size;
 
