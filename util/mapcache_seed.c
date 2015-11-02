@@ -771,7 +771,6 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
       if(pct > percent_failed_allowed) {
         ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
         error_detected = 1;
-        return NULL;
       }
     }
     if(st->msg) free(st->msg);
@@ -1349,7 +1348,6 @@ int main(int argc, const char **argv)
     int i;
     pid_t *pids = malloc(nprocesses*sizeof(pid_t));
     struct msqid_ds queue_ds;
-    ctx.threadlock = NULL;
     key = ftok(argv[0], 'B');
     if ((msqid = msgget(key, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
       return usage(argv[0],"failed to create sysv ipc message queue");
@@ -1394,8 +1392,6 @@ int main(int argc, const char **argv)
     return usage(argv[0],"bug: multi process support not available");
 #endif
   } else {
-    //start the thread that will populate the queue.
-    apr_thread_mutex_create((apr_thread_mutex_t**)&ctx.threadlock,APR_THREAD_MUTEX_DEFAULT,ctx.pool);
     //create the queue where tile requests will be put
     apr_queue_create(&work_queue,nthreads,ctx.pool);
 
@@ -1405,7 +1401,11 @@ int main(int argc, const char **argv)
     for(n=0; n<nthreads; n++) {
       apr_thread_create(&threads[n], thread_attrs, seed_thread, NULL, ctx.pool);
     }
+
+    //start the thread that will populate the queue.
     cmd_worker();
+
+    //the worker has finished generating the list of tiles to be seeded, now wait for the rendering threads to finish
     for(n=0; n<nthreads; n++) {
       apr_thread_join(&rv, threads[n]);
     }

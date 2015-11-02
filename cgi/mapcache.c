@@ -274,7 +274,6 @@ int main(int argc, const char **argv)
       }
     }
     apr_pool_create(&(ctx->pool),config_pool);
-    ctx->threadlock = NULL;
     request = NULL;
     pathInfo = getenv("PATH_INFO");
 

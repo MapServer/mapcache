@@ -265,7 +265,6 @@ struct mapcache_context {
   mapcache_context* (*clone)(mapcache_context *ctx);
   apr_pool_t *pool;
   mapcache_connection_pool *connection_pool;
-  void *threadlock;
   char *_contenttype;
   char *_errmsg;
   int _errcode;

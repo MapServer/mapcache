@@ -323,7 +323,6 @@ void mapcache_context_copy(mapcache_context *src, mapcache_context *dst)
   dst->set_exception = src->set_exception;
   dst->service = src->service;
   dst->exceptions = src->exceptions;
-  dst->threadlock = src->threadlock;
   dst->supports_redirects = src->supports_redirects;
   dst->pop_errors = src->pop_errors;
   dst->push_errors = src->push_errors;
