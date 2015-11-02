@@ -419,7 +419,7 @@ static void _mapcache_cache_rest_tile_url(mapcache_context *ctx, mapcache_tile *
 
 
   *url = apr_pstrcat(ctx->pool,*url,path,NULL);
-  /*ctx->log(ctx,MAPCACHE_WARN,"rest url: %s",*url);*/
+  /*ctx->log(ctx,MAPCACHE_DEBUG,"rest url: %s",*url);*/
 }
 
 
@@ -799,7 +799,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
 
   for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
-      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
+      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
     }
     pc = _rest_get_connection(ctx, rcache, tile);
@@ -843,7 +843,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
 
   for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
-      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
+      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
     }
     pc = _rest_get_connection(ctx, rcache, tile);
@@ -894,7 +894,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   
   for(i=0;i<=rcache->retry_count;i++) {
     if(i) {
-      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
+      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
     }
     pc = _rest_get_connection(ctx, rcache, tile);
@@ -927,7 +927,7 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
 
   for(j=0;j<=rcache->retry_count;j++) {
     if(j) {
-      ctx->log(ctx,MAPCACHE_WARN,"rest cache retry %d of %d. previous try returned error: %s",j,rcache->retry_count,ctx->get_error_message(ctx));
+      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",j,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
     }
     pc = _rest_get_connection(ctx, rcache, &tiles[0]);
