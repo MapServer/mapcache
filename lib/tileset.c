@@ -773,6 +773,8 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   apr_array_header_t *subtiles;
   mapcache_extent extent;
   mapcache_subtile st;
+  mapcache_image *assembled_image = NULL;
+  mapcache_buffer *assembled_buffer = NULL;
   int i,j,k,n_subtiles = 1;
   /* we can be here in two cases:
    * - either we didn't look up the tile directly (need to split dimension into sub-dimension and reassemble dynamically)
@@ -840,39 +842,51 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
   /* note that subtiles[0].tile == tile */
 
-  for(i=0; i<subtiles->nelts; i++) {
+  for(i=subtiles->nelts; i>=0; i--) {
     mapcache_tile *subtile = APR_ARRAY_IDX(subtiles,i,mapcache_subtile).tile;
     mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */
     if(GC_HAS_ERROR(ctx))
       goto cleanup;
     if(!subtile->nodata) {
       tile->nodata = 0;
-      if(!tile->encoded_data && !tile->raw_image) {
+      if(!assembled_buffer && !assembled_image) {
         /* first "usable" subtile */
-        tile->encoded_data = subtile->encoded_data;
-        tile->raw_image = subtile->raw_image;
+        assembled_buffer = subtile->encoded_data;
+        assembled_image = subtile->raw_image;
       } else {
-        /* need to merge subtile onto current tile */
-        if(!tile->raw_image) {
-          tile->raw_image = mapcache_imageio_decode(ctx,tile->encoded_data);
+        /* need to merge current assembled tile over this subtile */
+        if(!assembled_image) {
+          assembled_image = mapcache_imageio_decode(ctx,assembled_buffer);
           if(GC_HAS_ERROR(ctx))
             goto cleanup;
-          tile->encoded_data = NULL; /* the image data went stale as we're merging something */
+          assembled_buffer = NULL; /* the image data went stale as we're merging something */
         }
         if(!subtile->raw_image) {
           subtile->raw_image = mapcache_imageio_decode(ctx,subtile->encoded_data);
           if(GC_HAS_ERROR(ctx))
             goto cleanup;
         }
-        mapcache_image_merge(ctx, tile->raw_image, subtile->raw_image);
-        tile->raw_image->has_alpha = MC_ALPHA_UNKNOWN; /* we've merged two images, we now have no idea if it's transparent or not */
+        mapcache_image_merge(ctx, subtile->raw_image, assembled_image);
+        assembled_image = subtile->raw_image;
+        assembled_image->has_alpha = MC_ALPHA_UNKNOWN; /* we've merged two images, we now have no idea if it's transparent or not */
         if(GC_HAS_ERROR(ctx))
           goto cleanup;
       }
+      if((subtile->encoded_data && mapcache_imageio_header_sniff(ctx,subtile->encoded_data) == GC_JPEG)||
+         (subtile->raw_image && subtile->raw_image->has_alpha == MC_ALPHA_NO)) {
+        /* the returned image is fully opaque, we don't need to get/decode/merge any further subtiles */
+        assembled_image->has_alpha = MC_ALPHA_NO;
+        break;
+      }
     }
   }
+  
+  tile->encoded_data = assembled_buffer;
+  tile->raw_image = assembled_image;
+  
   if(!tile->nodata && !tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+    GC_CHECK_ERROR(ctx);
   }
   if(tile->tileset->store_dimension_assemblies) {
     int already_stored = 1; /*depending on the type of dimension, we may have no nead to store the resulting tile*/
@@ -894,6 +908,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
         tile->raw_image->has_alpha = MC_ALPHA_YES;
         tile->raw_image->is_blank = MC_EMPTY_YES;
         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+        GC_CHECK_ERROR(ctx);
       }
       mapcache_cache_tile_set(ctx, tile->tileset->_cache, tile);
       GC_CHECK_ERROR(ctx);
