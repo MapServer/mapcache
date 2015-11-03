@@ -842,7 +842,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
   /* note that subtiles[0].tile == tile */
 
-  for(i=subtiles->nelts; i>=0; i--) {
+  for(i=subtiles->nelts-1; i>=0; i--) {
     mapcache_tile *subtile = APR_ARRAY_IDX(subtiles,i,mapcache_subtile).tile;
     mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */
     if(GC_HAS_ERROR(ctx))
@@ -875,7 +875,8 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
       if((subtile->encoded_data && mapcache_imageio_header_sniff(ctx,subtile->encoded_data) == GC_JPEG)||
          (subtile->raw_image && subtile->raw_image->has_alpha == MC_ALPHA_NO)) {
         /* the returned image is fully opaque, we don't need to get/decode/merge any further subtiles */
-        assembled_image->has_alpha = MC_ALPHA_NO;
+        if(assembled_image)
+          assembled_image->has_alpha = MC_ALPHA_NO;
         break;
       }
     }
