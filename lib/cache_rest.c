@@ -953,8 +953,8 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
       ctx->clear_errors(ctx);
       if(rcache->retry_delay > 0) {
         double wait = rcache->retry_delay;
-        int j = 0;
-        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+        int k = 0;
+        for(k=1;k<j;k++) /* sleep twice as long as before previous retry */
           wait *= 2;
         apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
       }
