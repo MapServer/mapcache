@@ -35,6 +35,7 @@
 #include <curl/curl.h>
 #include <apr_base64.h>
 #include <apr_md5.h>
+#include <math.h>
 
 typedef struct {
   mapcache_buffer *buffer;
@@ -801,6 +802,13 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
     if(i) {
       ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+      if(rcache->retry_delay > 0) {
+        double wait = rcache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
     }
     pc = _rest_get_connection(ctx, rcache, tile);
     if(GC_HAS_ERROR(ctx))
@@ -845,6 +853,13 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     if(i) {
       ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+      if(rcache->retry_delay > 0) {
+        double wait = rcache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
     }
     pc = _rest_get_connection(ctx, rcache, tile);
     GC_CHECK_ERROR(ctx);
@@ -896,6 +911,13 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     if(i) {
       ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+      if(rcache->retry_delay > 0) {
+        double wait = rcache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
     }
     pc = _rest_get_connection(ctx, rcache, tile);
     if(GC_HAS_ERROR(ctx))
@@ -929,6 +951,13 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
     if(j) {
       ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",j,rcache->retry_count,ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
+      if(rcache->retry_delay > 0) {
+        double wait = rcache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
     }
     pc = _rest_get_connection(ctx, rcache, &tiles[0]);
     GC_CHECK_ERROR(ctx);
@@ -1026,11 +1055,18 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
   if ((cur_node = ezxml_child(node,"retries")) != NULL) {
     dcache->retry_count = atoi(cur_node->txt);
     if(dcache->retry_count > 10) {
-      ctx->set_error(ctx,400,"rest cache retry count of %d is unreasonably large. max is 10",dcache->retry_count);
+      ctx->set_error(ctx,400,"rest cache <retries> count of %d is unreasonably large. max is 10",dcache->retry_count);
       return;
     }
   }
-  
+  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
+    dcache->retry_delay = (double)atof(cur_node->txt);
+    if(dcache->retry_delay < 0) {
+      ctx->set_error(ctx,400,"rest cache retry delay of %f must be positive",dcache->retry_delay);
+      return;
+    }
+  }
+
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {
     ezxml_t header_node;
     dcache->rest.common_headers = apr_table_make(ctx->pool,3);
@@ -1163,6 +1199,7 @@ static void _mapcache_cache_rest_configuration_post_config(mapcache_context *ctx
 
 void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache) {
   cache->retry_count = 2;
+  cache->retry_delay = 0.1;
   cache->use_redirects = 0;
   cache->rest.get_tile.method = MAPCACHE_REST_METHOD_GET;
   cache->rest.set_tile.method = MAPCACHE_REST_METHOD_PUT;
