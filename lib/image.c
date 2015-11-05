@@ -98,6 +98,7 @@ void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_
     ctx->set_error(ctx, 500, "attempting to merge an larger image onto another");
     return;
   }
+  
   starti = (base->h - overlay->h)/2;
   startj = (base->w - overlay->w)/2;
 #ifdef USE_PIXMAN
@@ -105,12 +106,14 @@ void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_
                        (uint32_t*)overlay->data,overlay->stride);
   bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
                        (uint32_t*)base->data,base->stride);
-  pixman_transform_init_translate(&transform,
-                                  pixman_int_to_fixed(-startj),
-                                  pixman_int_to_fixed(-starti));
-  pixman_image_set_filter(si,PIXMAN_FILTER_NEAREST, NULL, 0);
-  pixman_image_set_transform (si, &transform);
-  pixman_image_composite (PIXMAN_OP_OVER, si, si, bi,
+  pixman_image_set_filter(si,PIXMAN_FILTER_BILINEAR, NULL, 0);
+  if(starti || startj) {
+    pixman_transform_init_translate(&transform,
+                                    pixman_int_to_fixed(-startj),
+                                    pixman_int_to_fixed(-starti));
+    pixman_image_set_transform (si, &transform);
+  }
+  pixman_image_composite (PIXMAN_OP_OVER, si, NULL, bi,
                           0, 0, 0, 0, 0, 0, base->w,base->h);
   pixman_image_unref(si);
   pixman_image_unref(bi);
