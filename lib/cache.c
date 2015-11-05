@@ -29,35 +29,35 @@
 
 int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
 #ifdef DEBUG
-  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_get on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->z,tile->x, tile->y);
+  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_get on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
   return cache->_tile_get(ctx,cache,tile);
 }
 
 void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
 #ifdef DEBUG
-  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_delete on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->z,tile->x, tile->y);
+  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_delete on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
   return cache->_tile_delete(ctx,cache,tile);
 }
 
 int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
 #ifdef DEBUG
-  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_exists on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->z,tile->x, tile->y);
+  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_exists on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
   return cache->_tile_exists(ctx,cache,tile);
 }
 
 void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
 #ifdef DEBUG
-  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_set on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->z,tile->x, tile->y);
+  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_set on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
   return cache->_tile_set(ctx,cache,tile);
 }
 
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles) {
 #ifdef DEBUG
-  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_multi_set on cache (%s): (tileset=%s, grid=%s, first tile: z=%d, x=%d, y=%d",cache->name,tiles[0].tileset->name,
+  ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_multi_set on cache (%s): (tileset=%s, grid=%s, first tile: z=%d, x=%d, y=%d",cache->name,tiles[0].grid_link->grid->name,tiles[0].tileset->name,
       tiles[0].z,tiles[0].x, tiles[0].y);
 #endif
   if(cache->_tile_multi_set) {
