@@ -85,10 +85,11 @@ int mapcache_image_has_alpha(mapcache_image *img)
 void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_image *overlay)
 {
   int starti,startj;
+#ifdef USE_PIXMAN
   pixman_image_t *si;
   pixman_image_t *bi;
   pixman_transform_t transform;
-#ifndef USE_PIXMAN
+#else
   int i,j;
   unsigned char *browptr, *orowptr, *bptr, *optr;
 #endif
