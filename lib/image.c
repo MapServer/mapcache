@@ -106,7 +106,7 @@ void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_
                        (uint32_t*)overlay->data,overlay->stride);
   bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
                        (uint32_t*)base->data,base->stride);
-  pixman_image_set_filter(si,PIXMAN_FILTER_BILINEAR, NULL, 0);
+  pixman_image_set_filter(si,PIXMAN_FILTER_NEAREST, NULL, 0);
   if(starti || startj) {
     pixman_transform_init_translate(&transform,
                                     pixman_int_to_fixed(-startj),
