@@ -589,9 +589,12 @@ void seed_worker()
       mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
       for (i = 0; i < mt->ntiles; i++) {
         mapcache_tile *subtile = &mt->tiles[i];
-        mapcache_tileset_tile_get(&seed_ctx, subtile);
-        subtile->tileset = tileset_transfer;
-        subtile->tileset->_cache->tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
+        int cache_ret;
+        cache_ret = tileset->_cache->tile_get(&seed_ctx, tileset->_cache, subtile);
+        if(cache_ret == MAPCACHE_SUCCESS && !GC_HAS_ERROR(&seed_ctx)) {
+          subtile->tileset = tileset_transfer;
+          subtile->tileset->_cache->tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
+        }
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
