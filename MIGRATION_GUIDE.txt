@@ -13,4 +13,4 @@ Migrating from Mapcache 1.4 to 1.6
   <dimension type="regex"><regex>^abc$</regex></dimension>
 
 * <dimension ... assembly="stack">...</dimension> should be replaced by
-  <dimension ...>....<assembly_type>stack</assembly_type></dimension>
+  <dimensions><assembly_type>stack</assembly_type><dimension ...>....</dimension></dimensions>
