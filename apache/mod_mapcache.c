@@ -261,27 +261,29 @@ static void read_post_body(mapcache_context_apache_request *ctx, mapcache_reques
   p->post_len = 0;
 
   do {
+    apr_bucket *nextb;
     rv = ap_get_brigade(r->input_filters, bbin, AP_MODE_READBYTES, APR_BLOCK_READ, bytes);
     if(rv != APR_SUCCESS) {
       mctx->set_error(mctx, 500, "failed to read form input");
       return;
     }
-    for(b = APR_BRIGADE_FIRST(bbin); b != APR_BRIGADE_SENTINEL(bbin); b = APR_BUCKET_NEXT(b)) {
+    for(b = APR_BRIGADE_FIRST(bbin); b != APR_BRIGADE_SENTINEL(bbin); b = nextb) {
+      nextb = APR_BUCKET_NEXT(b);
       if(APR_BUCKET_IS_EOS(b)) {
         eos = 1;
       }
-    }
-    if(!APR_BUCKET_IS_METADATA(b)) {
-      if(b->length != (apr_size_t)(-1)) {
-        p->post_len += b->length;
-        if(p->post_len > p->rule->max_post_len) {
-          apr_bucket_delete(b);
+      if(!APR_BUCKET_IS_METADATA(b)) {
+        if(b->length != (apr_size_t)(-1)) {
+          p->post_len += b->length;
+          if(p->post_len > p->rule->max_post_len) {
+            apr_bucket_delete(b);
+          }
         }
       }
-    }
-    if(p->post_len <= p->rule->max_post_len) {
-      APR_BUCKET_REMOVE(b);
-      APR_BRIGADE_INSERT_TAIL(bb, b);
+      if(p->post_len <= p->rule->max_post_len) {
+        APR_BUCKET_REMOVE(b);
+        APR_BRIGADE_INSERT_TAIL(bb, b);
+      }
     }
   } while (!eos);
 
@@ -291,11 +293,13 @@ static void read_post_body(mapcache_context_apache_request *ctx, mapcache_reques
   }
 
   p->post_buf = apr_palloc(mctx->pool, p->post_len+1);
-
-  rv = apr_brigade_flatten(bb, p->post_buf, &(p->post_len));
-  if(rv != APR_SUCCESS) {
-    mctx->set_error(mctx, 500, "error (flatten) reading form data");
-    return;
+  
+  if(p->post_len> 0) {
+    rv = apr_brigade_flatten(bb, p->post_buf, &(p->post_len));
+    if(rv != APR_SUCCESS) {
+      mctx->set_error(mctx, 500, "error (flatten) reading form data");
+      return;
+    }
   }
   p->post_buf[p->post_len] = 0;
 }

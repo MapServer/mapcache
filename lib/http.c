@@ -105,6 +105,7 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   char error_msg[CURL_ERROR_SIZE];
   int ret;
   struct curl_slist *curl_headers=NULL;
+  struct _header_struct h;
   curl_handle = curl_easy_init();
 
 
@@ -121,7 +122,6 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
 
   if(headers != NULL) {
     /* intercept headers */
-    struct _header_struct h;
     h.headers = headers;
     h.ctx=ctx;
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, _mapcache_curl_header_callback);
