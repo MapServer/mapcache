@@ -155,18 +155,21 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     ezxml_t node)
 {
   mapcache_dimension_regex *dimension;
-  const char *entry = node->txt;
-  if(!entry || !*entry) {
-    ctx->set_error(ctx,400,"failed to parse dimension regex: none supplied");
+  ezxml_t child_node = ezxml_child(node,"regex");
+  
+  dimension = (mapcache_dimension_regex*)dim;
+  
+  if(child_node && child_node->txt && *child_node->txt) {
+    dimension->regex_string = apr_pstrdup(ctx->pool,child_node->txt);
+  } else {
+    ctx->set_error(ctx,400,"failed to parse dimension regex: no <regex> child supplied");
     return;
   }
-  dimension = (mapcache_dimension_regex*)dim;
-  dimension->regex_string = apr_pstrdup(ctx->pool,entry);
 #ifdef USE_PCRE
   {
     const char *pcre_err;
     int pcre_offset;
-    dimension->pcregex = pcre_compile(entry,0,&pcre_err, &pcre_offset,0);
+    dimension->pcregex = pcre_compile(dimension->regex_string,0,&pcre_err, &pcre_offset,0);
     if(!dimension->pcregex) {
       ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
                      entry,dim->name,pcre_err);
@@ -175,12 +178,12 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
   }
 #else
   {
-    int rc = regcomp(dimension->regex, entry, REG_EXTENDED);
+    int rc = regcomp(dimension->regex, dimension->regex_string, REG_EXTENDED);
     if(rc) {
       char errmsg[200];
       regerror(rc,dimension->regex,errmsg,200);
       ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-                     entry,dim->name,errmsg);
+                     dimension->regex_string,dim->name,errmsg);
       return;
     }
   }
@@ -194,19 +197,21 @@ static apr_array_header_t* _mapcache_dimension_values_get_entries_for_value(mapc
   int i;
   mapcache_dimension_values *dimension = (mapcache_dimension_values*)dim;
   apr_array_header_t *values = apr_array_make(ctx->pool,1,sizeof(char*));
-  for(i=0; i<dimension->nvalues; i++) {
+  for(i=0; i<dimension->values->nelts; i++) {
+    char *cur_val = APR_ARRAY_IDX(dimension->values,i,char*);
     if(dimension->case_sensitive) {
-      if(!strcmp(value,dimension->values[i])) {
+      if(!strcmp(value,cur_val)) {
         APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
         break;
       }
     } else {
-      if(!strcasecmp(value,dimension->values[i]))
+      if(!strcasecmp(value,cur_val)) {
         APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
         break;
+      }
     }
   }
-  if(i == dimension->nvalues) {
+  if(i == dimension->values->nelts) {
     ctx->set_error(ctx,400,"failed to validate requested value for dimension (%s)",dim->name);
   }
   return values;
@@ -216,10 +221,10 @@ static apr_array_header_t* _mapcache_dimension_values_get_all_entries(mapcache_c
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   mapcache_dimension_values *dimension = (mapcache_dimension_values*)dim;
-  apr_array_header_t *ret = apr_array_make(ctx->pool,dimension->nvalues,sizeof(char*));
+  apr_array_header_t *ret = apr_array_make(ctx->pool,dimension->values->nelts,sizeof(char*));
   int i;
-  for(i=0; i<dimension->nvalues; i++) {
-    APR_ARRAY_PUSH(ret,char*) = apr_pstrdup(ctx->pool,dimension->values[i]);
+  for(i=0; i<dimension->values->nelts; i++) {
+    APR_ARRAY_PUSH(ret,char*) = apr_pstrdup(ctx->pool,APR_ARRAY_IDX(dimension->values,i,char*));
   }
   return ret;
 }
@@ -228,34 +233,31 @@ static apr_array_header_t* _mapcache_dimension_values_get_all_entries(mapcache_c
 static void _mapcache_dimension_values_parse_xml(mapcache_context *ctx, mapcache_dimension *dim,
     ezxml_t node)
 {
-  int count = 1;
   mapcache_dimension_values *dimension;
-  const char *case_sensitive;
-  char *key,*last;
-  char *values;
-  const char *entry = node->txt;
-  if(!entry || !*entry) {
-    ctx->set_error(ctx,400,"failed to parse dimension values: none supplied");
+  ezxml_t child_node = ezxml_child(node,"value");
+  dimension = (mapcache_dimension_values*)dim;
+  
+  if(!child_node) {
+    ctx->set_error(ctx,400,"failed to parse dimension values: no <value> children supplied");
     return;
   }
-
-  dimension = (mapcache_dimension_values*)dim;
-  case_sensitive = ezxml_attr(node,"case_sensitive");
-  if(case_sensitive && !strcasecmp(case_sensitive,"true")) {
-    dimension->case_sensitive = 1;
+  for(; child_node; child_node = child_node->next) {
+    const char* entry = child_node->txt;
+    if(!entry || !*entry) {
+      ctx->set_error(ctx,400,"failed to parse dimension values: empty <value>");
+      return;
+    }
+    APR_ARRAY_PUSH(dimension->values,char*) = apr_pstrdup(ctx->pool,entry);
   }
 
-  values = apr_pstrdup(ctx->pool,entry);
-  for(key=values; *key; key++) if(*key == ',') count++;
-
-  dimension->values = (char**)apr_pcalloc(ctx->pool,count*sizeof(char*));
-
-  for (key = apr_strtok(values, ",", &last); key != NULL;
-       key = apr_strtok(NULL, ",", &last)) {
-    dimension->values[dimension->nvalues]=key;
-    dimension->nvalues++;
+  child_node = ezxml_child(node,"case_sensitive");
+  if(child_node && child_node->txt) {
+    if(!strcasecmp(child_node->txt,"true")) {
+      dimension->case_sensitive = 1;
+    }
   }
-  if(!dimension->nvalues) {
+
+  if(!dimension->values->nelts) {
     ctx->set_error(ctx, 400, "<dimension> \"%s\" has no values",dim->name);
     return;
   }
@@ -265,7 +267,7 @@ mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
 {
   mapcache_dimension_values *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_values));
   dimension->dimension.type = MAPCACHE_DIMENSION_VALUES;
-  dimension->nvalues = 0;
+  dimension->values = apr_array_make(pool,1,sizeof(char*));
   dimension->dimension.get_entries_for_value = _mapcache_dimension_values_get_entries_for_value;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_values_parse_xml;
   dimension->dimension.get_all_entries = _mapcache_dimension_values_get_all_entries;

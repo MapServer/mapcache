@@ -1101,7 +1101,8 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
         rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
         GC_CHECK_ERROR(ctx);
         if(rdim_vals->nelts > 1) {
-          ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+          ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number (%d) of subdimensions (1 expected)",
+                         rdim->dimension->name, tile->tileset->name, rdim_vals->nelts);
           return;
         }
         if(rdim_vals->nelts == 0) {

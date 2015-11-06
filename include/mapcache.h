@@ -2008,8 +2008,7 @@ struct mapcache_dimension {
 
 struct mapcache_dimension_values {
   mapcache_dimension dimension;
-  int nvalues;
-  char **values;
+  apr_array_header_t *values;
   int case_sensitive;
 };
 
