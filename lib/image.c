@@ -56,7 +56,7 @@ mapcache_image* mapcache_image_create_with_data(mapcache_context *ctx, int width
   return img;
 }
 
-int mapcache_image_has_alpha(mapcache_image *img)
+int mapcache_image_has_alpha(mapcache_image *img, unsigned int cutoff)
 {
   size_t i,j;
   if(img->has_alpha == MC_ALPHA_UNKNOWN) {
@@ -64,7 +64,7 @@ int mapcache_image_has_alpha(mapcache_image *img)
     for(i=0; i<img->h; i++) {
       ptr = rptr;
       for(j=0; j<img->w; j++) {
-        if(ptr[3]<(unsigned char)255) {
+        if(ptr[3]<(unsigned char)cutoff) {
           img->has_alpha = MC_ALPHA_YES;
           return 1;
         }

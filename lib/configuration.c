@@ -140,7 +140,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   mapcache_configuration_add_image_format(cfg,
           mapcache_imageio_create_mixed_format(pool,"mixed",
                     mapcache_configuration_get_image_format(cfg,"PNG"),
-                    mapcache_configuration_get_image_format(cfg,"JPEG")),
+                    mapcache_configuration_get_image_format(cfg,"JPEG"), 255),
           "mixed");
   cfg->default_image_format = mapcache_configuration_get_image_format(cfg,"mixed");
   cfg->reporting = MAPCACHE_REPORT_MSG;

@@ -46,7 +46,7 @@ static mapcache_buffer* _mapcache_imageio_mixed_encode( mapcache_context *ctx,
     mapcache_image *image, mapcache_image_format *format)
 {
   mapcache_image_format_mixed *f = (mapcache_image_format_mixed*)format;
-  if(mapcache_image_has_alpha(image)) {
+  if(mapcache_image_has_alpha(image,f->alpha_cutoff)) {
     return f->transparent->write(ctx,image,f->transparent);
   } else {
     return f->opaque->write(ctx,image,f->opaque);
@@ -54,12 +54,14 @@ static mapcache_buffer* _mapcache_imageio_mixed_encode( mapcache_context *ctx,
 }
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
-    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque)
+    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque,
+    unsigned int alpha_cutoff)
 {
   mapcache_image_format_mixed *format = apr_pcalloc(pool, sizeof(mapcache_image_format_mixed));
   format->format.name = name;
   format->transparent = transparent;
   format->opaque = opaque;
+  format->alpha_cutoff = alpha_cutoff;
   format->format.extension = apr_pstrdup(pool,"xxx");
   format->format.mime_type = NULL;
   format->format.write = _mapcache_imageio_mixed_encode;

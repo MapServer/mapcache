@@ -172,7 +172,7 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     dimension->pcregex = pcre_compile(dimension->regex_string,0,&pcre_err, &pcre_offset,0);
     if(!dimension->pcregex) {
       ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-                     entry,dim->name,pcre_err);
+                     dimension->regex_string,dim->name,pcre_err);
       return;
     }
   }

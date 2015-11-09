@@ -421,6 +421,7 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
              name,quality,photometric);
   } else if(!strcasecmp(type,"MIXED")) {
     mapcache_image_format *transparent=NULL, *opaque=NULL;
+    unsigned int alpha_cutoff=255;
     if ((cur_node = ezxml_child(node,"transparent")) != NULL) {
       transparent = mapcache_configuration_get_image_format(config,cur_node->txt);
     }
@@ -439,7 +440,10 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      name,cur_node->txt,cur_node->txt);
       return;
     }
-    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque);
+    if ((cur_node = ezxml_child(node,"alpha_cutoff")) != NULL) {
+      alpha_cutoff = atoi(cur_node->txt);
+    }
+    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque, alpha_cutoff);
   } else {
     ctx->set_error(ctx, 400, "unknown format type %s for format \"%s\"", type, name);
     return;
