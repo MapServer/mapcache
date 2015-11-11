@@ -916,9 +916,9 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
 
       if(type && *type) {
         if(!strcmp(type,"values")) {
-          dimension = mapcache_dimension_values_create(ctx->pool);
+          dimension = mapcache_dimension_values_create(ctx,ctx->pool);
         } else if(!strcmp(type,"regex")) {
-          dimension = mapcache_dimension_regex_create(ctx->pool);
+          dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
         } else {
           ctx->set_error(ctx,400,"unknown <param> type \"%s\". expecting \"values\" or \"regex\".",type);
           return;
@@ -927,6 +927,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
         ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
         return;
       }
+      GC_CHECK_ERROR(ctx);
 
       dimension->name = apr_pstrdup(ctx->pool,name);
 

@@ -66,13 +66,13 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 
     if(type && *type) {
       if(!strcmp(type,"values")) {
-        dimension = mapcache_dimension_values_create(ctx->pool);
+        dimension = mapcache_dimension_values_create(ctx,ctx->pool);
       } else if(!strcmp(type,"regex")) {
-        dimension = mapcache_dimension_regex_create(ctx->pool);
+        dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
-        dimension = mapcache_dimension_sqlite_create(ctx->pool);
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
-        dimension = mapcache_dimension_time_create(ctx->pool);
+        dimension = mapcache_dimension_time_create(ctx,ctx->pool);
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;

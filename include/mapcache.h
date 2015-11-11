@@ -2034,10 +2034,10 @@ struct mapcache_dimension_time {
   mapcache_dimension_sqlite dimension;
 };
 
-mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);
 
