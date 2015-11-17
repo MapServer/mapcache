@@ -333,7 +333,7 @@ static char *_lookup_auto_projection(mapcache_context *ctx, const char *srs) {
     if(!lat) return srsdup;
     *lat = 0;
     lat++;
-    nLon = (int)(floor( (atof(argv[1]) + 180.0) / 6.0 ))*6 + 3 - 180;
+    nLon = (int)(floor( (atof(lon) + 180.0) / 6.0 ))*6 + 3 - 180;
     nLat = (atof(lat)>=0)?45:-45;
     return apr_psprintf(ctx->pool,"auto:42001,9001,%d,%d",nLon,nLat);
   }
