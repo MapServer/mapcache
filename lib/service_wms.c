@@ -320,6 +320,26 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   request->request.mime_type = apr_pstrdup(ctx->pool,"text/xml");
 }
 
+static char *_lookup_auto_projection(mapcache_context *ctx, const char *srs) {
+  if(!strcasecmp(srs,"auto:42001")) {
+    char *srsdup = apr_pstrdup(ctx->pool,srs);
+    char *lon = strchr(srsdup,','),*lat;
+    int nLon,nLat;
+    if(!lon) return srsdup;
+    lon = strchr(lon+1,',');
+    if(!lon) return srsdup;
+    lon++;
+    lat = strchr(lon,',');
+    if(!lat) return srsdup;
+    *lat = 0;
+    lat++;
+    nLon = (int)(floor( (atof(argv[1]) + 180.0) / 6.0 ))*6 + 3 - 180;
+    nLat = (atof(lat)>=0)?45:-45;
+    return apr_psprintf(ctx->pool,"auto:42001,9001,%d,%d",nLon,nLat);
+  }
+  return (char*)srs;
+}
+
 /**
  * \brief parse a WMS request
  * \private \memberof mapcache_service_wms
@@ -517,6 +537,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         main_tileset = mapcache_tileset_clone(ctx,main_tileset);
         main_tileset->name = (char*)key;
       }
+
+      srs = _lookup_auto_projection(ctx,srs);
 
       for(i=0; i<main_tileset->grid_links->nelts; i++) {
         mapcache_grid_link *sgrid = APR_ARRAY_IDX(main_tileset->grid_links,i,mapcache_grid_link*);
