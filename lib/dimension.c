@@ -172,7 +172,7 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     dimension->pcregex = pcre_compile(dimension->regex_string,0,&pcre_err, &pcre_offset,0);
     if(!dimension->pcregex) {
       ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-                     entry,dim->name,pcre_err);
+                     dimension->regex_string,dim->name,pcre_err);
       return;
     }
   }
@@ -263,7 +263,7 @@ static void _mapcache_dimension_values_parse_xml(mapcache_context *ctx, mapcache
   }
 }
 
-mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
+mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool)
 {
   mapcache_dimension_values *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_values));
   dimension->dimension.type = MAPCACHE_DIMENSION_VALUES;
@@ -275,7 +275,7 @@ mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool)
   return (mapcache_dimension*)dimension;
 }
 
-mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool)
+mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool)
 {
   mapcache_dimension_regex *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_regex));
   dimension->dimension.type = MAPCACHE_DIMENSION_REGEX;
@@ -696,6 +696,7 @@ char *mapcache_ogc_strptime(const char *value, struct tm *ts, mapcache_time_inte
   return NULL;
 }
 
+#ifdef USE_SQLITE
 apr_array_header_t* _mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                                                                    mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid) {
   
@@ -777,8 +778,9 @@ apr_array_header_t* _mapcache_dimension_time_get_entries_for_value(mapcache_cont
   return _mapcache_dimension_time_get_entries(ctx,dimension_time,value,tileset,extent,grid,intervals,count); 
   /* end loop */
 }
+#endif
 
-mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
+mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool)
 {
 #ifdef USE_SQLITE
   mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
@@ -796,7 +798,7 @@ mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool)
 }
 
 
-mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool) {
+mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool) {
 #ifdef USE_SQLITE
   mapcache_dimension_time *dim = apr_pcalloc(pool, sizeof(mapcache_dimension_time));
   mapcache_dimension *pdim = (mapcache_dimension*)dim;

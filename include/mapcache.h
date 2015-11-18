@@ -1164,7 +1164,7 @@ int mapcache_image_blank_color(mapcache_image* image);
 /**
  * \brief check if image has some non opaque pixels
  */
-int mapcache_image_has_alpha(mapcache_image *img);
+int mapcache_image_has_alpha(mapcache_image *img, unsigned int cutoff);
 
 void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const unsigned char *fill_color);
 
@@ -1840,13 +1840,14 @@ struct mapcache_image_format_mixed {
   mapcache_image_format format;
   mapcache_image_format *transparent;
   mapcache_image_format *opaque;
+  unsigned int alpha_cutoff; /* default 255. pixels with alpha >= alpha_cutoff will be considered fully opaque */
 };
 
 mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, int width, int height, const unsigned char *hex_color, int *is_empty);
 
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
-    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque);
+    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque, unsigned int alpha_cutoff);
 
 /**\class mapcache_image_format_png_q
  * \brief Quantized PNG format
@@ -2033,10 +2034,10 @@ struct mapcache_dimension_time {
   mapcache_dimension_sqlite dimension;
 };
 
-mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);
 

@@ -38,6 +38,8 @@ void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, ma
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_delete on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
+  if(tile->tileset->read_only)
+    return;
   return cache->_tile_delete(ctx,cache,tile);
 }
 
