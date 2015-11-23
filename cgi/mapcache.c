@@ -128,6 +128,11 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
   if(response->mtime) {
     char *datestr;
     char *if_modified_since = getenv("HTTP_IF_MODIFIED_SINCE");
+
+    datestr = apr_palloc(ctx->ctx.pool, APR_RFC822_DATE_LEN);
+    apr_rfc822_date(datestr, response->mtime);
+    printf("Last-Modified: %s\r\n", datestr);
+
     if(if_modified_since) {
       apr_time_t ims_time;
       apr_int64_t ims,mtime;
@@ -138,11 +143,14 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
       ims = apr_time_sec(ims_time);
       if(ims >= mtime) {
         printf("Status: 304 Not Modified\r\n");
+	/*
+	 * "The 304 response MUST NOT contain a message-body"
+	 * https://tools.ietf.org/html/rfc2616#section-10.3.5
+	 */
+	printf("\r\n");
+	return;
       }
     }
-    datestr = apr_palloc(ctx->ctx.pool, APR_RFC822_DATE_LEN);
-    apr_rfc822_date(datestr, response->mtime);
-    printf("Last-Modified: %s\r\n", datestr);
   }
   if(response->data) {
     printf("Content-Length: %ld\r\n\r\n", response->data->size);
