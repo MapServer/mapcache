@@ -777,7 +777,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   mapcache_subtile st;
   mapcache_image *assembled_image = NULL;
   mapcache_buffer *assembled_buffer = NULL;
-  int i,j,k,n_subtiles = 1;
+  int i,j,k,n_subtiles = 1,assembled_nodata = 1;
   /* we can be here in two cases:
    * - either we didn't look up the tile directly (need to split dimension into sub-dimension and reassemble dynamically)
    * - either the direct lookup failed and we need to render/assemble the tiles from subdimensions
@@ -850,7 +850,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
     if(GC_HAS_ERROR(ctx))
       goto cleanup;
     if(!subtile->nodata) {
-      tile->nodata = 0;
+      assembled_nodata = 0;
       if(!assembled_buffer && !assembled_image) {
         /* first "usable" subtile */
         assembled_buffer = subtile->encoded_data;
@@ -886,6 +886,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   
   tile->encoded_data = assembled_buffer;
   tile->raw_image = assembled_image;
+  tile->nodata = assembled_nodata;
   
   if(!tile->nodata && !tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
