@@ -109,11 +109,13 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
   
   tileset->dimensions = dimensions;
   dimension_node = ezxml_child(node,"store_assemblies");
-  if(dimension_node && dimension_node->txt && !strcmp(dimension_node->txt,"false")) {
-    tileset->store_dimension_assemblies = 0;
-  } else if(strcmp(dimension_node->txt,"true")) {
-    ctx->set_error(ctx,400,"failed to parse <store_assemblies> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
-    return;
+  if(dimension_node && dimension_node->txt) {
+    if(!strcmp(dimension_node->txt,"false")) {
+      tileset->store_dimension_assemblies = 0;
+    } else if(strcmp(dimension_node->txt,"true")) {
+      ctx->set_error(ctx,400,"failed to parse <store_assemblies> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+      return;
+    }
   }
   
   dimension_node = ezxml_child(node,"assembly_type");
