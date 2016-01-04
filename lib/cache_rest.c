@@ -71,7 +71,10 @@ static mapcache_pooled_connection* _rest_get_connection(mapcache_context *ctx, m
   pc = mapcache_connection_pool_get_connection(ctx,cache->cache.name,mapcache_rest_connection_constructor,
           mapcache_rest_connection_destructor, &params);
   if(!GC_HAS_ERROR(ctx) && pc && pc->connection) {
-    curl_easy_reset((CURL*)pc->connection);
+    CURL *curl_handle = (CURL*)pc->connection;
+    curl_easy_reset(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, cache->connection_timeout);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, cache->timeout);
   }
 
   return pc;
@@ -1052,6 +1055,30 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
       dcache->use_redirects = 1;
     }
   }
+  if ((cur_node = ezxml_child(node,"connection_timeout")) != NULL) {
+    char *endptr;
+    dcache->connection_timeout = (int)strtol(cur_node->txt,&endptr,10);
+    if(*endptr != 0 || dcache->connection_timeout<1) {
+      ctx->set_error(ctx,400,"invalid rest cache <connection_timeout> \"%s\" (positive integer expected)",
+                     cur_node->txt);
+      return NULL;
+    }
+  } else {
+    dcache->connection_timeout = 30;
+  }
+  
+  if ((cur_node = ezxml_child(node,"timeout")) != NULL) {
+    char *endptr;
+    dcache->timeout = (int)strtol(cur_node->txt,&endptr,10);
+    if(*endptr != 0 || dcache->timeout<1) {
+      ctx->set_error(ctx,400,"invalid rest cache <timeout> \"%s\" (positive integer expected)",
+                     cur_node->txt);
+      return NULL;
+    }
+  } else {
+    dcache->timeout = 120;
+  }
+  
   if ((cur_node = ezxml_child(node,"retries")) != NULL) {
     dcache->retry_count = atoi(cur_node->txt);
     if(dcache->retry_count > 10) {
