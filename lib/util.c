@@ -400,9 +400,41 @@ char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, cha
   return path;
 }
 
+void mapcache_make_parent_dirs(mapcache_context *ctx, char *filename) {
+  char *hackptr1,*hackptr2=NULL;
+  apr_status_t ret;
+  char  errmsg[120];
+  
+  /* find the location of the last '/' in the string */
+  hackptr1 = filename;
+  while(*hackptr1) {
+    if(*hackptr1 == '/')
+      hackptr2 = hackptr1;
+    hackptr1++;
+  }
+  
+  if(hackptr2) {
+    /* terminate string on last '/' */
+    *hackptr2 = '\0';
+  }
 
-/* vim: ts=2 sts=2 et sw=2
-*/
+  ret = apr_dir_make_recursive(filename,APR_OS_DEFAULT,ctx->pool);
+  
+  if(hackptr2) {
+    *hackptr2 = '/';
+  }
+  
+  
+  if(APR_SUCCESS != ret) {
+    /*
+     * apr_dir_make_recursive sometimes sends back this error, although it should not.
+     * ignore this one
+     */
+    if(!APR_STATUS_IS_EEXIST(ret)) {
+      ctx->set_error(ctx, 500, "failed to create directory %s: %s",filename, apr_strerror(ret,errmsg,120));
+    }
+  }
+} 
 
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -456,3 +488,8 @@ void mapcache_gettimeofday(struct mctimeval* tp, void* tzp)
 
 
 #endif
+
+/* vim: ts=2 sts=2 et sw=2
+*/
+
+

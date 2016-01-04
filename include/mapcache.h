@@ -1748,6 +1748,7 @@ char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, 
 
 char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *stemplate,
                                  char* sanitized_chars, char *sanitize_to);
+void mapcache_make_parent_dirs(mapcache_context *ctx, char *filename);
 
 /**\defgroup imageio Image IO */
 /** @{ */

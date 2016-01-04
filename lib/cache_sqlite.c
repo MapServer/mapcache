@@ -117,6 +117,8 @@ void mapcache_sqlite_connection_constructor(mapcache_context *ctx, void **conn_,
     flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
   } else {
     flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_CREATE;
+    mapcache_make_parent_dirs(ctx,sq_params->dbfile);
+    GC_CHECK_ERROR(ctx);
   }
   ret = sqlite3_open_v2(sq_params->dbfile, &conn->handle, flags, NULL);
   if (ret != SQLITE_OK) {

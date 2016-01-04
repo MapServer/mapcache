@@ -442,7 +442,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
   apr_file_t *f;
   apr_status_t ret;
   char errmsg[120];
-  char *filename, *hackptr1, *hackptr2=NULL;
+  char *filename;
   mapcache_cache_disk *cache = (mapcache_cache_disk*)pcache;
   const int creation_retry = cache->creation_retry;
   int retry_count_create_file = 0;
@@ -462,26 +462,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
   cache->tile_key(ctx, cache, tile, &filename);
   GC_CHECK_ERROR(ctx);
 
-  /* find the location of the last '/' in the string */
-  hackptr1 = filename;
-  while(*hackptr1) {
-    if(*hackptr1 == '/')
-      hackptr2 = hackptr1;
-    hackptr1++;
-  }
-  *hackptr2 = '\0';
-
-  if(APR_SUCCESS != (ret = apr_dir_make_recursive(filename,APR_OS_DEFAULT,ctx->pool))) {
-    /*
-     * apr_dir_make_recursive sometimes sends back this error, although it should not.
-     * ignore this one
-     */
-    if(!APR_STATUS_IS_EEXIST(ret)) {
-      ctx->set_error(ctx, 500, "failed to create directory %s: %s",filename, apr_strerror(ret,errmsg,120));
-      return;
-    }
-  }
-  *hackptr2 = '/';
+  mapcache_make_parent_dirs(ctx,filename);
+  GC_CHECK_ERROR(ctx);
 
   ret = apr_file_remove(filename,ctx->pool);
   if(ret != APR_SUCCESS && !APR_STATUS_IS_ENOENT(ret)) {
@@ -501,25 +483,15 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       char *blankname_rel = NULL;
       _mapcache_cache_disk_blank_tile_key(ctx,cache,tile,tile->raw_image->data,&blankname);
       if(apr_file_open(&f, blankname, APR_FOPEN_READ, APR_OS_DEFAULT, ctx->pool) != APR_SUCCESS) {
+        /* create the blank file */
         int isLocked;
         void *lock;
-        char *blankdirname;
         if(!tile->encoded_data) {
           tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
           GC_CHECK_ERROR(ctx);
         }
-        /* create the blank file */
-        blankdirname = apr_psprintf(ctx->pool, "%s/%s/%s/blanks",
-                                          cache->base_directory,
-                                          tile->tileset->name,
-                                          tile->grid_link->grid->name);
-        if(APR_SUCCESS != (ret = apr_dir_make_recursive(
-                                   blankdirname, APR_OS_DEFAULT,ctx->pool))) {
-          if(!APR_STATUS_IS_EEXIST(ret)) {
-            ctx->set_error(ctx, 500,  "failed to create directory %s for blank tiles",blankdirname, apr_strerror(ret,errmsg,120));
-            return;
-          }
-        }
+        mapcache_make_parent_dirs(ctx,blankname);
+        GC_CHECK_ERROR(ctx);
 
         /* aquire a lock on the blank file */
         isLocked = mapcache_lock_or_wait_for_resource(ctx,ctx->config->locker,blankname, &lock);
@@ -577,17 +549,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
           ctx->set_error(ctx, 500, "failed to link tile %s to %s: %s",filename, blankname_rel, error);
           return; /* we could not create the file */
         }
-
-        *hackptr2 = '\0';
-
-        if(APR_SUCCESS != (ret = apr_dir_make_recursive(filename,APR_OS_DEFAULT,ctx->pool))) {
-          if(!APR_STATUS_IS_EEXIST(ret)) {
-            ctx->set_error(ctx, 500, "failed to create symlink, can not create directory %s: %s",filename, apr_strerror(ret,errmsg,120));
-            return; /* we could not create the file */
-          }
-        }
-
-        *hackptr2 = '/';
+        mapcache_make_parent_dirs(ctx,filename);
+        GC_CHECK_ERROR(ctx);
       }
 #ifdef DEBUG
       ctx->log(ctx, MAPCACHE_DEBUG, "linked blank tile %s to %s",filename,blankname);
@@ -619,17 +582,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       ctx->set_error(ctx, 500, "failed to create file %s: %s",filename, apr_strerror(ret,errmsg,120));
       return; /* we could not create the file */
     }
-
-    *hackptr2 = '\0';
-
-    if(APR_SUCCESS != (ret = apr_dir_make_recursive(filename,APR_OS_DEFAULT,ctx->pool))) {
-      if(!APR_STATUS_IS_EEXIST(ret)) {
-        ctx->set_error(ctx, 500, "failed to create file, can not create directory %s: %s",filename, apr_strerror(ret,errmsg,120));
-        return; /* we could not create the file */
-      }
-    }
-
-    *hackptr2 = '/';
+    mapcache_make_parent_dirs(ctx,filename);
+    GC_CHECK_ERROR(ctx);
   }
 
   bytes = (apr_size_t)tile->encoded_data->size;
