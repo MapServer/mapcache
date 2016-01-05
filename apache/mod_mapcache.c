@@ -633,8 +633,14 @@ static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *ali
   mapcache_server_cfg *sconfig;
   mapcache_alias_entry *alias_entry;
   mapcache_context *ctx;
+  unsigned forbidden = NOT_IN_DIRECTORY|NOT_IN_FILES;
+  const char *err;
 
-  const char *err = ap_check_cmd_context(cmd, NOT_IN_DIRECTORY|NOT_IN_FILES|NOT_IN_HTACCESS);
+#if (AP_SERVER_MAJORVERSION_NUMBER > 2) || (AP_SERVER_MINORVERSION_NUMBER >= 4)
+  forbidden |= NOT_IN_HTACCESS;
+#endif
+
+  err = ap_check_cmd_context(cmd, forbidden);
   if (err) {
     return err;
   }
