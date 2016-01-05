@@ -1061,7 +1061,7 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
     if(*endptr != 0 || dcache->connection_timeout<1) {
       ctx->set_error(ctx,400,"invalid rest cache <connection_timeout> \"%s\" (positive integer expected)",
                      cur_node->txt);
-      return NULL;
+      return;
     }
   } else {
     dcache->connection_timeout = 30;
@@ -1073,7 +1073,7 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
     if(*endptr != 0 || dcache->timeout<1) {
       ctx->set_error(ctx,400,"invalid rest cache <timeout> \"%s\" (positive integer expected)",
                      cur_node->txt);
-      return NULL;
+      return;
     }
   } else {
     dcache->timeout = 120;
