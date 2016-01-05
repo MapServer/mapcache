@@ -33,6 +33,7 @@
 #include <apr_tables.h>
 #include <curl/curl.h>
 #include <math.h>
+#include <apr_file_io.h>
 
 #ifndef _WIN32
 #include <unistd.h>
