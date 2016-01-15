@@ -74,7 +74,7 @@ apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_ar
 
 void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value) {
   int i;
-  if(!dimensions || !dimensions->nelts>0) {
+  if(!dimensions || dimensions->nelts <= 0) {
     ctx->set_error(ctx,500,"BUG: no dimensions configure for tile/map");
     return;
   }
@@ -90,7 +90,7 @@ void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t 
 
 void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value) {
   int i;
-  if(!dimensions || !dimensions->nelts>0) {
+  if(!dimensions || dimensions->nelts <= 0) {
     ctx->set_error(ctx,500,"BUG: no dimensions configure for tile/map");
     return;
   }
