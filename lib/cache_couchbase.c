@@ -27,13 +27,31 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
+#include "mapcache.h"
+
 #ifdef USE_COUCHBASE
 
-#include "mapcache.h"
 #include <apr_strings.h>
 #include <string.h>
 #include <errno.h>
+#include <libcouchbase/couchbase.h>
+
+typedef struct mapcache_cache_couchbase mapcache_cache_couchbase;
+
+/**\class mapcache_cache_couchbase
+ * \brief a mapcache_cache on couchbase servers
+ * \implements mapcache_cache
+ */
+struct mapcache_cache_couchbase {
+   mapcache_cache cache;
+//   apr_reslist_t *connection_pool;
+   char *host;
+   char *username;
+   char *password;
+   char *bucket;
+   mapcache_context *ctx;
+};
+
 
 typedef struct getStruct
 {
@@ -456,6 +474,11 @@ mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx) {
    return (mapcache_cache*)cache;
 }
 
+#else
+mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"COUCHBASE support not compiled in this version");
+  return NULL;
+}
 #endif
 
 /* vim: ai ts=3 sts=3 et sw=3

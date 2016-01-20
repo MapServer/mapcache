@@ -41,6 +41,16 @@
 #include <apr_reslist.h>
 #include <mapserver.h>
 
+/**\class mapcache_source_mapserver
+ * \brief WMS mapcache_source
+ * \implements mapcache_source
+ */
+typedef struct mapcache_source_mapserver mapcache_source_mapserver;
+struct mapcache_source_mapserver {
+  mapcache_source source;
+  char *mapfile;
+};
+
 /* hash table key = source->name, value = apr_reslist_t of mapObjs */
 static apr_hash_t *mapobj_container = NULL;
 

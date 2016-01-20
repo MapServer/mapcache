@@ -35,6 +35,24 @@
 #include <unistd.h>
 #endif
 
+typedef struct {
+  mapcache_locker locker;
+
+  /**
+   * directory where lock files will be placed.
+   * Must be readable and writable by the apache user.
+   * Must be placed on a network mounted shared directory if multiple mapcache instances
+   * need to be synchronized
+   */
+  const char *dir;
+} mapcache_locker_disk;
+
+typedef struct {
+    mapcache_locker locker;
+    apr_array_header_t *lockers;
+} mapcache_locker_fallback;
+
+
 #define MAPCACHE_LOCKFILE_PREFIX "_gc_lock"
 
 char* lock_filename_for_resource(mapcache_context *ctx, mapcache_locker_disk *ldisk, const char *resource)
@@ -214,6 +232,20 @@ void mapcache_locker_fallback_parse_xml(mapcache_context *ctx, mapcache_locker *
 }
 
 #ifdef USE_MEMCACHE
+
+#include <apr_memcache.h>
+
+typedef struct {
+  char *host;
+  int port;
+} mapcache_locker_memcache_server;
+
+typedef struct {
+  mapcache_locker locker;
+  int nservers;
+  mapcache_locker_memcache_server *servers;
+} mapcache_locker_memcache;
+
 void mapcache_locker_memcache_parse_xml(mapcache_context *ctx, mapcache_locker *self, ezxml_t doc) {
   mapcache_locker_memcache *lm = (mapcache_locker_memcache*)self;
   ezxml_t node,server_node;
@@ -370,6 +402,36 @@ mapcache_locker* mapcache_locker_fallback_create(mapcache_context *ctx) {
   l->release_lock = mapcache_locker_fallback_release_lock;
   return l;
 }
+
+void mapcache_config_parse_locker_old(mapcache_context *ctx, ezxml_t doc, mapcache_cfg *config) {
+  /* backwards compatibility */
+  int micro_retry;
+  ezxml_t node;
+  mapcache_locker_disk *ldisk;
+  config->locker = mapcache_locker_disk_create(ctx);
+  ldisk = (mapcache_locker_disk*)config->locker;
+  if((node = ezxml_child(doc,"lock_dir")) != NULL) {
+    ldisk->dir = apr_pstrdup(ctx->pool, node->txt);
+  } else {
+    ldisk->dir = apr_pstrdup(ctx->pool,"/tmp");
+  }
+
+  if((node = ezxml_child(doc,"lock_retry")) != NULL) {
+    char *endptr;
+    micro_retry = strtol(node->txt,&endptr,10);
+    if(*endptr != 0 || micro_retry <= 0) {
+      ctx->set_error(ctx, 400, "failed to parse lock_retry microseconds \"%s\". Expecting a positive integer",
+          node->txt);
+      return;
+    }
+  } else {
+    /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
+    micro_retry = 10000;
+  }
+  config->locker->retry_interval = micro_retry / 1000000.0;
+  config->locker->timeout=120;
+}
+
 
 void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker) {
   ezxml_t cur_node;

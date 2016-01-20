@@ -33,6 +33,13 @@
 #include <apr_tables.h>
 #include <apr_strings.h>
 
+typedef struct mapcache_source_dummy mapcache_source_dummy;
+struct mapcache_source_dummy {
+  mapcache_source source;
+  char *mapfile;
+  void *mapobj;
+};
+
 /**
  * \private \memberof mapcache_source_dummy
  * \sa mapcache_source::render_map()

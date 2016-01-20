@@ -27,10 +27,29 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
+#include "mapcache.h"
 #ifdef USE_MEMCACHE
 
-#include "mapcache.h"
+#include <apr_memcache.h>
+
+typedef struct mapcache_cache_memcache mapcache_cache_memcache;
+/**\class mapcache_cache_memcache
+ * \brief a mapcache_cache on memcached servers
+ * \implements mapcache_cache
+ */
+
+struct mapcache_cache_memcache_server {
+    char* host;
+    int port;
+};
+
+struct mapcache_cache_memcache {
+  mapcache_cache cache;
+  int nservers;
+  struct mapcache_cache_memcache_server *servers;
+  int detect_blank;
+};
+
 struct mapcache_memcache_conn_param {
   mapcache_cache_memcache *cache;
 };
@@ -354,6 +373,11 @@ mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx)
   return (mapcache_cache*)cache;
 }
 
+#else
+mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"MEMCACHE support not compiled in this version");
+  return NULL;
+}
 #endif
 
 /* vim: ts=2 sts=2 et sw=2

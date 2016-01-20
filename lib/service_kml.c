@@ -29,7 +29,9 @@
 
 #include "mapcache.h"
 #include <apr_strings.h>
+#include "mapcache_services.h"
 #include <math.h>
+
 
 /** \addtogroup services */
 /** @{ */

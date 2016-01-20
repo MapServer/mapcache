@@ -336,10 +336,8 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   source = NULL;
   if(!strcmp(type,"wms")) {
     source = mapcache_source_wms_create(ctx);
-#ifdef USE_MAPSERVER
   } else if(!strcmp(type,"mapserver")) {
     source = mapcache_source_mapserver_create(ctx);
-#endif
   } else if(!strcmp(type,"gdal")) {
     source = mapcache_source_gdal_create(ctx);
   } else if(!strcmp(type,"dummy")) {
@@ -520,63 +518,26 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   } else if(!strcmp(type,"google")) {
     cache = mapcache_cache_google_create(ctx);
   } else if(!strcmp(type,"bdb")) {
-#ifdef USE_BDB
     cache = mapcache_cache_bdb_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": Berkeley DB support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"tokyocabinet")) {
-#ifdef USE_TC
     cache = mapcache_cache_tc_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": Tokyo Cabinet support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"sqlite3")) {
-#ifdef USE_SQLITE
     cache = mapcache_cache_sqlite_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": sqlite support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"mbtiles")) {
-#ifdef USE_SQLITE
     cache = mapcache_cache_mbtiles_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": sqlite support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"memcache")) {
-#ifdef USE_MEMCACHE
     cache = mapcache_cache_memcache_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": memcache support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"tiff")) {
-#ifdef USE_TIFF
     cache = mapcache_cache_tiff_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": tiff support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"couchbase")) {
-#ifdef USE_COUCHBASE
     cache = mapcache_cache_couchbase_create(ctx);
-#else
-    ctx->set_error(ctx, 400, "failed to add cache \"%s\": couchbase support is not available on this build", name);
-#endif
   } else if(!strcmp(type,"riak")) {
-#ifdef USE_RIAK
     cache = mapcache_cache_riak_create(ctx);
-#else
-    ctx->set_error(ctx, 400, "failed to add cache \"%s\": riak support is not available on this build", name);
-#endif
   } else {
     ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"", type, name);
     return;
   }
+  GC_CHECK_ERROR(ctx);
   if(cache == NULL) {
     ctx->set_error(ctx, 400, "failed to parse cache \"%s\"", name);
     return;
@@ -1152,31 +1113,8 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     mapcache_config_parse_locker(ctx,node,&config->locker);
     GC_CHECK_ERROR(ctx);
   } else {
-    /* backwards compatibility */
-    int micro_retry;
-    mapcache_locker_disk *ldisk;
-    config->locker = mapcache_locker_disk_create(ctx);
-    ldisk = (mapcache_locker_disk*)config->locker;
-    if((node = ezxml_child(doc,"lock_dir")) != NULL) {
-      ldisk->dir = apr_pstrdup(ctx->pool, node->txt);
-    } else {
-      ldisk->dir = apr_pstrdup(ctx->pool,"/tmp");
-    }
-
-    if((node = ezxml_child(doc,"lock_retry")) != NULL) {
-      char *endptr;
-      micro_retry = strtol(node->txt,&endptr,10);
-      if(*endptr != 0 || micro_retry <= 0) {
-        ctx->set_error(ctx, 400, "failed to parse lock_retry microseconds \"%s\". Expecting a positive integer",
-            node->txt);
-        return;
-      }
-    } else {
-      /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
-      micro_retry = 10000;
-    }
-    config->locker->retry_interval = micro_retry / 1000000.0;
-    config->locker->timeout=120;
+    mapcache_config_parse_locker_old(ctx,doc,config);
+    GC_CHECK_ERROR(ctx);
   }
 
   if((node = ezxml_child(doc,"threaded_fetching")) != NULL) {

@@ -28,6 +28,14 @@
 
 #include "mapcache.h"
 
+typedef struct mapcache_cache_multitier mapcache_cache_multitier;
+
+struct mapcache_cache_multitier {
+  mapcache_cache cache;
+  apr_array_header_t *caches;
+};
+
+
 static int _mapcache_cache_multitier_tile_exists(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   mapcache_cache_multitier *cache = (mapcache_cache_multitier*)pcache;

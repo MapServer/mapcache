@@ -27,10 +27,10 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
+#include "mapcache.h"
 #ifdef USE_RIAK
 
-#include "mapcache.h"
+#include <riack.h>
 
 #include <apr_strings.h>
 #include <apr_reslist.h>
@@ -39,11 +39,18 @@
 #include <string.h>
 #include <errno.h>
 
-/*
- * Since we don't construct the connection pool and store it in the cache object
- * we have to store all the connections in a hash map in case there are multiple
- * riak caches defined.
+typedef struct mapcache_cache_riak mapcache_cache_riak;
+
+/**\class mapcache_cache_riak
+ * \brief a mapcache_cache for riak servers
+ * \implements mapcache_cache
  */
+struct mapcache_cache_riak {
+   mapcache_cache cache;
+   char *host;
+   int port;
+   RIACK_STRING bucket;
+};
 
 struct riak_conn_params {
   mapcache_cache_riak *cache;
@@ -459,4 +466,9 @@ mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx) {
     return (mapcache_cache*)cache;
 }
 
+#else
+mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"RIAK support not compiled in this version");
+  return NULL;
+}
 #endif

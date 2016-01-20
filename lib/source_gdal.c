@@ -41,6 +41,20 @@
 #include "cpl_string.h"
 #include "ogr_srs_api.h"
 
+typedef struct mapcache_source_gdal mapcache_source_gdal;
+
+/**\class mapcache_source_gdal
+ * \brief GDAL mapcache_source
+ * \implements mapcache_source
+ */
+struct mapcache_source_gdal {
+  mapcache_source source;
+  char *datastr; /**< the gdal source string*/
+  apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
+  GDALDatasetH *poDataset;
+};
+
+
 /**
  * \private \memberof mapcache_source_gdal
  * \sa mapcache_source::render_metatile()

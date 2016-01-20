@@ -29,12 +29,11 @@
 
 #include <ctype.h>
 #include "mapcache.h"
+#include "mapcache_services.h"
 #include <apr_strings.h>
 #include <math.h>
 #include <apr_tables.h>
 
-/** \addtogroup services */
-/** @{ */
 
 static char *demo_head =
   "<!DOCTYPE html>\n"

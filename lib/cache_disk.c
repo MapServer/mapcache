@@ -39,6 +39,26 @@
 #include <unistd.h>
 #endif
 
+/**\class mapcache_cache_disk
+ * \brief a mapcache_cache on a filesytem
+ * \implements mapcache_cache
+ */
+typedef struct mapcache_cache_disk mapcache_cache_disk;
+struct mapcache_cache_disk {
+  mapcache_cache cache;
+  char *base_directory;
+  char *filename_template;
+  int symlink_blank;
+  int creation_retry;
+
+  /**
+   * Set filename for a given tile
+   * \memberof mapcache_cache_disk
+   */
+  void (*tile_key)(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path);
+};
+
+
 /**
  * \brief computes the relative path between two destinations
  *

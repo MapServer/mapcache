@@ -33,6 +33,20 @@
 #include <apr_tables.h>
 #include <apr_strings.h>
 
+typedef struct mapcache_source_wms mapcache_source_wms;
+
+/**\class mapcache_source_wms
+ * \brief WMS mapcache_source
+ * \implements mapcache_source
+ */
+struct mapcache_source_wms {
+  mapcache_source source;
+  apr_table_t *wms_default_params; /**< default WMS parameters (SERVICE,REQUEST,STYLES,VERSION) */
+  apr_table_t *getmap_params; /**< WMS parameters specified in configuration */
+  apr_table_t *getfeatureinfo_params; /**< WMS parameters specified in configuration */
+  mapcache_http *http;
+};
+
 /**
  * \private \memberof mapcache_source_wms
  * \sa mapcache_source::render_map()

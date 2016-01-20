@@ -30,7 +30,8 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
-#include <ezxml.h>
+#include "mapcache_services.h"
+
 /** \addtogroup services */
 /** @{ */
 

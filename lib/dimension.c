@@ -37,6 +37,47 @@
 #include <sqlite3.h>
 #include <float.h>
 #endif
+#ifdef USE_PCRE
+#include <pcre.h>
+#else
+#include <regex.h>
+#endif
+
+typedef struct mapcache_dimension_time mapcache_dimension_time;
+typedef struct mapcache_dimension_time_sqlite mapcache_dimension_time_sqlite;
+typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
+typedef struct mapcache_dimension_values mapcache_dimension_values;
+typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
+typedef struct mapcache_dimension_regex mapcache_dimension_regex;
+typedef struct mapcache_dimension_composite mapcache_dimension_composite;
+
+struct mapcache_dimension_values {
+  mapcache_dimension dimension;
+  apr_array_header_t *values;
+  int case_sensitive;
+};
+
+struct mapcache_dimension_sqlite {
+  mapcache_dimension dimension;
+  char *dbfile;
+  char *get_values_for_entry_query;
+  char *get_all_values_query;
+};
+
+struct mapcache_dimension_regex {
+  mapcache_dimension dimension;
+  char *regex_string;
+#ifdef USE_PCRE
+  pcre *pcregex;
+#else
+  regex_t *regex;
+#endif
+};
+
+struct mapcache_dimension_time {
+  mapcache_dimension_sqlite dimension;
+};
+
 
 #ifndef HAVE_TIMEGM
 time_t timegm(struct tm *tm)

@@ -30,11 +30,11 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
+#include "mapcache_services.h"
 
 /** \addtogroup services */
 
 /** @{ */
-
 
 void _create_capabilities_mg(mapcache_context *ctx, mapcache_request_get_capabilities *req, char *url, char *path_info, mapcache_cfg *cfg)
 {

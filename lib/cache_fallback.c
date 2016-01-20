@@ -28,6 +28,13 @@
 
 #include "mapcache.h"
 
+typedef struct mapcache_cache_fallback mapcache_cache_fallback;
+
+struct mapcache_cache_fallback {
+  mapcache_cache cache;
+  apr_array_header_t *caches;
+};
+
 static int _mapcache_cache_fallback_tile_exists(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   mapcache_cache_fallback *cache = (mapcache_cache_fallback*)pcache;

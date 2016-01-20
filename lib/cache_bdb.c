@@ -1,7 +1,6 @@
 /******************************************************************************
- * $Id$
  *
- * Project:  MapServer
+ * Project:  MapCache
  * Purpose:  MapCache tile caching support file: Berkeley DB cache backend
  * Author:   Thomas Bonfort and the MapServer team.
  *
@@ -27,10 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
-#ifdef USE_BDB
-
 #include "mapcache.h"
+#ifdef USE_BDB
 #include <apr_strings.h>
 #include <apr_reslist.h>
 #include <apr_file_info.h>
@@ -50,6 +47,13 @@
 
 #define PAGESIZE 64*1024
 #define CACHESIZE 1024*1024
+
+typedef struct mapcache_cache_bdb mapcache_cache_bdb;
+struct mapcache_cache_bdb {
+  mapcache_cache cache;
+  char *basedir;
+  char *key_template;
+};
 
 struct bdb_env {
   DB* db;
@@ -418,6 +422,11 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx)
   return (mapcache_cache*)cache;
 }
 
+#else
+mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"BERKELEYDB support not compiled in this version");
+  return NULL;
+}
 #endif
 
 /* vim: ts=2 sts=2 et sw=2

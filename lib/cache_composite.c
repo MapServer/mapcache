@@ -29,6 +29,22 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 
+typedef struct mapcache_cache_composite mapcache_cache_composite;
+
+typedef struct mapcache_cache_composite_cache_link mapcache_cache_composite_cache_link;
+struct mapcache_cache_composite_cache_link {
+  mapcache_cache *cache;
+  int minzoom;
+  int maxzoom;
+  apr_array_header_t *grids;
+  apr_table_t *dimensions; /* key/value pairs of dimensions */
+};
+
+struct mapcache_cache_composite {
+  mapcache_cache cache;
+  apr_array_header_t *cache_links;
+};
+
 static mapcache_cache_composite_cache_link* _mapcache_cache_link_create(apr_pool_t *pool) {
   mapcache_cache_composite_cache_link *cl = apr_pcalloc(pool, sizeof(mapcache_cache_composite_cache_link));
   cl->cache=NULL;

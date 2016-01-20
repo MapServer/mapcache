@@ -1,7 +1,6 @@
 /******************************************************************************
- * $Id$
  *
- * Project:  MapServer
+ * Project:  MapCache
  * Author:   Thomas Bonfort and the MapServer team.
  *
  ******************************************************************************
@@ -46,34 +45,10 @@
 
 #include "errors.h"
 
-#if 0
-#ifdef USE_GDAL
-#include <gdal.h>
-#include <cpl_conv.h>
-#endif
-#endif
 
 #include <assert.h>
 #include <time.h>
 #include <apr_time.h>
-
-#ifdef USE_PCRE
-#include <pcre.h>
-#else
-#include <regex.h>
-#endif
-
-#ifdef USE_MEMCACHE
-#include <apr_memcache.h>
-#endif
-
-#ifdef USE_COUCHBASE
-#include <libcouchbase/couchbase.h>
-#endif
-
-#ifdef USE_RIAK
-#include <riack.h>
-#endif
 
 #define MAPCACHE_SUCCESS 0
 #define MAPCACHE_FAILURE 1
@@ -113,44 +88,16 @@ typedef struct mapcache_feature_info mapcache_feature_info;
 typedef struct mapcache_request_get_feature_info mapcache_request_get_feature_info;
 typedef struct mapcache_map mapcache_map;
 typedef struct mapcache_http_response mapcache_http_response;
-typedef struct mapcache_source_wms mapcache_source_wms;
-#if 0
-typedef struct mapcache_source_gdal mapcache_source_gdal;
-#endif
-typedef struct mapcache_cache_disk mapcache_cache_disk;
-typedef struct mapcache_cache_composite mapcache_cache_composite;
-typedef struct mapcache_cache_fallback mapcache_cache_fallback;
-typedef struct mapcache_cache_multitier mapcache_cache_multitier;
-typedef struct mapcache_cache_rest mapcache_cache_rest;
-typedef struct mapcache_cache_s3 mapcache_cache_s3;
-typedef struct mapcache_cache_azure mapcache_cache_azure;
-typedef struct mapcache_cache_google mapcache_cache_google;
-#ifdef USE_TIFF
-typedef struct mapcache_cache_tiff mapcache_cache_tiff;
-#endif
 typedef struct mapcache_http mapcache_http;
 typedef struct mapcache_request mapcache_request;
 typedef struct mapcache_request_image mapcache_request_image;
 typedef struct mapcache_request_proxy mapcache_request_proxy;
 typedef struct mapcache_request_get_capabilities mapcache_request_get_capabilities;
-typedef struct mapcache_request_get_capabilities_demo mapcache_request_get_capabilities_demo;
-typedef struct mapcache_request_get_capabilities_wms mapcache_request_get_capabilities_wms;
-typedef struct mapcache_request_get_capabilities_wmts mapcache_request_get_capabilities_wmts;
 typedef struct mapcache_forwarding_rule mapcache_forwarding_rule;
-typedef struct mapcache_request_get_capabilities_tms mapcache_request_get_capabilities_tms;
-typedef struct mapcache_request_get_capabilities_kml mapcache_request_get_capabilities_kml;
 
 typedef struct mapcache_request_get_tile mapcache_request_get_tile;
 typedef struct mapcache_request_get_map mapcache_request_get_map;
 typedef struct mapcache_service mapcache_service;
-typedef struct mapcache_service_wms mapcache_service_wms;
-typedef struct mapcache_service_wmts mapcache_service_wmts;
-typedef struct mapcache_service_gmaps mapcache_service_gmaps;
-typedef struct mapcache_service_ve mapcache_service_ve;
-typedef struct mapcache_service_tms mapcache_service_tms;
-typedef struct mapcache_service_kml mapcache_service_kml;
-typedef struct mapcache_service_mapguide mapcache_service_mapguide;
-typedef struct mapcache_service_demo mapcache_service_demo;
 typedef struct mapcache_server_cfg mapcache_server_cfg;
 typedef struct mapcache_image mapcache_image;
 typedef struct mapcache_grid mapcache_grid;
@@ -158,13 +105,6 @@ typedef struct mapcache_grid_level mapcache_grid_level;
 typedef struct mapcache_grid_link mapcache_grid_link;
 typedef struct mapcache_context mapcache_context;
 typedef struct mapcache_dimension mapcache_dimension;
-typedef struct mapcache_dimension_time mapcache_dimension_time;
-typedef struct mapcache_dimension_time_sqlite mapcache_dimension_time_sqlite;
-typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
-typedef struct mapcache_dimension_values mapcache_dimension_values;
-typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
-typedef struct mapcache_dimension_regex mapcache_dimension_regex;
-typedef struct mapcache_dimension_composite mapcache_dimension_composite;
 typedef struct mapcache_requested_dimension mapcache_requested_dimension;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
@@ -363,81 +303,23 @@ struct mapcache_http {
   /* TODO: authentication */
 };
 
-/**\class mapcache_source_wms
- * \brief WMS mapcache_source
- * \implements mapcache_source
- */
-struct mapcache_source_wms {
-  mapcache_source source;
-  apr_table_t *wms_default_params; /**< default WMS parameters (SERVICE,REQUEST,STYLES,VERSION) */
-  apr_table_t *getmap_params; /**< WMS parameters specified in configuration */
-  apr_table_t *getfeatureinfo_params; /**< WMS parameters specified in configuration */
-  mapcache_http *http;
-};
 
-#ifdef USE_MAPSERVER
-/**\class mapcache_source_mapserver
- * \brief WMS mapcache_source
- * \implements mapcache_source
- */
-typedef struct mapcache_source_mapserver mapcache_source_mapserver;
-struct mapcache_source_mapserver {
-  mapcache_source source;
-  char *mapfile;
-};
-#endif
-
-typedef struct mapcache_source_dummy mapcache_source_dummy;
-struct mapcache_source_dummy {
-  mapcache_source source;
-  char *mapfile;
-  void *mapobj;
-};
-#if 0
-#ifdef USE_GDAL
-/**\class mapcache_source_gdal
- * \brief GDAL mapcache_source
- * \implements mapcache_source
- */
-struct mapcache_source_gdal {
-  mapcache_source source;
-  char *datastr; /**< the gdal source string*/
-  apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
-  GDALDatasetH *poDataset;
-};
-#endif
-/** @} */
-#endif
 
 
 /** \defgroup cache Caches */
 
 /** @{ */
 typedef enum {
-  MAPCACHE_CACHE_DISK,
-  MAPCACHE_CACHE_REST
-#ifdef USE_MEMCACHE
+  MAPCACHE_CACHE_DISK
+  ,MAPCACHE_CACHE_REST
   ,MAPCACHE_CACHE_MEMCACHE
-#endif
-#ifdef USE_SQLITE
   ,MAPCACHE_CACHE_SQLITE
-#endif
-#ifdef USE_BDB
   ,MAPCACHE_CACHE_BDB
-#endif
-#ifdef USE_TC
   ,MAPCACHE_CACHE_TC
-#endif
-#ifdef USE_TIFF
   ,MAPCACHE_CACHE_TIFF
-#endif
   ,MAPCACHE_CACHE_COMPOSITE
-#ifdef USE_COUCHBASE
   ,MAPCACHE_CACHE_COUCHBASE
-#endif
-#ifdef USE_RIAK
   ,MAPCACHE_CACHE_RIAK
-#endif
 } mapcache_cache_type;
 
 /** \interface mapcache_cache
@@ -450,9 +332,9 @@ struct mapcache_cache {
 
   /**
    * get tile content from cache
-   * \returns MAPCACHE_SUCCESS if the data was correctly loaded from the disk
+   * \returns MAPCACHE_SUCCESS if the data was correctly loaded from the cache
    * \returns MAPCACHE_FAILURE if the file exists but contains no data
-   * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
+   * \returns MAPCACHE_CACHE_MISS if the file does not exist on the cache
    * \memberof mapcache_cache
    */
   int (*_tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
@@ -483,266 +365,38 @@ int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, map
 void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
-/**\class mapcache_cache_disk
- * \brief a mapcache_cache on a filesytem
- * \implements mapcache_cache
- */
-struct mapcache_cache_disk {
-  mapcache_cache cache;
-  char *base_directory;
-  char *filename_template;
-  int symlink_blank;
-  int creation_retry;
 
-  /**
-   * Set filename for a given tile
-   * \memberof mapcache_cache_disk
-   */
-  void (*tile_key)(mapcache_context *ctx, mapcache_cache_disk *cache, mapcache_tile *tile, char **path);
-};
-
-typedef struct mapcache_cache_composite_cache_link mapcache_cache_composite_cache_link;
-struct mapcache_cache_composite_cache_link {
-  mapcache_cache *cache;
-  int minzoom;
-  int maxzoom;
-  apr_array_header_t *grids;
-  apr_table_t *dimensions; /* key/value pairs of dimensions */
-};
-
-struct mapcache_cache_composite {
-  mapcache_cache cache;
-  apr_array_header_t *cache_links;
-};
-
-struct mapcache_cache_fallback {
-  mapcache_cache cache;
-  apr_array_header_t *caches;
-};
-
-struct mapcache_cache_multitier {
-  mapcache_cache cache;
-  apr_array_header_t *caches;
-};
-
-
-typedef enum {
-  MAPCACHE_REST_METHOD_GET,
-  MAPCACHE_REST_METHOD_HEAD,
-  MAPCACHE_REST_METHOD_PUT,
-  MAPCACHE_REST_METHOD_POST,
-  MAPCACHE_REST_METHOD_DELETE
-} mapcache_rest_method;
-
-typedef enum {
-  MAPCACHE_REST_PROVIDER_NONE,
-  MAPCACHE_REST_PROVIDER_S3,
-  MAPCACHE_REST_PROVIDER_AZURE,
-  MAPCACHE_REST_PROVIDER_GOOGLE
-} mapcache_rest_provider;
-
-void sha256(const unsigned char *message, unsigned int len, unsigned char *digest);
-void hmac_sha256(const unsigned char *message, unsigned int message_len,
-          const unsigned char *key, unsigned int key_size,
-          unsigned char *mac, unsigned mac_size);
-void hmac_sha1(const char *message, unsigned int message_len,
-          const unsigned char *key, unsigned int key_size,
-          void *mac);
-void sha_hex_encode(unsigned char *sha, unsigned int sha_size);
-char *base64_encode(apr_pool_t *pool, const unsigned char *data, size_t input_length);
-
-typedef struct mapcache_rest_operation mapcache_rest_operation;
-struct mapcache_rest_operation {
-  apr_table_t *headers;
-  mapcache_rest_method method;
-  char *tile_url;
-  void (*add_headers)(mapcache_context *ctx, mapcache_cache_rest *pcache, mapcache_tile *tile, char *url, apr_table_t *headers);
-};
-
-typedef struct mapcache_rest_configuration mapcache_rest_configuration;
-struct mapcache_rest_configuration {
-  apr_table_t *common_headers;
-  char *tile_url;
-  mapcache_rest_operation has_tile;
-  mapcache_rest_operation get_tile;
-  mapcache_rest_operation set_tile;
-  mapcache_rest_operation multi_set_tile;
-  mapcache_rest_operation delete_tile;
-  void (*add_headers)(mapcache_context *ctx, mapcache_cache_rest *pcache, mapcache_tile *tile, char *url, apr_table_t *headers);
-};
-
-/**\class mapcache_cache_rest
- * \brief a mapcache_cache on a 3rd party HTTP Rest API
- * \implements mapcache_cache
- */
-struct mapcache_cache_rest {
-  mapcache_cache cache;
-  mapcache_rest_configuration rest;
-  int use_redirects;
-  unsigned int retry_count;
-  double retry_delay;
-  int timeout;
-  int connection_timeout;
-  mapcache_rest_provider provider;
-};
-
-struct mapcache_cache_s3 {
-  mapcache_cache_rest cache;
-  char *id;
-  char *secret;
-  char *region;
-};
-
-struct mapcache_cache_azure {
-  mapcache_cache_rest cache;
-  char *id;
-  char *secret;
-  char *container;
-};
-
-struct mapcache_cache_google {
-  mapcache_cache_rest cache;
-  char *access;
-  char *secret;
-};
-
-#ifdef USE_TIFF
-struct mapcache_cache_tiff {
-  mapcache_cache cache;
-  char *filename_template;
-  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
-  int count_x;
-  int count_y;
-  mapcache_image_format_jpeg *format;
-  mapcache_locker *locker;
-};
-#endif
-
-#ifdef USE_SQLITE
-/**\class mapcache_cache_sqlite
- * \brief a mapcache_cache on a filesytem
- * \implements mapcache_cache
- */
-typedef struct mapcache_cache_sqlite mapcache_cache_sqlite;
-typedef struct mapcache_cache_sqlite_stmt mapcache_cache_sqlite_stmt;
-
-struct mapcache_cache_sqlite_stmt {
-  char *sql;
-};
-
-struct sqlite_conn;
-
-struct mapcache_cache_sqlite {
-  mapcache_cache cache;
-  char *dbfile;
-  mapcache_cache_sqlite_stmt create_stmt;
-  mapcache_cache_sqlite_stmt exists_stmt;
-  mapcache_cache_sqlite_stmt get_stmt;
-  mapcache_cache_sqlite_stmt set_stmt;
-  mapcache_cache_sqlite_stmt delete_stmt;
-  apr_table_t *pragmas;
-  void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
-  int n_prepared_statements;
-  int detect_blank;
-  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
-  int count_x, count_y;
-};
 
 /**
  * \memberof mapcache_cache_sqlite
  */
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
-#endif
 
-#ifdef USE_BDB
-typedef struct mapcache_cache_bdb mapcache_cache_bdb;
-struct mapcache_cache_bdb {
-  mapcache_cache cache;
-  char *basedir;
-  char *key_template;
-};
-mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
-#endif
-
-#ifdef USE_TC
-typedef struct mapcache_cache_tc mapcache_cache_tc;
-struct mapcache_cache_tc {
-  mapcache_cache cache;
-  char *basedir;
-  char *key_template;
-  mapcache_context *ctx;
-};
-mapcache_cache *mapcache_cache_tc_create(mapcache_context *ctx);
-#endif
-
-#ifdef USE_MEMCACHE
-typedef struct mapcache_cache_memcache mapcache_cache_memcache;
-/**\class mapcache_cache_memcache
- * \brief a mapcache_cache on memcached servers
- * \implements mapcache_cache
+/**
+ * \memberof mapcache_cache_bdb
  */
-
-struct mapcache_cache_memcache_server {
-    char* host;
-    int port;
-};
-
-struct mapcache_cache_memcache {
-  mapcache_cache cache;
-  int nservers;
-  struct mapcache_cache_memcache_server *servers;
-  int detect_blank;
-};
+mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
 
 /**
  * \memberof mapcache_cache_memcache
  */
 mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx);
-#endif
-
-#ifdef USE_COUCHBASE
-typedef struct mapcache_cache_couchbase mapcache_cache_couchbase;
-
-/**\class mapcache_cache_couchbase
- * \brief a mapcache_cache on couchbase servers
- * \implements mapcache_cache
- */
-struct mapcache_cache_couchbase {
-   mapcache_cache cache;
-//   apr_reslist_t *connection_pool;
-   char *host;
-   char *username;
-   char *password;
-   char *bucket;
-   mapcache_context *ctx;
-};
 
 /**
  * \memberof mapcache_cache_couchbase
  */
 mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx);
-#endif
 
-#ifdef USE_RIAK
-typedef struct mapcache_cache_riak mapcache_cache_riak;
-
-/**\class mapcache_cache_riak
- * \brief a mapcache_cache for riak servers
- * \implements mapcache_cache
+/**
+ * \memberof mapcache_cache_tc
  */
-struct mapcache_cache_riak {
-   mapcache_cache cache;
-   char *host;
-   int port;
-   RIACK_STRING bucket;
-};
+mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx);
 
 /**
  * \memberof mapcache_cache_riak
  */
 mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx);
-#endif
 
 /** @} */
 
@@ -853,36 +507,7 @@ struct mapcache_request_get_capabilities {
   char *mime_type;
 };
 
-struct mapcache_request_get_capabilities_tms {
-  mapcache_request_get_capabilities request;
-  mapcache_tileset *tileset;
-  mapcache_grid_link *grid_link;
-  char *version;
-};
 
-struct mapcache_request_get_capabilities_kml {
-  mapcache_request_get_capabilities request;
-  mapcache_tile *tile;
-  mapcache_tileset *tileset;
-  mapcache_grid_link *grid;
-};
-
-struct mapcache_request_get_capabilities_wms {
-  mapcache_request_get_capabilities request;
-};
-
-struct mapcache_request_get_capabilities_wmts {
-  mapcache_request_get_capabilities request;
-};
-
-/**
- * the capabilities request for a specific service, to be able to create
- * demo pages specific to a given service
- */
-struct mapcache_request_get_capabilities_demo {
-  mapcache_request_get_capabilities request;
-  mapcache_service *service;
-};
 
 struct mapcache_forwarding_rule {
   char *name;
@@ -958,67 +583,9 @@ struct mapcache_service {
                        char **err_body, apr_table_t *headers);
 };
 
-/**\class mapcache_service_wms
- * \brief an OGC WMS service
- * \implements mapcache_service
- */
-struct mapcache_service_wms {
-  mapcache_service service;
-  int maxsize;
-  apr_array_header_t *forwarding_rules;
-  mapcache_getmap_strategy getmap_strategy;
-  mapcache_resample_mode resample_mode;
-  mapcache_image_format *getmap_format;
-  int allow_format_override; /* can the client specify which image format should be returned */
-};
 
-/**\class mapcache_service_kml
- * \brief a KML superoverlay service
- * \implements mapcache_service
- */
-struct mapcache_service_kml {
-  mapcache_service service;
-};
 
-/**\class mapcache_service_tms
- * \brief a TMS service
- * \implements mapcache_service
- */
-struct mapcache_service_tms {
-  mapcache_service service;
-  int reverse_y;
-};
 
-struct mapcache_service_mapguide {
-  mapcache_service service;
-  int rows_per_folder;
-  int cols_per_folder;
-};
-
-/**\class mapcache_service_wmts
- * \brief a WMTS service
- * \implements mapcache_service
- */
-struct mapcache_service_wmts {
-  mapcache_service service;
-};
-
-/**\class mapcache_service_demo
- * \brief a demo service
- * \implements mapcache_service
- */
-struct mapcache_service_demo {
-  mapcache_service service;
-
-};
-
-/**\class mapcache_service_ve
- * \brief a virtualearth service
- * \implements mapcache_service
- */
-struct mapcache_service_ve {
-  mapcache_service service;
-};
 
 /**
  * \brief create and initialize a mapcache_service_wms
@@ -1217,43 +784,14 @@ struct mapcache_locker{
   double retry_interval; /* time to wait before checking again on a lock, in seconds */
 };
 
-typedef struct {
-  mapcache_locker locker;
-
-  /**
-   * directory where lock files will be placed.
-   * Must be readable and writable by the apache user.
-   * Must be placed on a network mounted shared directory if multiple mapcache instances
-   * need to be synchronized
-   */
-  const char *dir;
-} mapcache_locker_disk;
-
 mapcache_locker* mapcache_locker_disk_create(mapcache_context *ctx);
 
-#ifdef USE_MEMCACHE
-typedef struct {
-  char *host;
-  int port;
-} mapcache_locker_memcache_server;
-
-typedef struct {
-  mapcache_locker locker;
-  int nservers;
-  mapcache_locker_memcache_server *servers;
-} mapcache_locker_memcache;
-
 mapcache_locker* mapcache_locker_memcache_create(mapcache_context *ctx);
-#endif
-
-typedef struct {
-    mapcache_locker locker;
-    apr_array_header_t *lockers;
-} mapcache_locker_fallback;
 
 mapcache_locker* mapcache_locker_fallback_create(mapcache_context *ctx);
 
 void mapcache_config_parse_locker(mapcache_context *ctx, ezxml_t node, mapcache_locker **locker);
+void mapcache_config_parse_locker_old(mapcache_context *ctx, ezxml_t doc, mapcache_cfg *config);
 
 /**
  * a configuration that will be served
@@ -1365,12 +903,10 @@ mapcache_source* mapcache_source_gdal_create(mapcache_context *ctx);
  */
 mapcache_source* mapcache_source_wms_create(mapcache_context *ctx);
 
-#ifdef USE_MAPSERVER
 /**
  * \memberof mapcache_source_wms
  */
 mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx);
-#endif
 
 mapcache_source* mapcache_source_dummy_create(mapcache_context *ctx);
 
@@ -1387,12 +923,10 @@ mapcache_cache* mapcache_cache_s3_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_azure_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_google_create(mapcache_context *ctx);
 
-#ifdef USE_TIFF
 /**
  * \memberof mapcache_cache_tiff
  */
 mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx);
-#endif
 
 mapcache_cache* mapcache_cache_composite_create(mapcache_context *ctx);
 mapcache_cache* mapcache_cache_fallback_create(mapcache_context *ctx);
@@ -2007,33 +1541,6 @@ struct mapcache_dimension {
    * \brief parse the value given in the configuration
    */
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_dimension *dim, ezxml_t node);
-};
-
-struct mapcache_dimension_values {
-  mapcache_dimension dimension;
-  apr_array_header_t *values;
-  int case_sensitive;
-};
-
-struct mapcache_dimension_sqlite {
-  mapcache_dimension dimension;
-  char *dbfile;
-  char *get_values_for_entry_query;
-  char *get_all_values_query;
-};
-
-struct mapcache_dimension_regex {
-  mapcache_dimension dimension;
-  char *regex_string;
-#ifdef USE_PCRE
-  pcre *pcregex;
-#else
-  regex_t *regex;
-#endif
-};
-
-struct mapcache_dimension_time {
-  mapcache_dimension_sqlite dimension;
 };
 
 mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool);

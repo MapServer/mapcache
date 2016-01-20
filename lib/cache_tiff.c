@@ -27,10 +27,9 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
+#include "mapcache.h"
 #ifdef USE_TIFF
 
-#include "mapcache.h"
 #include <apr_file_info.h>
 #include <apr_strings.h>
 #include <apr_file_io.h>
@@ -53,6 +52,17 @@
 #define MyTIFFClose TIFFClose
 #endif
 
+typedef struct mapcache_cache_tiff mapcache_cache_tiff;
+
+struct mapcache_cache_tiff {
+  mapcache_cache cache;
+  char *filename_template;
+  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+  int count_x;
+  int count_y;
+  mapcache_image_format_jpeg *format;
+  mapcache_locker *locker;
+};
 
 /**
  * \brief return filename for given tile
@@ -886,6 +896,13 @@ mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx)
   TIFFSetErrorHandler(NULL);
 #endif
   return (mapcache_cache*)cache;
+}
+
+#else
+
+mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"TIFF support not compiled in this version");
+  return NULL;
 }
 
 #endif

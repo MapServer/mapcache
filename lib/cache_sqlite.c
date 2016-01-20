@@ -27,10 +27,9 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#include "mapcache-config.h"
+#include "mapcache.h"
 #ifdef USE_SQLITE
 
-#include "mapcache.h"
 #include <apr_strings.h>
 #include <string.h>
 #include <errno.h>
@@ -46,6 +45,36 @@
 #endif
 
 #include <sqlite3.h>
+
+/**\class mapcache_cache_sqlite
+ * \brief a mapcache_cache on a filesytem
+ * \implements mapcache_cache
+ */
+typedef struct mapcache_cache_sqlite mapcache_cache_sqlite;
+typedef struct mapcache_cache_sqlite_stmt mapcache_cache_sqlite_stmt;
+
+struct mapcache_cache_sqlite_stmt {
+  char *sql;
+};
+
+struct sqlite_conn;
+
+struct mapcache_cache_sqlite {
+  mapcache_cache cache;
+  char *dbfile;
+  mapcache_cache_sqlite_stmt create_stmt;
+  mapcache_cache_sqlite_stmt exists_stmt;
+  mapcache_cache_sqlite_stmt get_stmt;
+  mapcache_cache_sqlite_stmt set_stmt;
+  mapcache_cache_sqlite_stmt delete_stmt;
+  apr_table_t *pragmas;
+  void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
+  int n_prepared_statements;
+  int detect_blank;
+  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+  int count_x, count_y;
+};
+
 
 struct sqlite_conn_params {
   mapcache_cache_sqlite *cache;
@@ -1014,6 +1043,17 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx)
   cache->bind_stmt = _bind_mbtiles_params;
   return (mapcache_cache*) cache;
 }
+#else
+
+mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"SQLITE support not compiled in this version");
+  return NULL;
+}
+mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"SQLITE (MBtiles) support not compiled in this version");
+  return NULL;
+}
+
 
 #endif
 

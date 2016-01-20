@@ -31,11 +31,10 @@
 #include <apr_strings.h>
 #include <math.h>
 #include <apr_tables.h>
-#include "ezxml.h"
+#include "mapcache_services.h"
 
 /** \addtogroup services */
 /** @{ */
-
 
 
 static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
