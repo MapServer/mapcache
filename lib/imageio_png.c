@@ -536,7 +536,7 @@ mapcache_buffer* _mapcache_imageio_png_encode(mapcache_context *ctx, mapcache_im
 
   png_set_write_fn(png_ptr, buffer, _mapcache_imageio_png_write_func, _mapcache_imageio_png_flush_func);
 
-  if(mapcache_image_has_alpha(img))
+  if(mapcache_image_has_alpha(img,255))
     color_type = PNG_COLOR_TYPE_RGB_ALPHA;
   else
     color_type = PNG_COLOR_TYPE_RGB;

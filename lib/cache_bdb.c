@@ -406,11 +406,11 @@ mapcache_cache* mapcache_cache_bdb_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_BDB;
-  cache->cache.tile_delete = _mapcache_cache_bdb_delete;
-  cache->cache.tile_get = _mapcache_cache_bdb_get;
-  cache->cache.tile_exists = _mapcache_cache_bdb_has_tile;
-  cache->cache.tile_set = _mapcache_cache_bdb_set;
-  cache->cache.tile_multi_set = _mapcache_cache_bdb_multiset;
+  cache->cache._tile_delete = _mapcache_cache_bdb_delete;
+  cache->cache._tile_get = _mapcache_cache_bdb_get;
+  cache->cache._tile_exists = _mapcache_cache_bdb_has_tile;
+  cache->cache._tile_set = _mapcache_cache_bdb_set;
+  cache->cache._tile_multi_set = _mapcache_cache_bdb_multiset;
   cache->cache.configuration_post_config = _mapcache_cache_bdb_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_bdb_configuration_parse_xml;
   cache->basedir = NULL;

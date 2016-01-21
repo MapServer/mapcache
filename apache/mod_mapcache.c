@@ -40,10 +40,6 @@
 #include <apr_time.h>
 #include <http_log.h>
 #include "mapcache.h"
-#ifdef APR_HAS_THREADS
-#include <apr_thread_mutex.h>
-apr_thread_mutex_t *thread_mutex = NULL;
-#endif
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -202,9 +198,6 @@ static mapcache_context_apache_request* apache_request_context_create(request_re
   mapcache_context *mctx = (mapcache_context*)ctx;
 
   mctx->pool = r->pool;
-#ifdef APR_HAS_THREADS
-  mctx->threadlock = thread_mutex;
-#endif
 
   /* lookup the configuration object given the configuration file name */
   cfg = ap_get_module_config(r->server->module_config, &mapcache_module);
@@ -350,9 +343,6 @@ static int write_http_response(mapcache_context_apache_request *ctx, mapcache_ht
 
 static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
 {
-#ifdef APR_HAS_THREADS
-  apr_thread_mutex_create(&thread_mutex,APR_THREAD_MUTEX_DEFAULT,pool);
-#endif
   for( ; s ; s=s->next) {
     mapcache_server_cfg* cfg = ap_get_module_config(s->module_config, &mapcache_module);
     int i,rv;

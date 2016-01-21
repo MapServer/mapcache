@@ -159,15 +159,33 @@ typedef struct mapcache_grid_link mapcache_grid_link;
 typedef struct mapcache_context mapcache_context;
 typedef struct mapcache_dimension mapcache_dimension;
 typedef struct mapcache_dimension_time mapcache_dimension_time;
-typedef struct mapcache_timedimension mapcache_timedimension;
+typedef struct mapcache_dimension_time_sqlite mapcache_dimension_time_sqlite;
 typedef struct mapcache_dimension_intervals mapcache_dimension_intervals;
 typedef struct mapcache_dimension_values mapcache_dimension_values;
 typedef struct mapcache_dimension_sqlite mapcache_dimension_sqlite;
 typedef struct mapcache_dimension_regex mapcache_dimension_regex;
+typedef struct mapcache_dimension_composite mapcache_dimension_composite;
+typedef struct mapcache_requested_dimension mapcache_requested_dimension;
 typedef struct mapcache_extent mapcache_extent;
 typedef struct mapcache_extent_i mapcache_extent_i;
 typedef struct mapcache_connection_pool mapcache_connection_pool;
 typedef struct mapcache_locker mapcache_locker;
+
+typedef enum {
+  MAPCACHE_DIMENSION_VALUES,
+  MAPCACHE_DIMENSION_REGEX,
+  MAPCACHE_DIMENSION_INTERVALS,
+  MAPCACHE_DIMENSION_TIME,
+  MAPCACHE_DIMENSION_SQLITE
+} mapcache_dimension_type;
+
+typedef enum {
+  MAPCACHE_DIMENSION_ASSEMBLY_NONE,
+  MAPCACHE_DIMENSION_ASSEMBLY_STACK,
+  MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE
+} mapcache_dimension_assembly_type;
+
+
 
 /** \defgroup utility Utility */
 /** @{ */
@@ -247,7 +265,6 @@ struct mapcache_context {
   mapcache_context* (*clone)(mapcache_context *ctx);
   apr_pool_t *pool;
   mapcache_connection_pool *connection_pool;
-  void *threadlock;
   char *_contenttype;
   char *_errmsg;
   int _errcode;
@@ -438,27 +455,33 @@ struct mapcache_cache {
    * \returns MAPCACHE_CACHE_MISS if the file does not exist on the disk
    * \memberof mapcache_cache
    */
-  int (*tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  int (*_tile_get)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * delete tile from cache
    *
    * \memberof mapcache_cache
    */
-  void (*tile_delete)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  void (*_tile_delete)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
-  int (*tile_exists)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  int (*_tile_exists)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
 
   /**
    * set tile content to cache
    * \memberof mapcache_cache
    */
-  void (*tile_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
-  void (*tile_multi_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
+  void (*_tile_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile * tile);
+  void (*_tile_multi_set)(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
   void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
 };
+
+int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
 /**\class mapcache_cache_disk
  * \brief a mapcache_cache on a filesytem
@@ -484,7 +507,7 @@ struct mapcache_cache_composite_cache_link {
   int minzoom;
   int maxzoom;
   apr_array_header_t *grids;
-  apr_array_header_t *dimensions; //TODO
+  apr_table_t *dimensions; /* key/value pairs of dimensions */
 };
 
 struct mapcache_cache_composite {
@@ -556,7 +579,10 @@ struct mapcache_cache_rest {
   mapcache_cache cache;
   mapcache_rest_configuration rest;
   int use_redirects;
-  int retry_count;
+  unsigned int retry_count;
+  double retry_delay;
+  int timeout;
+  int connection_timeout;
   mapcache_rest_provider provider;
 };
 
@@ -783,7 +809,7 @@ struct mapcache_http_response {
 struct mapcache_map {
   mapcache_tileset *tileset;
   mapcache_grid_link *grid_link;
-  apr_table_t *dimensions;
+  apr_array_header_t *dimensions;
   mapcache_buffer *encoded_data;
   mapcache_image *raw_image;
   int nodata; /**< \sa mapcache_tile::nodata */
@@ -1140,7 +1166,7 @@ int mapcache_image_blank_color(mapcache_image* image);
 /**
  * \brief check if image has some non opaque pixels
  */
-int mapcache_image_has_alpha(mapcache_image *img);
+int mapcache_image_has_alpha(mapcache_image *img, unsigned int cutoff);
 
 void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const unsigned char *fill_color);
 
@@ -1182,8 +1208,8 @@ typedef enum {
 
 struct mapcache_locker{
   mapcache_lock_result (*aquire_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void **lock);
-  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
-  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, char *resource, void *lock);
+  mapcache_lock_result (*ping_lock)(mapcache_context *ctx, mapcache_locker *self, void *lock);
+  void (*release_lock)(mapcache_context *ctx, mapcache_locker *self, void *lock);
 
   void (*parse_xml)(mapcache_context *ctx, mapcache_locker *self, ezxml_t node);
   mapcache_lock_mode type;
@@ -1400,7 +1426,8 @@ struct mapcache_tile {
   apr_time_t mtime; /**< last modification time */
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 
-  apr_table_t *dimensions;
+  apr_array_header_t *dimensions;
+  
   /**
    * flag stating the tile is empty (i.e. fully transparent).
    * if set, this indicates that there was no error per se, but that there was
@@ -1531,6 +1558,7 @@ struct mapcache_tileset {
   int auto_expire;
 
   int read_only;
+  int subdimension_read_only;
 
   /**
    * the cache in which the tiles should be stored
@@ -1551,8 +1579,10 @@ struct mapcache_tileset {
    * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
    */
   apr_array_header_t *dimensions;
-
-  mapcache_timedimension *timedimension;
+  
+  int store_dimension_assemblies;/**< should multiple sub-dimensions be assembled dynamically (per-request) or should they be cached once assembled */
+  
+  mapcache_dimension_assembly_type dimension_assembly_type;
 
   /**
    * image to be used as a watermark
@@ -1614,6 +1644,7 @@ void mapcache_tileset_get_level(mapcache_context *ctx, mapcache_tileset *tileset
 
 mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid, double resolution, int *level);
 MS_DLL_EXPORT void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * \brief delete tile from cache
@@ -1664,7 +1695,7 @@ void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *til
 
 
 MS_DLL_EXPORT int mapcache_lock_or_wait_for_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void **lock);
-MS_DLL_EXPORT void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, char *resource, void *lock);
+MS_DLL_EXPORT void mapcache_unlock_resource(mapcache_context *ctx, mapcache_locker *locker, void *lock);
 
 MS_DLL_EXPORT mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache_tile *tile);
 MS_DLL_EXPORT void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt);
@@ -1692,8 +1723,11 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool);
 const char* mapcache_grid_get_crs(mapcache_context *ctx, mapcache_grid *grid);
 const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid);
 
-MS_DLL_EXPORT void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
+MS_DLL_EXPORT void mapcache_grid_get_tile_extent(mapcache_context *ctx, mapcache_grid *grid,
                               int x, int y, int z, mapcache_extent *bbox);
+
+MS_DLL_EXPORT void mapcache_grid_get_metatile_extent(mapcache_context *ctx, mapcache_tile *tile, mapcache_extent *bbox);
+
 /**
  * \brief compute x y value for given lon/lat (dx/dy) and given zoomlevel
  * @param ctx
@@ -1808,13 +1842,14 @@ struct mapcache_image_format_mixed {
   mapcache_image_format format;
   mapcache_image_format *transparent;
   mapcache_image_format *opaque;
+  unsigned int alpha_cutoff; /* default 255. pixels with alpha >= alpha_cutoff will be considered fully opaque */
 };
 
 mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, int width, int height, const unsigned char *hex_color, int *is_empty);
 
 
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
-    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque);
+    char *name, mapcache_image_format *transparent, mapcache_image_format *opaque, unsigned int alpha_cutoff);
 
 /**\class mapcache_image_format_png_q
  * \brief Quantized PNG format
@@ -1929,13 +1964,19 @@ typedef struct {
   double resolution;
 } mapcache_interval;
 
-typedef enum {
-  MAPCACHE_DIMENSION_VALUES,
-  MAPCACHE_DIMENSION_REGEX,
-  MAPCACHE_DIMENSION_INTERVALS,
-  MAPCACHE_DIMENSION_TIME,
-  MAPCACHE_DIMENSION_SQLITE
-} mapcache_dimension_type;
+struct mapcache_requested_dimension {
+  mapcache_dimension *dimension;
+  char *requested_value;
+  char *cached_value;
+};
+
+void mapcache_tile_set_cached_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);
+void mapcache_map_set_cached_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
+void mapcache_tile_set_requested_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);
+void mapcache_map_set_requested_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
+void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src);
 
 struct mapcache_dimension {
   mapcache_dimension_type type;
@@ -1943,24 +1984,24 @@ struct mapcache_dimension {
   char *unit;
   apr_table_t *metadata;
   char *default_value;
-  int skip_validation;
 
   /**
-   * \brief validate the given value
-   *
-   * \param value is updated in case the given value is correct but has to be represented otherwise,
-   * e.g. to round off a value
-   * \returns MAPCACHE_SUCCESS if the given value is correct for the current dimension
-   * \returns MAPCACHE_FAILURE if not
+   * \brief return the list of dimension values that match the requested entry 
    */
-  int (*validate)(mapcache_context *context, mapcache_dimension *dimension, char **value);
+  apr_array_header_t* (*get_entries_for_value)(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
+  
+  /**
+   * \brief return all possible values
+   */
+  apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_dimension *dimension,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
   /**
-   * \brief returns a list of values that are authorized for this dimension
-   *
-   * \returns a list of character strings that will be included in the capabilities <dimension> element
+   * \brief return all possible values formatted in a way compatible with OGC capabilities <dimension> element
    */
-  apr_array_header_t*  (*print_ogc_formatted_values)(mapcache_context *context, mapcache_dimension *dimension);
+  apr_array_header_t* (*get_all_ogc_formatted_entries)(mapcache_context *ctx, mapcache_dimension *dimension,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
   /**
    * \brief parse the value given in the configuration
@@ -1970,16 +2011,15 @@ struct mapcache_dimension {
 
 struct mapcache_dimension_values {
   mapcache_dimension dimension;
-  int nvalues;
-  char **values;
+  apr_array_header_t *values;
   int case_sensitive;
 };
 
 struct mapcache_dimension_sqlite {
   mapcache_dimension dimension;
   char *dbfile;
-  char *validate_query;
-  char *list_query;
+  char *get_values_for_entry_query;
+  char *get_all_values_query;
 };
 
 struct mapcache_dimension_regex {
@@ -1992,55 +2032,14 @@ struct mapcache_dimension_regex {
 #endif
 };
 
-struct mapcache_dimension_intervals {
-  mapcache_dimension dimension;
-  int nintervals;
-  mapcache_interval *intervals;
-};
-
 struct mapcache_dimension_time {
-  mapcache_dimension dimension;
-  int nintervals;
-  mapcache_interval *intervals;
+  mapcache_dimension_sqlite dimension;
 };
 
-mapcache_dimension* mapcache_dimension_values_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_sqlite_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_regex_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_intervals_create(apr_pool_t *pool);
-mapcache_dimension* mapcache_dimension_time_create(apr_pool_t *pool);
-
-typedef enum {
-  MAPCACHE_TIMEDIMENSION_ASSEMBLY_STACK,
-  MAPCACHE_TIMEDIMENSION_ASSEMBLY_ANIMATE
-} mapcache_timedimension_assembly_type;
-
-typedef enum {
-  MAPCACHE_TIMEDIMENSION_SOURCE_SQLITE
-} mapcache_timedimension_source_type;
-
-MS_DLL_EXPORT apr_array_header_t* mapcache_timedimension_get_entries_for_value(mapcache_context *ctx, mapcache_timedimension *timedimesnion,
-        mapcache_tileset *tileset, mapcache_grid *grid, mapcache_extent *extent, const char *value);
-
-struct mapcache_timedimension {
-  mapcache_timedimension_assembly_type assembly_type;
-  void (*configuration_parse_xml)(mapcache_context *context, mapcache_timedimension *dim, ezxml_t node);
-  apr_array_header_t* (*get_entries_for_interval)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset,
-        mapcache_grid *grid, mapcache_extent *extent, time_t start, time_t end);
-  apr_array_header_t* (*get_all_entries)(mapcache_context *ctx, mapcache_timedimension *dim, mapcache_tileset *tileset);
-  char *default_value;
-  char *key; /* TIME, hardcoded */
-};
-
-#ifdef USE_SQLITE
-typedef struct mapcache_timedimension_sqlite mapcache_timedimension_sqlite;
-struct mapcache_timedimension_sqlite {
-  mapcache_timedimension timedimension;
-  char *dbfile;
-  char *query;
-};
-mapcache_timedimension* mapcache_timedimension_sqlite_create(apr_pool_t *pool);
-#endif
+mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
 
 int mapcache_is_axis_inverted(const char *srs);
 

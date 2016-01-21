@@ -239,7 +239,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         if(dimension->unit) {
           ezxml_set_attr(dimxml,"units",dimension->unit);
         }
-        values = dimension->print_ogc_formatted_values(ctx,dimension);
+        values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           if(dimval) {
@@ -318,6 +318,26 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   request->request.capabilities = apr_pstrcat(ctx->pool,capheader,tmpcaps,NULL);
   free(tmpcaps);
   request->request.mime_type = apr_pstrdup(ctx->pool,"text/xml");
+}
+
+static char *_lookup_auto_projection(mapcache_context *ctx, const char *srs) {
+  if(!strcasecmp(srs,"auto:42001")) {
+    char *srsdup = apr_pstrdup(ctx->pool,srs);
+    char *lon = strchr(srsdup,','),*lat;
+    int nLon,nLat;
+    if(!lon) return srsdup;
+    lon = strchr(lon+1,',');
+    if(!lon) return srsdup;
+    lon++;
+    lat = strchr(lon,',');
+    if(!lat) return srsdup;
+    *lat = 0;
+    lat++;
+    nLon = (int)(floor( (atof(lon) + 180.0) / 6.0 ))*6 + 3 - 180;
+    nLat = (atof(lat)>=0)?45:-45;
+    return apr_psprintf(ctx->pool,"auto:42001,9001,%d,%d",nLon,nLat);
+  }
+  return (char*)srs;
 }
 
 /**
@@ -478,7 +498,6 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
       char *last, *layers;
       const char *key;
       int count=1;
-      int nallocated = 0;
       int i,layeridx;
       int x,y,z;
       mapcache_request_get_map *map_req = NULL;
@@ -518,6 +537,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         main_tileset = mapcache_tileset_clone(ctx,main_tileset);
         main_tileset->name = (char*)key;
       }
+
+      srs = _lookup_auto_projection(ctx,srs);
 
       for(i=0; i<main_tileset->grid_links->nelts; i++) {
         mapcache_grid_link *sgrid = APR_ARRAY_IDX(main_tileset->grid_links,i,mapcache_grid_link*);
@@ -584,7 +605,6 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         *request = (mapcache_request*)map_req;
         (*request)->type = MAPCACHE_REQUEST_GET_MAP;
       }
-      nallocated = count;
 
 
       /*
@@ -599,7 +619,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         int i;
         mapcache_tileset *tileset = main_tileset;
         mapcache_grid_link *grid_link = main_grid_link;
-        apr_table_t *dimtable = NULL;
+        apr_array_header_t *dimtable = NULL;
 
         if(layeridx) {
           /*
@@ -671,92 +691,14 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
                 if(strcasecmp(dimension->name,"TIME") && strcasecmp(dimension->name,"ELEVATION")) {
                   /* also test for the dimension without the DIM_ prefix if the latter was not found in the KVP params */
                   dim_name = dimension->name;
-                  value = (char*)apr_table_get(params,dimension->name);
+                  value = (char*)apr_table_get(params,dim_name);
                 }
               }
 
               if(value) {
-                char *tmpval = apr_pstrdup(ctx->pool,value);
-                int ok;
-                if(dimension->skip_validation) {
-                  ok = MAPCACHE_SUCCESS;
-                } else {
-                  ok = dimension->validate(ctx,dimension,&tmpval);
-                  GC_CHECK_ERROR(ctx);
-                }
-                if(ok == MAPCACHE_SUCCESS)
-                  apr_table_setn(dimtable,dimension->name,tmpval);
-                else {
-                  errcode = 400;
-                  errmsg = apr_psprintf(ctx->pool, "dimension \"%s\" value \"%s\" fails to validate",
-                                        dim_name, value);
-                  goto proxies;
-                }
+                mapcache_set_requested_dimension(ctx,dimtable,dimension->name,value);
+                GC_CHECK_ERROR(ctx);
               }
-            }
-          }
-          if(tileset->timedimension) {
-          /* possibly duplicate the created map/tile for each entry of the requested time dimension */
-            apr_array_header_t *timedim_selected;
-            value = apr_table_get(params,tileset->timedimension->key);
-            if(!value)
-              value = tileset->timedimension->default_value;
-            timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
-                    tileset->timedimension, tileset, grid_link->grid, &extent, value);
-            GC_CHECK_ERROR(ctx);
-            if(!timedim_selected || timedim_selected->nelts == 0) {
-              errcode = 404;
-              errmsg = apr_psprintf(ctx->pool,"no matching entry for given TIME dimension \"%s\" in tileset \"%s\"",
-                      tileset->timedimension->key, tileset->name);
-              goto proxies;
-            }
-            if(type == MAPCACHE_REQUEST_GET_TILE) {
-              int i;
-            /* we need to create more tile/map entries */
-              if(timedim_selected->nelts > 1) {
-                /* apr pools have no realloc */
-                mapcache_tile** tmptiles;
-                nallocated = nallocated + timedim_selected->nelts - 1;
-                tmptiles = apr_palloc(ctx->pool, nallocated * sizeof(mapcache_tile*));
-                for(i=0;i<tile_req->ntiles;i++) {
-                  tmptiles[i] = tile_req->tiles[i];
-                }
-                tile_req->tiles = tmptiles;
-                /* end realloc workaround */
-              }
-              for(i=0;i<timedim_selected->nelts;i++) {
-                if(i) {
-                  tile_req->tiles[tile_req->ntiles] =
-                          mapcache_tileset_tile_clone(ctx->pool,tile_req->tiles[tile_req->ntiles-1]);
-                  tile_req->ntiles++;
-                }
-                apr_table_set(tile_req->tiles[tile_req->ntiles-1]->dimensions,tileset->timedimension->key,
-                        APR_ARRAY_IDX(timedim_selected,i,char*));
-              }
-            } else {
-              int i;
-            /* we need to create more tile/map entries */
-              if(timedim_selected->nelts > 1) {
-                /* apr pools have no realloc */
-                mapcache_map** tmpmaps;
-                nallocated = nallocated + timedim_selected->nelts - 1;
-                tmpmaps = apr_palloc(ctx->pool, nallocated * sizeof(mapcache_map*));
-                for(i=0;i<map_req->nmaps;i++) {
-                  tmpmaps[i] = map_req->maps[i];
-                }
-                map_req->maps = tmpmaps;
-                /* end realloc workaround */
-              }
-              for(i=0;i<timedim_selected->nelts;i++) {
-                if(i) {
-                  map_req->maps[map_req->nmaps] =
-                          mapcache_tileset_map_clone(ctx->pool,map_req->maps[map_req->nmaps-1]);
-                  map_req->nmaps++;
-                }
-                apr_table_set(map_req->maps[map_req->nmaps-1]->dimensions,tileset->timedimension->key,
-                        APR_ARRAY_IDX(timedim_selected,i,char*));
-              }
-
             }
           }
         }
@@ -856,17 +798,8 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
           if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
-            char *tmpval = apr_pstrdup(ctx->pool,value);
-            int ok = dimension->validate(ctx,dimension,&tmpval);
+            mapcache_map_set_cached_dimension(ctx,&fi->map,dimension->name,value);
             GC_CHECK_ERROR(ctx);
-            if(ok == MAPCACHE_SUCCESS)
-              apr_table_setn(fi->map.dimensions,dimension->name,tmpval);
-            else {
-              errcode = 400;
-              errmsg = apr_psprintf(ctx->pool,"dimension \"%s\" value \"%s\" fails to validate",
-                                    dimension->name, value);
-              goto proxies;
-            }
           }
         }
       }
@@ -908,7 +841,7 @@ proxies:
       for(j=0; j<rule->match_params->nelts; j++) {
         mapcache_dimension *match_param = APR_ARRAY_IDX(rule->match_params,j,mapcache_dimension*);
         const char *value = apr_table_get(params,match_param->name);
-        if(!value || match_param->validate(ctx,match_param,(char**)&value) == MAPCACHE_FAILURE) {
+        if(!value || match_param->get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
           got_a_match = 0;
           break;
@@ -1005,9 +938,9 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
 
       if(type && *type) {
         if(!strcmp(type,"values")) {
-          dimension = mapcache_dimension_values_create(ctx->pool);
+          dimension = mapcache_dimension_values_create(ctx,ctx->pool);
         } else if(!strcmp(type,"regex")) {
-          dimension = mapcache_dimension_regex_create(ctx->pool);
+          dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
         } else {
           ctx->set_error(ctx,400,"unknown <param> type \"%s\". expecting \"values\" or \"regex\".",type);
           return;
@@ -1016,6 +949,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
         ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
         return;
       }
+      GC_CHECK_ERROR(ctx);
 
       dimension->name = apr_pstrdup(ctx->pool,name);
 

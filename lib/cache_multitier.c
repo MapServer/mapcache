@@ -34,7 +34,7 @@ static int _mapcache_cache_multitier_tile_exists(mapcache_context *ctx, mapcache
   int i;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-    if(subcache->tile_exists(ctx, subcache, tile) == MAPCACHE_TRUE) {
+    if(mapcache_cache_tile_exists(ctx, subcache, tile) == MAPCACHE_TRUE) {
       return MAPCACHE_TRUE;
     }
   }
@@ -47,7 +47,7 @@ static void _mapcache_cache_multitier_tile_delete(mapcache_context *ctx, mapcach
   int i;
   for(i=0; i<cache->caches->nelts; i++) {
     mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-    subcache->tile_delete(ctx, subcache, tile);
+    mapcache_cache_tile_delete(ctx, subcache, tile);
     ctx->clear_errors(ctx); /* ignore errors */
   }
 }
@@ -65,16 +65,16 @@ static int _mapcache_cache_multitier_tile_get(mapcache_context *ctx, mapcache_ca
   mapcache_cache *subcache;
   int i,ret;
   subcache = APR_ARRAY_IDX(cache->caches,0,mapcache_cache*);
-  ret = subcache->tile_get(ctx, subcache, tile);
+  ret = mapcache_cache_tile_get(ctx, subcache, tile);
   
   if(ret == MAPCACHE_CACHE_MISS) {
     for(i=1; i<cache->caches->nelts; i++) {
       subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-      if(subcache->tile_get(ctx, subcache, tile) == MAPCACHE_SUCCESS) {
+      if(mapcache_cache_tile_get(ctx, subcache, tile) == MAPCACHE_SUCCESS) {
         ctx->log(ctx,MAPCACHE_DEBUG,"got tile (%s,z=%d,y=%d,x=%d) from secondary cache (%s)",tile->tileset->name, tile->z, tile->y, tile->x, subcache->name);
         for(--i;i>=0;i--) {
           subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
-          subcache->tile_set(ctx, subcache, tile);
+          mapcache_cache_tile_set(ctx, subcache, tile);
           ctx->clear_errors(ctx); /* silently ignore these errors */
           ctx->log(ctx,MAPCACHE_DEBUG,"transferring tile (%s,z=%d,y=%d,x=%d) to cache (%s)",tile->tileset->name, tile->z, tile->y, tile->x, subcache->name);
         }
@@ -92,22 +92,14 @@ static void _mapcache_cache_multitier_tile_set(mapcache_context *ctx, mapcache_c
 {
   mapcache_cache_multitier *cache = (mapcache_cache_multitier*)pcache;
   mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,cache->caches->nelts-1,mapcache_cache*);
-  return subcache->tile_set(ctx, subcache, tile);
+  return mapcache_cache_tile_set(ctx, subcache, tile);
 }
 
 static void _mapcache_cache_multitier_tile_multi_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tiles, int ntiles)
 {
   mapcache_cache_multitier *cache = (mapcache_cache_multitier*)pcache;
   mapcache_cache *subcache = APR_ARRAY_IDX(cache->caches,cache->caches->nelts-1,mapcache_cache*);
-  if(subcache->tile_multi_set) {
-    return subcache->tile_multi_set(ctx, subcache, tiles, ntiles);
-  } else {
-    int i;
-    for( i=0;i<ntiles;i++ ) {
-      subcache->tile_set(ctx, subcache, &tiles[i]);
-      GC_CHECK_ERROR(ctx);
-    }
-  }
+  return mapcache_cache_tile_multi_set(ctx, subcache, tiles, ntiles);
 }
 
 /**
@@ -153,11 +145,11 @@ mapcache_cache* mapcache_cache_multitier_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_COMPOSITE;
-  cache->cache.tile_delete = _mapcache_cache_multitier_tile_delete;
-  cache->cache.tile_get = _mapcache_cache_multitier_tile_get;
-  cache->cache.tile_exists = _mapcache_cache_multitier_tile_exists;
-  cache->cache.tile_set = _mapcache_cache_multitier_tile_set;
-  cache->cache.tile_multi_set = _mapcache_cache_multitier_tile_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_multitier_tile_delete;
+  cache->cache._tile_get = _mapcache_cache_multitier_tile_get;
+  cache->cache._tile_exists = _mapcache_cache_multitier_tile_exists;
+  cache->cache._tile_set = _mapcache_cache_multitier_tile_set;
+  cache->cache._tile_multi_set = _mapcache_cache_multitier_tile_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_multitier_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_multitier_configuration_parse_xml;
   return (mapcache_cache*)cache;

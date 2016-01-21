@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 2.6)
 
-project (MapCache)
+project (MapCache C)
 
 include(CheckFunctionExists)
 include(CheckIncludeFile)
@@ -66,8 +66,9 @@ endif()
 set(CMAKE_LINK_INTERFACE_LIBRARY "")
 
 file(GLOB mapcache_SOURCES lib/*.c )
+file(GLOB mapcache_HEADERS include/*.h)
 
-add_library(mapcache SHARED ${mapcache_SOURCES})
+add_library(mapcache SHARED ${mapcache_SOURCES} ${mapcache_HEADERS})
 set_target_properties(mapcache PROPERTIES
   VERSION ${MAPCACHE_VERSION_STRING}
   SOVERSION 1

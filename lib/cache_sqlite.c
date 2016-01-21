@@ -196,14 +196,17 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
     if(strstr(*path,"{grid}"))
       *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}",
               tile->grid_link->grid->name);
-    if(tile->dimensions && strstr(*path,"{dim}")) {
+    if(tile->dimensions && strstr(*path,"{dim")) {
       char *dimstring="";
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
+      int i = tile->dimensions->nelts;
       while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-        const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val,"/.",'#');
+        mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
+        char *single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",dimval,NULL);
+        if(strstr(*path,single_dim)) {
+          *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+        }
       }
       *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
     }
@@ -953,11 +956,11 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx)
   }
   cache->cache.metadata = apr_table_make(ctx->pool, 3);
   cache->cache.type = MAPCACHE_CACHE_SQLITE;
-  cache->cache.tile_delete = _mapcache_cache_sqlite_delete;
-  cache->cache.tile_get = _mapcache_cache_sqlite_get;
-  cache->cache.tile_exists = _mapcache_cache_sqlite_has_tile;
-  cache->cache.tile_set = _mapcache_cache_sqlite_set;
-  cache->cache.tile_multi_set = _mapcache_cache_sqlite_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_sqlite_delete;
+  cache->cache._tile_get = _mapcache_cache_sqlite_get;
+  cache->cache._tile_exists = _mapcache_cache_sqlite_has_tile;
+  cache->cache._tile_set = _mapcache_cache_sqlite_set;
+  cache->cache._tile_multi_set = _mapcache_cache_sqlite_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_sqlite_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_sqlite_configuration_parse_xml;
   cache->create_stmt.sql = apr_pstrdup(ctx->pool,
@@ -992,9 +995,9 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx)
     return NULL;
   }
   cache->cache.configuration_post_config = _mapcache_cache_mbtiles_configuration_post_config;
-  cache->cache.tile_set = _mapcache_cache_mbtiles_set;
-  cache->cache.tile_multi_set = _mapcache_cache_mbtiles_multi_set;
-  cache->cache.tile_delete = _mapcache_cache_mbtiles_delete;
+  cache->cache._tile_set = _mapcache_cache_mbtiles_set;
+  cache->cache._tile_multi_set = _mapcache_cache_mbtiles_multi_set;
+  cache->cache._tile_delete = _mapcache_cache_mbtiles_delete;
   cache->create_stmt.sql = apr_pstrdup(ctx->pool,
                                        "create table if not exists images(tile_id text, tile_data blob, primary key(tile_id));"\
                                        "CREATE TABLE  IF NOT EXISTS map (zoom_level integer, tile_column integer, tile_row integer, tile_id text, foreign key(tile_id) references images(tile_id), primary key(tile_row,tile_column,zoom_level));"\

@@ -119,11 +119,15 @@ static void _mapcache_cache_disk_base_tile_key(mapcache_context *ctx, mapcache_c
                       tile->grid_link->grid->name,
                       NULL);
   if(tile->dimensions) {
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->val,"/.",'#');
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      char *dimval;
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->dimension->name);
+        return;
+      }
+      dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
       *path = apr_pstrcat(ctx->pool,*path,"/",dimval,NULL);
     }
   }
@@ -196,14 +200,20 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
       *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
                                         apr_psprintf(ctx->pool,"%d",
                                             tile->grid_link->grid->nlevels - tile->z - 1));
-    if(tile->dimensions) {
+    if(tile->dimensions && strstr(*path,"{dim")) {
       char *dimstring="";
-      const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-      int i = elts->nelts;
+      int i = tile->dimensions->nelts;
       while(i--) {
-        apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-        char *dimval = apr_pstrdup(ctx->pool,entry->val);
-        char *iter = dimval;
+        mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i, mapcache_requested_dimension*);
+        char *dimval;
+        char *single_dim;
+        char *iter;
+        if(!entry->cached_value) {
+          ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->dimension->name);
+          return;
+        }
+        dimval = apr_pstrdup(ctx->pool,entry->cached_value);
+        iter = dimval;
         while(*iter) {
           /* replace dangerous characters by '#' */
           if(*iter == '.' || *iter == '/') {
@@ -211,7 +221,11 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
           }
           iter++;
         }
-        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
+        dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",dimval,NULL);
+        single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+        if(strstr(*path,single_dim)) {
+          *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+        }
       }
       *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
     }
@@ -251,14 +265,20 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
     *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
                                       apr_psprintf(ctx->pool,"%d",
                                           tile->grid_link->grid->nlevels - tile->z - 1));
-  if(tile->dimensions) {
+  if(tile->dimensions && strstr(*path,"{dim")) {
     char *dimstring="";
-    const apr_array_header_t *elts = apr_table_elts(tile->dimensions);
-    int i = elts->nelts;
+    int i = tile->dimensions->nelts;
     while(i--) {
-      apr_table_entry_t *entry = &(APR_ARRAY_IDX(elts,i,apr_table_entry_t));
-      char *dimval = apr_pstrdup(ctx->pool,entry->val);
-      char *iter = dimval;
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i, mapcache_requested_dimension*);
+      char *dimval;
+      char *single_dim;
+      char *iter;
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->dimension->name);
+        return;
+      }
+      dimval = apr_pstrdup(ctx->pool,entry->cached_value);
+      iter = dimval;
       while(*iter) {
         /* replace dangerous characters by '#' */
         if(*iter == '.' || *iter == '/') {
@@ -266,7 +286,11 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
         }
         iter++;
       }
-      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->key,"#",dimval,NULL);
+      dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",dimval,NULL);
+      single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+      if(strstr(*path,single_dim)) {
+        *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+      }
     }
     *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
   }
@@ -530,7 +554,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
                                   APR_FOPEN_CREATE|APR_FOPEN_WRITE|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,
                                   APR_OS_DEFAULT, ctx->pool)) != APR_SUCCESS) {
             ctx->set_error(ctx, 500,  "failed to create file %s: %s",blankname, apr_strerror(ret,errmsg,120));
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
+            mapcache_unlock_resource(ctx,ctx->config->locker, lock);
             return; /* we could not create the file */
           }
 
@@ -538,17 +562,17 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
           ret = apr_file_write(f,(void*)tile->encoded_data->buf,&bytes);
           if(ret != APR_SUCCESS) {
             ctx->set_error(ctx, 500,  "failed to write data to file %s (wrote %d of %d bytes): %s",blankname, (int)bytes, (int)tile->encoded_data->size, apr_strerror(ret,errmsg,120));
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
+            mapcache_unlock_resource(ctx,ctx->config->locker, lock);
             return; /* we could not create the file */
           }
 
           if(bytes != tile->encoded_data->size) {
             ctx->set_error(ctx, 500,  "failed to write image data to %s, wrote %d of %d bytes", blankname, (int)bytes, (int)tile->encoded_data->size);
-            mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
+            mapcache_unlock_resource(ctx,ctx->config->locker, lock);
             return;
           }
           apr_file_close(f);
-          mapcache_unlock_resource(ctx,ctx->config->locker,blankname, lock);
+          mapcache_unlock_resource(ctx,ctx->config->locker, lock);
 #ifdef DEBUG
           ctx->log(ctx,MAPCACHE_DEBUG,"created blank tile %s",blankname);
 #endif
@@ -730,10 +754,10 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
   cache->creation_retry = 0;
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_DISK;
-  cache->cache.tile_delete = _mapcache_cache_disk_delete;
-  cache->cache.tile_get = _mapcache_cache_disk_get;
-  cache->cache.tile_exists = _mapcache_cache_disk_has_tile;
-  cache->cache.tile_set = _mapcache_cache_disk_set;
+  cache->cache._tile_delete = _mapcache_cache_disk_delete;
+  cache->cache._tile_get = _mapcache_cache_disk_get;
+  cache->cache._tile_exists = _mapcache_cache_disk_has_tile;
+  cache->cache._tile_set = _mapcache_cache_disk_set;
   cache->cache.configuration_post_config = _mapcache_cache_disk_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_disk_configuration_parse_xml;
   return (mapcache_cache*)cache;

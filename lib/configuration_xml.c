@@ -47,47 +47,6 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
   }
 }
 
-void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset) {
-  const char *attr = NULL;
-  if(tileset->timedimension) {
-    ctx->set_error(ctx,400,"tileset \"%s\" can only have a single <timedimension>", tileset->name);
-    return;
-  }
-  attr = ezxml_attr(node,"type");
-  if(attr && *attr) {
-    if(!strcmp(attr,"sqlite")) {
-#ifdef USE_SQLITE
-      tileset->timedimension = mapcache_timedimension_sqlite_create(ctx->pool);
-#else
-      ctx->set_error(ctx,400, "failed to add sqlite timedimension: Sqlite support is not available on this build");
-      return;
-#endif
-    } else {
-      ctx->set_error(ctx,400,"unknown \"type\" attribute \"%s\" for %s's <timedimension>. Expecting one of (sqlite)",attr,tileset->name);
-      return;
-    }
-    
-  } else {
-    ctx->set_error(ctx,400,"missing \"type\" attribute for %s's <timedimension>",tileset->name);
-    return;
-  }
-  attr = ezxml_attr(node,"name");
-  if(attr && *attr) {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,attr);
-  } else {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,"TIME");
-  }
-  
-  attr = ezxml_attr(node,"default");
-  if(attr && *attr) {
-    tileset->timedimension->default_value = apr_pstrdup(ctx->pool,attr);
-  } else {
-    ctx->set_error(ctx,400,"no \"default\" attribute for <timedimension> %s",tileset->timedimension->key);
-    return;
-  }
-  tileset->timedimension->configuration_parse_xml(ctx,tileset->timedimension,node);
-}
-
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
@@ -96,7 +55,6 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *name = (char*)ezxml_attr(dimension_node,"name");
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
-    char *skip_validation = (char*)ezxml_attr(dimension_node,"skip_validation");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
 
     mapcache_dimension *dimension = NULL;
@@ -108,17 +66,13 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 
     if(type && *type) {
       if(!strcmp(type,"values")) {
-        dimension = mapcache_dimension_values_create(ctx->pool);
+        dimension = mapcache_dimension_values_create(ctx,ctx->pool);
       } else if(!strcmp(type,"regex")) {
-        dimension = mapcache_dimension_regex_create(ctx->pool);
-      } else if(!strcmp(type,"intervals")) {
-        dimension = mapcache_dimension_intervals_create(ctx->pool);
+        dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
-        dimension = mapcache_dimension_sqlite_create(ctx->pool);
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
-        ctx->set_error(ctx,501,"time dimension type not implemented yet");
-        return;
-        dimension = mapcache_dimension_time_create(ctx->pool);
+        dimension = mapcache_dimension_time_create(ctx,ctx->pool);
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -127,6 +81,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
       return;
     }
+    GC_CHECK_ERROR(ctx);
 
     dimension->name = apr_pstrdup(ctx->pool,name);
 
@@ -134,16 +89,13 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       dimension->unit = apr_pstrdup(ctx->pool,unit);
     }
     
-    if(skip_validation && !strcmp(skip_validation,"true")) {
-      dimension->skip_validation = MAPCACHE_TRUE;
-    }
-
     if(default_value && *default_value) {
       dimension->default_value = apr_pstrdup(ctx->pool,default_value);
     } else {
       ctx->set_error(ctx,400,"dimension \"%s\" has no \"default\" attribute",dimension->name);
       return;
     }
+    
 
     dimension->configuration_parse_xml(ctx,dimension,dimension_node);
     GC_CHECK_ERROR(ctx);
@@ -154,7 +106,51 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     ctx->set_error(ctx, 400, "<dimensions> for tileset \"%s\" has no dimensions defined (expecting <dimension> children)",tileset->name);
     return;
   }
+  
   tileset->dimensions = dimensions;
+  dimension_node = ezxml_child(node,"store_assemblies");
+  if(dimension_node && dimension_node->txt) {
+    if(!strcmp(dimension_node->txt,"false")) {
+      tileset->store_dimension_assemblies = 0;
+    } else if(strcmp(dimension_node->txt,"true")) {
+      ctx->set_error(ctx,400,"failed to parse <store_assemblies> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+      return;
+    }
+  }
+  
+  dimension_node = ezxml_child(node,"assembly_type");
+  if(dimension_node) {
+    if(!strcmp(dimension_node->txt,"stack")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
+    } else if(!strcmp(dimension_node->txt,"animate")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE;
+      ctx->set_error(ctx,400,"animate dimension assembly mode not implemented");
+      return;
+    } else if(strcmp(dimension_node->txt,"none")) {
+      ctx->set_error(ctx,400,"unknown dimension assembly mode (%s). Can be one of \"stack\" or \"none\"",dimension_node->txt);
+      return;
+    } else {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_NONE;
+    }
+  }
+  
+  /* should we create subdimensions from source if not found in cache.
+  e.g. if dimension=mosaic returns dimension=val1,val2,val3 should we 
+  query the wms source with dimension=val1 , dimension=val2 and/or
+  dimension=val3 if they are not found in cache */
+  dimension_node = ezxml_child(node,"subdimensions_read_only");
+  if(dimension_node) {
+    if(tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      ctx->set_error(ctx,400,"<subdimensions_read_only> used on a tileset with no <assembly_type> set, which makes no sense");
+      return;
+    }
+    if(dimension_node && dimension_node->txt && !strcmp(dimension_node->txt,"true")) {
+      tileset->subdimension_read_only = 1;
+    } else if(strcmp(dimension_node->txt,"false")) {
+      ctx->set_error(ctx,400,"failed to parse <subdimensions_read_only> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+      return;
+    }
+  }
 }
 
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
@@ -449,6 +445,7 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
              name,quality,photometric);
   } else if(!strcasecmp(type,"MIXED")) {
     mapcache_image_format *transparent=NULL, *opaque=NULL;
+    unsigned int alpha_cutoff=255;
     if ((cur_node = ezxml_child(node,"transparent")) != NULL) {
       transparent = mapcache_configuration_get_image_format(config,cur_node->txt);
     }
@@ -467,7 +464,10 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      name,cur_node->txt,cur_node->txt);
       return;
     }
-    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque);
+    if ((cur_node = ezxml_child(node,"alpha_cutoff")) != NULL) {
+      alpha_cutoff = atoi(cur_node->txt);
+    }
+    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque, alpha_cutoff);
   } else {
     ctx->set_error(ctx, 400, "unknown format type %s for format \"%s\"", type, name);
     return;
@@ -824,12 +824,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     GC_CHECK_ERROR(ctx);
   }
   
-  if ((cur_node = ezxml_child(node,"timedimension")) != NULL) {
-    parseTimeDimension(ctx, cur_node, tileset);
-    GC_CHECK_ERROR(ctx);
-  }
-
-
   if ((cur_node = ezxml_child(node,"cache")) != NULL) {
     mapcache_cache *cache = mapcache_configuration_get_cache(config, cur_node->txt);
     if(!cache) {

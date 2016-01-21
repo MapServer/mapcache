@@ -1,0 +1,16 @@
+Migrating from Mapcache 1.4 to 1.6
+===================================
+
+* The <timedimension> tileset child has been removed. Time dimensions are now added with <dimension type="time">
+
+* <dimension type="values" ...>val1,val2,val3</dimension> should be replaced by
+  <dimension type="values"><value>val1</value><value>val2</value><value>val3</value></dimension>
+
+* <dimension type="values" case_sensitive="true">...</dimension> should be replaced by
+  <dimension type="values"><case_sensitive>true</case_sensitive>....</dimension>
+
+* <dimension type="regex" ...>^abc$</dimension> should be replaced by
+  <dimension type="regex"><regex>^abc$</regex></dimension>
+
+* <dimension ... assembly="stack">...</dimension> should be replaced by
+  <dimensions><assembly_type>stack</assembly_type><dimension ...>....</dimension></dimensions>
