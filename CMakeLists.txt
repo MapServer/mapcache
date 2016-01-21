@@ -58,6 +58,7 @@ endmacro()
 check_function_exists("strncasecmp"  HAVE_STRNCASECMP)
 check_function_exists("symlink"  HAVE_SYMLINK)
 check_function_exists ("timegm" HAVE_TIMEGM)
+check_function_exists ("strptime" HAVE_STRPTIME)
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 if(APPLE)
