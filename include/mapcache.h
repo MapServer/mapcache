@@ -165,7 +165,7 @@ struct mapcache_context {
   void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
 
   /**
-   * \brief query context to know if an error has occured
+   * \brief query context to know if an error has occurred
    * \memberof mapcache_context
    */
   int (*get_error)(mapcache_context * ctx);

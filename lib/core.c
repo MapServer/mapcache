@@ -620,7 +620,7 @@ mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx)
 
   msg = ctx->_errmsg;
   if(!msg) {
-    msg = apr_pstrdup(ctx->pool,"an unspecified error has occured");
+    msg = apr_pstrdup(ctx->pool,"an unspecified error has occurred");
   }
   ctx->log(ctx,MAPCACHE_ERROR,msg);
 
