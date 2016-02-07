@@ -1251,7 +1251,7 @@ int main(int argc, const char **argv)
     if(cache_override) {
       mapcache_cache *co = mapcache_configuration_get_cache(cfg, cache_override);
       if(!co) {
-        return usage(argv[0], "overrided cache\"%s\" to not found in configuration", cache_override);
+        return usage(argv[0], "overridden cache\"%s\" not found in configuration", cache_override);
       } else {
         tileset->_cache = co;
       }
