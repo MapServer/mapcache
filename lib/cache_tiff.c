@@ -330,7 +330,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
    * we currrently have no way of knowing if the opening failed because the tif
    * file does not exist (which is not an error condition, as it only signals
    * that the requested tile does not exist in the cache), or if an other error
-   * that should be signaled occured (access denied, not a tiff file, etc...)
+   * that should be signaled occurred (access denied, not a tiff file, etc...)
    *
    * we ignore this case here and hope that further parts of the code will be
    * able to detect what's happening more precisely

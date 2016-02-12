@@ -165,7 +165,7 @@ struct mapcache_context {
   void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
 
   /**
-   * \brief query context to know if an error has occured
+   * \brief query context to know if an error has occurred
    * \memberof mapcache_context
    */
   int (*get_error)(mapcache_context * ctx);
@@ -359,10 +359,10 @@ struct mapcache_cache {
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
 };
 
-int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+MS_DLL_EXPORT int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
 void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
-int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
-void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+MS_DLL_EXPORT int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
+MS_DLL_EXPORT void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
 
@@ -961,7 +961,7 @@ struct mapcache_tile {
   int expires; /**< time in seconds after which the tile should be rechecked for validity */
 
   apr_array_header_t *dimensions;
-  
+
   /**
    * flag stating the tile is empty (i.e. fully transparent).
    * if set, this indicates that there was no error per se, but that there was
@@ -1113,9 +1113,9 @@ struct mapcache_tileset {
    * a list of parameters that can be forwarded from the client to the mapcache_tileset::source
    */
   apr_array_header_t *dimensions;
-  
+
   int store_dimension_assemblies;/**< should multiple sub-dimensions be assembled dynamically (per-request) or should they be cached once assembled */
-  
+
   mapcache_dimension_assembly_type dimension_assembly_type;
 
   /**
@@ -1510,7 +1510,7 @@ void mapcache_tile_set_requested_dimension(mapcache_context *ctx, mapcache_tile 
 void mapcache_map_set_requested_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
 void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
 void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
-apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src);
+MS_DLL_EXPORT apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src);
 
 struct mapcache_dimension {
   mapcache_dimension_type type;
@@ -1520,11 +1520,11 @@ struct mapcache_dimension {
   char *default_value;
 
   /**
-   * \brief return the list of dimension values that match the requested entry 
+   * \brief return the list of dimension values that match the requested entry
    */
   apr_array_header_t* (*get_entries_for_value)(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
-  
+
   /**
    * \brief return all possible values
    */

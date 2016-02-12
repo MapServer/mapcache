@@ -281,7 +281,7 @@ static char *demo_head_gmaps =
   "      return null;\n"
   "    }\n"
   "\n"
-  "    // repeat accross x-axis\n"
+  "    // repeat across x-axis\n"
   "    if (x < 0 || x >= tileRange) {\n"
   "      x = (x % tileRange + tileRange) % tileRange;\n"
   "    }\n"
