@@ -1240,14 +1240,18 @@ static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ez
   GC_CHECK_ERROR(ctx);
   if ((cur_node = ezxml_child(node,"id")) != NULL) {
     s3->id = apr_pstrdup(ctx->pool, cur_node->txt);
+  } else if ( getenv("AWS_ACCESS_KEY_ID")) {
+    s3->id = apr_pstrdup(ctx->pool,getenv("AWS_ACCESS_KEY_ID"));
   } else {
-    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <id> child", cache->name);
+    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <id> child or AWS_ACCESS_KEY_ID environment", cache->name);
     return;
   }
   if ((cur_node = ezxml_child(node,"secret")) != NULL) {
     s3->secret = apr_pstrdup(ctx->pool, cur_node->txt);
+  } else if ( getenv("AWS_SECRET_ACCESS_KEY")) {
+    s3->secret = apr_pstrdup(ctx->pool,getenv("AWS_SECRET_ACCESS_KEY"));
   } else {
-    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <secret> child", cache->name);
+    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <secret> child or AWS_SECRET_ACCESS_KEY environment", cache->name);
     return;
   }
   if ((cur_node = ezxml_child(node,"region")) != NULL) {
