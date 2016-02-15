@@ -36,6 +36,7 @@
 #include <apr_base64.h>
 #include <apr_md5.h>
 #include <math.h>
+#include <apr_file_io.h>
 
 typedef struct mapcache_cache_rest mapcache_cache_rest;
 typedef struct mapcache_cache_s3 mapcache_cache_s3;
@@ -72,6 +73,7 @@ struct mapcache_rest_operation {
   apr_table_t *headers;
   mapcache_rest_method method;
   char *tile_url;
+  char *header_file;
   void (*add_headers)(mapcache_context *ctx, mapcache_cache_rest *pcache, mapcache_tile *tile, char *url, apr_table_t *headers);
 };
 
@@ -79,6 +81,7 @@ typedef struct mapcache_rest_configuration mapcache_rest_configuration;
 struct mapcache_rest_configuration {
   apr_table_t *common_headers;
   char *tile_url;
+  char *header_file;
   mapcache_rest_operation has_tile;
   mapcache_rest_operation get_tile;
   mapcache_rest_operation set_tile;
@@ -107,6 +110,7 @@ struct mapcache_cache_s3 {
   char *id;
   char *secret;
   char *region;
+  char *credentials_file;
 };
 
 struct mapcache_cache_azure {
@@ -376,27 +380,97 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, CURL *curl, char *ur
   return data;
 }
 
+/**
+ * @brief _mapcache_cache_rest_add_headers_from_file populate header table from entries found in file
+ * @param ctx
+ * @param file the file from which headers should be read
+ * @param headers the output table which will be populated
+ */
+void _mapcache_cache_rest_add_headers_from_file(mapcache_context *ctx, char *file, apr_table_t *headers) {
+  apr_status_t rv;
+  apr_file_t *f;
+  if((rv=apr_file_open(&f, file, APR_FOPEN_READ|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,APR_OS_DEFAULT,
+                       ctx->pool)) == APR_SUCCESS) {
+    char line[8096];
+    while( (rv = apr_file_gets(line,8096,f))== APR_SUCCESS) {
+      char *header_name=line, *header_val=line, *header_endval;
+      int found_token = MAPCACHE_FALSE;
+      /*search for header delimiter (:)*/
+      while(header_val && *header_val) {
+        if(*header_val == ':') {
+          *header_val = '\0';
+          found_token = MAPCACHE_TRUE;
+          break;
+        }
+        header_val++;
+      }
+      if(!found_token) {
+        /* malformed line, silently skip it */
+        continue;
+      }
+
+      /* skip leading spaces, after colon and before actual value (should be 0) */
+      header_val++;
+      while(*header_val) {
+        if(*header_val == ' ' || *header_val =='\r' || *header_val == '\n')
+          header_val++;
+      }
+
+      if(!*header_val) {
+        /* malformed line, skip it */
+        continue;
+      }
+
+      header_endval = header_val;
+      while(*header_endval) {
+        if(*header_endval == '\r' || *header_endval == '\n') {
+          *header_endval = '\0';
+          break;
+        }
+        header_endval++;
+      }
+
+      apr_table_set(headers, header_name, header_val);
+    }
+    apr_file_close(f);
+  } else {
+    ctx->set_error(ctx,500,"rest cache: failed to access header file");
+  }
+}
+
 apr_table_t* _mapcache_cache_rest_headers(mapcache_context *ctx, mapcache_tile *tile, mapcache_rest_configuration *config,
    mapcache_rest_operation *operation) {
   apr_table_t *ret = apr_table_make(ctx->pool,3);
   const apr_array_header_t *array;
 
   if(config->common_headers) {
-	apr_table_entry_t *elts;
-	int i;
+    apr_table_entry_t *elts;
+    int i;
     array = apr_table_elts(config->common_headers);
     elts = (apr_table_entry_t *) array->elts;
     for (i = 0; i < array->nelts; i++) {
       apr_table_set(ret, elts[i].key,elts[i].val);
     }
   }
+  if(config->header_file) {
+    _mapcache_cache_rest_add_headers_from_file(ctx,config->header_file,ret);
+    if(GC_HAS_ERROR(ctx)) {
+      return NULL;
+    }
+  }
   if(operation->headers) {
-	apr_table_entry_t *elts;
+    apr_table_entry_t *elts;
     int i;
     array = apr_table_elts(operation->headers);
     elts = (apr_table_entry_t *) array->elts;
     for (i = 0; i < array->nelts; i++) {
       apr_table_set(ret, elts[i].key,elts[i].val);
+    }
+  }
+  if(operation->header_file) {
+    _mapcache_cache_rest_add_headers_from_file(ctx,operation->header_file,ret);
+    if(GC_HAS_ERROR(ctx)) {
+      return NULL;
     }
   }
   return ret;
@@ -731,6 +805,21 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
 
 
 }
+
+static void _remove_lineends(char *str) {
+  if(str) {
+    size_t len = strlen(str);
+    while(len>0) {
+      if(str[len-1] == '\n' || str[len-1] == '\r') {
+        str[len-1] = '\0';
+        len--;
+      } else {
+        break;
+      }
+    }
+  }
+}
+
 static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* method, mapcache_cache_rest *rcache, mapcache_tile *tile, char *url, apr_table_t *headers)
 {
   unsigned char sha1[65],sha2[65];
@@ -741,10 +830,46 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   char *tosign, *key, *canonical_request, x_amz_date[64], *resource = url, **aheaders, *auth;
   apr_table_entry_t *elts;
   mapcache_cache_s3 *s3;
+  char *aws_access_key_id = NULL, *aws_secret_access_key = NULL, *aws_security_token = NULL;
 
   sha1[64]=sha2[64]=0;
   assert(rcache->provider == MAPCACHE_REST_PROVIDER_S3);
   s3 = (mapcache_cache_s3*)rcache;
+
+  if(s3->credentials_file) {
+    apr_status_t rv;
+    apr_file_t *f;
+    if((rv=apr_file_open(&f, s3->credentials_file,
+                       APR_FOPEN_READ|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,APR_OS_DEFAULT,
+                       ctx->pool)) == APR_SUCCESS) {
+      char line[1024];
+      if( (rv = apr_file_gets(line,1024,f))== APR_SUCCESS) {
+        _remove_lineends(line);
+        aws_access_key_id = apr_pstrdup(ctx->pool,line);
+      }
+      if( (rv = apr_file_gets(line,1024,f))== APR_SUCCESS) {
+        _remove_lineends(line);
+        aws_secret_access_key = apr_pstrdup(ctx->pool,line);
+      }
+      if( (rv = apr_file_gets(line,1024,f))== APR_SUCCESS) {
+        _remove_lineends(line);
+        aws_security_token = apr_pstrdup(ctx->pool,line);
+      }
+      apr_file_close(f);
+      if(!aws_access_key_id || !*aws_access_key_id|| !aws_secret_access_key ||!*aws_secret_access_key) {
+        ctx->set_error(ctx,500,"failed to read access or secret key from credentials file");
+      }
+      if(aws_security_token && !*aws_security_token) {
+        aws_security_token = NULL;
+      }
+    } else {
+      ctx->set_error(ctx,500,"failed to access S3 credential config");
+    }
+  } else {
+    aws_access_key_id = s3->id;
+    aws_secret_access_key = s3->secret;
+    aws_security_token = NULL;
+  }
 
   if(!strcmp(method,"PUT")) {
     assert(tile->encoded_data);
@@ -770,6 +895,10 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
 
   strftime(x_amz_date, sizeof(x_amz_date), "%Y%m%dT%H%M%SZ", tnow);
   apr_table_set(headers, "x-amz-date", x_amz_date);
+
+  if(aws_security_token) {
+    apr_table_set(headers, "x-amz-security-token", aws_security_token);
+  }
 
   canonical_request = apr_pstrcat(ctx->pool, method, "\n" ,resource, "\n\n",NULL);
 
@@ -807,7 +936,7 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   tosign = apr_pstrcat(ctx->pool, tosign, x_amz_date, "/", s3->region, "/s3/aws4_request\n", sha1,NULL);
   //printf("key to sign: %s\n",tosign);
 
-  key = apr_pstrcat(ctx->pool, "AWS4", s3->secret, NULL);
+  key = apr_pstrcat(ctx->pool, "AWS4", aws_secret_access_key, NULL);
   hmac_sha256((unsigned char*)x_amz_date, 8, (unsigned char*)key, strlen(key), sha1, 32);
   hmac_sha256((unsigned char*)s3->region, strlen(s3->region), sha1, 32, sha2, 32);
   hmac_sha256((unsigned char*)"s3", 2, sha2, 32, sha1, 32);
@@ -816,7 +945,7 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   sha_hex_encode(sha1,32);
 
 
-  auth = apr_pstrcat(ctx->pool, "AWS4-HMAC-SHA256 Credential=",s3->id,"/",x_amz_date,"/",s3->region,"/s3/aws4_request,SignedHeaders=",NULL);
+  auth = apr_pstrcat(ctx->pool, "AWS4-HMAC-SHA256 Credential=",aws_access_key_id,"/",x_amz_date,"/",s3->region,"/s3/aws4_request,SignedHeaders=",NULL);
 
   for(i=0; i<ahead->nelts; i++) {
     if(i==ahead->nelts-1) {
@@ -879,6 +1008,10 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.has_tile, &url);
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.has_tile);
+
+  if(GC_HAS_ERROR(ctx))
+    return MAPCACHE_FAILURE;
+
   if(rcache->rest.add_headers) {
     rcache->rest.add_headers(ctx,rcache,tile,url,headers);
   }
@@ -930,6 +1063,8 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   CURL *curl;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.delete_tile, &url);
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.delete_tile);
+  GC_CHECK_ERROR(ctx);
+
   if(rcache->rest.add_headers) {
     rcache->rest.add_headers(ctx,rcache,tile,url,headers);
   }
@@ -988,6 +1123,10 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     return MAPCACHE_SUCCESS;
   }
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.get_tile);
+
+  if(GC_HAS_ERROR(ctx))
+    return MAPCACHE_FAILURE;
+
   if(rcache->rest.add_headers) {
     rcache->rest.add_headers(ctx,rcache,tile,url,headers);
   }
@@ -1058,6 +1197,9 @@ static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache
       tile = tiles + i;
       _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
       headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+      if(GC_HAS_ERROR(ctx)) {
+        goto multi_put_cleanup;
+      }
 
       if(!tile->encoded_data) {
         tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
@@ -1123,6 +1265,9 @@ static void _mapcache_cache_rest_operation_parse_xml(mapcache_context *ctx, ezxm
       apr_table_set(op->headers, header_node->name, header_node->txt);
     }
   }
+  if ((cur_node = ezxml_child(node,"header_file")) != NULL) {
+    op->header_file = apr_pstrdup(ctx->pool, cur_node->txt);
+  }
 }
 
 /**
@@ -1186,6 +1331,12 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
       apr_table_set(dcache->rest.common_headers, header_node->name, header_node->txt);
     }
   }
+
+  if ((cur_node = ezxml_child(node,"header_file")) != NULL) {
+    dcache->rest.header_file = apr_pstrdup(ctx->pool, cur_node->txt);
+  }
+
+
   for(cur_node = ezxml_child(node,"operation"); cur_node; cur_node = cur_node->next) {
     char *type = (char*)ezxml_attr(cur_node,"type");
     if(!type) {
@@ -1238,21 +1389,25 @@ static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ez
   mapcache_cache_s3 *s3 = (mapcache_cache_s3*)cache;
   _mapcache_cache_rest_configuration_parse_xml(ctx, node, cache, config);
   GC_CHECK_ERROR(ctx);
-  if ((cur_node = ezxml_child(node,"id")) != NULL) {
-    s3->id = apr_pstrdup(ctx->pool, cur_node->txt);
-  } else if ( getenv("AWS_ACCESS_KEY_ID")) {
-    s3->id = apr_pstrdup(ctx->pool,getenv("AWS_ACCESS_KEY_ID"));
+  if ((cur_node = ezxml_child(node,"credentials_file")) != NULL) {
+    s3->credentials_file = apr_pstrdup(ctx->pool, cur_node->txt);
   } else {
-    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <id> child or AWS_ACCESS_KEY_ID environment", cache->name);
-    return;
-  }
-  if ((cur_node = ezxml_child(node,"secret")) != NULL) {
-    s3->secret = apr_pstrdup(ctx->pool, cur_node->txt);
-  } else if ( getenv("AWS_SECRET_ACCESS_KEY")) {
-    s3->secret = apr_pstrdup(ctx->pool,getenv("AWS_SECRET_ACCESS_KEY"));
-  } else {
-    ctx->set_error(ctx,400,"s3 cache (%s) is missing required <secret> child or AWS_SECRET_ACCESS_KEY environment", cache->name);
-    return;
+    if ((cur_node = ezxml_child(node,"id")) != NULL) {
+      s3->id = apr_pstrdup(ctx->pool, cur_node->txt);
+    } else if ( getenv("AWS_ACCESS_KEY_ID")) {
+      s3->id = apr_pstrdup(ctx->pool,getenv("AWS_ACCESS_KEY_ID"));
+    } else {
+      ctx->set_error(ctx,400,"s3 cache (%s) is missing required <id> child or AWS_ACCESS_KEY_ID environment", cache->name);
+      return;
+    }
+    if ((cur_node = ezxml_child(node,"secret")) != NULL) {
+      s3->secret = apr_pstrdup(ctx->pool, cur_node->txt);
+    } else if ( getenv("AWS_SECRET_ACCESS_KEY")) {
+      s3->secret = apr_pstrdup(ctx->pool,getenv("AWS_SECRET_ACCESS_KEY"));
+    } else {
+      ctx->set_error(ctx,400,"s3 cache (%s) is missing required <secret> child or AWS_SECRET_ACCESS_KEY environment", cache->name);
+      return;
+    }
   }
   if ((cur_node = ezxml_child(node,"region")) != NULL) {
     s3->region = apr_pstrdup(ctx->pool, cur_node->txt);
