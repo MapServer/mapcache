@@ -142,7 +142,7 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
     int i;
     for (i = 0; i < array->nelts; i++) {
       char *val = elts[i].val;
-      if(strchr(val,'{') && ctx->headers_in) {
+      if(val && strchr(val,'{') && ctx->headers_in) {
         _header_replace_str(ctx,ctx->headers_in,&val);
       }
       curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",val,NULL));

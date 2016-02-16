@@ -525,10 +525,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   int rv;
   void *lock;
   int create;
-  char errmsg[120];
   mapcache_cache_tiff *cache;
   mapcache_image_format_jpeg *format;
-  char *hackptr1,*hackptr2;
   int tilew;
   int tileh;
   unsigned char *rgb;
@@ -554,27 +552,8 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   /*
    * create the directory where the tiff file will be stored
    */
-
-  /* find the location of the last '/' in the string */
-  hackptr2 = hackptr1 = filename;
-  while(*hackptr1) {
-    if(*hackptr1 == '/')
-      hackptr2 = hackptr1;
-    hackptr1++;
-  }
-  *hackptr2 = '\0';
-
-  if(APR_SUCCESS != (rv = apr_dir_make_recursive(filename,APR_OS_DEFAULT,ctx->pool))) {
-    /*
-     * apr_dir_make_recursive sometimes sends back this error, although it should not.
-     * ignore this one
-     */
-    if(!APR_STATUS_IS_EEXIST(rv)) {
-      ctx->set_error(ctx, 500, "failed to create directory %s: %s",filename, apr_strerror(rv,errmsg,120));
-      return;
-    }
-  }
-  *hackptr2 = '/';
+  mapcache_make_parent_dirs(ctx,filename);
+  GC_CHECK_ERROR(ctx);
 
   tilew = tile->grid_link->grid->tile_sx;
   tileh = tile->grid_link->grid->tile_sy;
