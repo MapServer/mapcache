@@ -180,6 +180,7 @@ void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, mapca
     pred = pc;
     pc = pc->private->next;
   }
+  mapcache_connection_pool_release_connection(ctx, connection);
 }
 
 void mapcache_connection_pool_release_connection(mapcache_context *ctx, mapcache_pooled_connection *connection) {

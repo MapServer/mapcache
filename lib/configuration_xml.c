@@ -484,6 +484,7 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 {
   char *name = NULL,  *type = NULL;
   mapcache_cache *cache = NULL;
+  ezxml_t cur_node;
   name = (char*)ezxml_attr(node,"name");
   type = (char*)ezxml_attr(node,"type");
   if(!name || !strlen(name)) {
@@ -543,6 +544,22 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     return;
   }
   cache->name = name;
+
+  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
+    cache->retry_count = atoi(cur_node->txt);
+    if(cache->retry_count > 10) {
+      ctx->set_error(ctx,400,"cache (%s) <retries> count of %d is unreasonably large. max is 10", cache->name, cache->retry_count);
+      return;
+    }
+  }
+  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
+    cache->retry_delay = (double)atof(cur_node->txt);
+    if(cache->retry_delay < 0) {
+      ctx->set_error(ctx,400,"cache (%s) retry delay of %f must be positive",cache->name, cache->retry_delay);
+      return;
+    }
+  }
+
 
   cache->configuration_parse_xml(ctx,node,cache,config);
   GC_CHECK_ERROR(ctx);

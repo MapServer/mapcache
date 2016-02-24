@@ -329,6 +329,9 @@ struct mapcache_cache {
   char *name; /**< key this cache is referenced by */
   mapcache_cache_type type;
   apr_table_t *metadata;
+  unsigned int retry_count;
+  double retry_delay;
+
 
   /**
    * get tile content from cache

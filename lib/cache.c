@@ -26,49 +26,134 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 #include "mapcache.h"
+#include <apr_time.h>
 
 int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
+  int i,rv;
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_get on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
-  return cache->_tile_get(ctx,cache,tile);
+  for(i=0;i<=cache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_INFO,"cache (%s) get retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(cache->retry_delay > 0) {
+        double wait = cache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    rv = cache->_tile_get(ctx,cache,tile);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
+  return rv;
 }
 
 void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
+  int i;
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_delete on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
   if(tile->tileset->read_only)
     return;
-  return cache->_tile_delete(ctx,cache,tile);
+  for(i=0;i<=cache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_INFO,"cache (%s) delete retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(cache->retry_delay > 0) {
+        double wait = cache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    cache->_tile_delete(ctx,cache,tile);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
 }
 
 int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
+  int i,rv;
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_exists on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
-  return cache->_tile_exists(ctx,cache,tile);
+  for(i=0;i<=cache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_INFO,"cache (%s) exists retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(cache->retry_delay > 0) {
+        double wait = cache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    rv = cache->_tile_exists(ctx,cache,tile);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
+  return rv;
 }
 
 void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
+  int i;
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_set on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->grid_link->grid->name,tile->tileset->name,tile->z,tile->x, tile->y);
 #endif
-  return cache->_tile_set(ctx,cache,tile);
+  if(tile->tileset->read_only)
+    return;
+  for(i=0;i<=cache->retry_count;i++) {
+    if(i) {
+      ctx->log(ctx,MAPCACHE_INFO,"cache (%s) set retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(cache->retry_delay > 0) {
+        double wait = cache->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    cache->_tile_set(ctx,cache,tile);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
 }
 
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles) {
+  int i;
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_multi_set on cache (%s): (tileset=%s, grid=%s, first tile: z=%d, x=%d, y=%d",cache->name,tiles[0].grid_link->grid->name,tiles[0].tileset->name,
       tiles[0].z,tiles[0].x, tiles[0].y);
 #endif
+  if((&tiles[0])->tileset->read_only)
+    return;
   if(cache->_tile_multi_set) {
-    return cache->_tile_multi_set(ctx,cache,tiles,ntiles);
+    for(i=0;i<=cache->retry_count;i++) {
+      if(i) {
+        ctx->log(ctx,MAPCACHE_INFO,"cache (%s) multi-set retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
+        ctx->clear_errors(ctx);
+        if(cache->retry_delay > 0) {
+          double wait = cache->retry_delay;
+          int j = 0;
+          for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+            wait *= 2;
+          apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+        }
+      }
+      cache->_tile_multi_set(ctx,cache,tiles,ntiles);
+      if(!GC_HAS_ERROR(ctx))
+        break;
+    }
   } else {
-    int i;
     for( i=0;i<ntiles;i++ ) {
-      cache->_tile_set(ctx, cache, &tiles[i]);
-      GC_CHECK_ERROR(ctx);
+      mapcache_cache_tile_set(ctx, cache, tiles+i);
     }
   }
 }

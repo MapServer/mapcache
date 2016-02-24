@@ -98,8 +98,6 @@ struct mapcache_cache_rest {
   mapcache_cache cache;
   mapcache_rest_configuration rest;
   int use_redirects;
-  unsigned int retry_count;
-  double retry_delay;
   int timeout;
   int connection_timeout;
   mapcache_rest_provider provider;
@@ -1002,7 +1000,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
-  int status,i;
+  int status;
   mapcache_pooled_connection *pc;
   CURL *curl;
   
@@ -1019,33 +1017,21 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
     rcache->rest.has_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<=rcache->retry_count;i++) {
-    if(i) {
-      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
-      ctx->clear_errors(ctx);
-      if(rcache->retry_delay > 0) {
-        double wait = rcache->retry_delay;
-        int j = 0;
-        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
-          wait *= 2;
-        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
-      }
-    }
-    pc = _rest_get_connection(ctx, rcache, tile);
-    if(GC_HAS_ERROR(ctx))
-      return MAPCACHE_FAILURE;
-
-    curl = pc->connection;
-
-    status = _head_request(ctx, curl, url, headers);
-
-    mapcache_connection_pool_release_connection(ctx,pc);
-
-    if(!GC_HAS_ERROR(ctx))
-      break;
-  }
+  pc = _rest_get_connection(ctx, rcache, tile);
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
+
+  curl = pc->connection;
+
+  status = _head_request(ctx, curl, url, headers);
+
+
+  if(GC_HAS_ERROR(ctx)) {
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    return MAPCACHE_FAILURE;
+  }
+
+  mapcache_connection_pool_release_connection(ctx,pc);
 
   if( status == 200)
     return MAPCACHE_TRUE;
@@ -1058,7 +1044,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
-  int status,i;
+  int status;
   mapcache_pooled_connection *pc;
   CURL *curl;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.delete_tile, &url);
@@ -1072,29 +1058,17 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
     rcache->rest.delete_tile.add_headers(ctx,rcache,tile,url,headers);
   }
 
-  for(i=0;i<=rcache->retry_count;i++) {
-    if(i) {
-      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
-      ctx->clear_errors(ctx);
-      if(rcache->retry_delay > 0) {
-        double wait = rcache->retry_delay;
-        int j = 0;
-        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
-          wait *= 2;
-        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
-      }
-    }
-    pc = _rest_get_connection(ctx, rcache, tile);
-    GC_CHECK_ERROR(ctx);
-
-    curl = pc->connection;
-
-    status = _delete_request(ctx, curl, url, headers);
-    mapcache_connection_pool_release_connection(ctx,pc);
-    if(!GC_HAS_ERROR(ctx))
-      break;
-  }
+  pc = _rest_get_connection(ctx, rcache, tile);
   GC_CHECK_ERROR(ctx);
+
+  curl = pc->connection;
+
+  status = _delete_request(ctx, curl, url, headers);
+  if(GC_HAS_ERROR(ctx)) {
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    return;
+  }
+  mapcache_connection_pool_release_connection(ctx,pc);
 
   if(status!=200 && status!=202 && status!=204) {
     //ctx->set_error(ctx,500,"rest delete returned code %d", status);
@@ -1116,7 +1090,6 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   apr_table_t *headers;
   mapcache_pooled_connection *pc;
   CURL *curl;
-  int i;
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.get_tile, &url);
   if(tile->allow_redirect && rcache->use_redirects) {
     tile->redirect = url;
@@ -1134,31 +1107,19 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
   
-  for(i=0;i<=rcache->retry_count;i++) {
-    if(i) {
-      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",i,rcache->retry_count,ctx->get_error_message(ctx));
-      ctx->clear_errors(ctx);
-      if(rcache->retry_delay > 0) {
-        double wait = rcache->retry_delay;
-        int j = 0;
-        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
-          wait *= 2;
-        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
-      }
-    }
-    pc = _rest_get_connection(ctx, rcache, tile);
-    if(GC_HAS_ERROR(ctx))
-      return MAPCACHE_FAILURE;
-
-    curl = pc->connection;
-
-    tile->encoded_data = _get_request(ctx, curl, url, headers);
-    mapcache_connection_pool_release_connection(ctx,pc);
-    if(!GC_HAS_ERROR(ctx))
-      break;
-  }
+  pc = _rest_get_connection(ctx, rcache, tile);
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
+
+  curl = pc->connection;
+
+  tile->encoded_data = _get_request(ctx, curl, url, headers);
+
+  if(GC_HAS_ERROR(ctx)) {
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    return MAPCACHE_FAILURE;
+  }
+  mapcache_connection_pool_release_connection(ctx,pc);
 
   if(!tile->encoded_data)
     return MAPCACHE_CACHE_MISS;
@@ -1166,94 +1127,53 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   return MAPCACHE_SUCCESS;
 }
 
-static void _mapcache_cache_rest_multi_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tiles, int ntiles) {
+static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
   mapcache_cache_rest *rcache = (mapcache_cache_rest*)pcache;
   char *url;
   apr_table_t *headers;
   mapcache_pooled_connection *pc;
   CURL *curl;
-  int i,j;
 
-  for(j=0;j<=rcache->retry_count;j++) {
-    if(j) {
-      ctx->log(ctx,MAPCACHE_INFO,"rest cache retry %d of %d. previous try returned error: %s",j,rcache->retry_count,ctx->get_error_message(ctx));
-      ctx->clear_errors(ctx);
-      if(rcache->retry_delay > 0) {
-        double wait = rcache->retry_delay;
-        int k = 0;
-        for(k=1;k<j;k++) /* sleep twice as long as before previous retry */
-          wait *= 2;
-        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
-      }
-    }
-    pc = _rest_get_connection(ctx, rcache, &tiles[0]);
+  _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
+  headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+  GC_CHECK_ERROR(ctx);
+
+  if(!tile->encoded_data) {
+    tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
     GC_CHECK_ERROR(ctx);
-    curl = pc->connection;
-
-    for(i=0; i<ntiles; i++) {
-      mapcache_tile *tile;
-      if(i)
-        curl_easy_reset(curl);
-      tile = tiles + i;
-      _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
-      headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
-      if(GC_HAS_ERROR(ctx)) {
-        goto multi_put_cleanup;
-      }
-
-      if(!tile->encoded_data) {
-        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
-        if(GC_HAS_ERROR(ctx)) {
-          goto multi_put_cleanup;
-        }
-      }
-
-      apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
-      if(tile->tileset->format && tile->tileset->format->mime_type)
-        apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
-      else {
-        mapcache_image_format_type imgfmt = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
-        if(imgfmt == GC_JPEG) {
-          apr_table_set(headers, "Content-Type", "image/jpeg");
-        } else if (imgfmt == GC_PNG) {
-          apr_table_set(headers, "Content-Type", "image/png");
-        }
-      }
-
-      if(rcache->rest.add_headers) {
-        rcache->rest.add_headers(ctx,rcache,tile,url,headers);
-      }
-      if(rcache->rest.set_tile.add_headers) {
-        rcache->rest.set_tile.add_headers(ctx,rcache,tile,url,headers);
-      }
-      _put_request(ctx, curl, tile->encoded_data, url, headers);
-      if(GC_HAS_ERROR(ctx)) {
-        goto multi_put_cleanup;
-      }
-    }
-
-multi_put_cleanup:
-    /* always cleanup */
-    mapcache_connection_pool_release_connection(ctx,pc);
-    if(!GC_HAS_ERROR(ctx))
-      break;
   }
-}
 
-/**
- * \brief write tile data to rest backend
- *
- * writes the content of mapcache_tile::data to disk.
- * \returns MAPCACHE_FAILURE if there is no data to write, or if the tile isn't locked
- * \returns MAPCACHE_SUCCESS if the tile has been successfully written to disk
- * \private \memberof mapcache_cache_rest
- * \sa mapcache_cache::tile_set()
- */
-static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
-{
-  return _mapcache_cache_rest_multi_set(ctx, pcache, tile, 1);
-}
+  apr_table_set(headers,"Content-Length",apr_psprintf(ctx->pool,"%lu",tile->encoded_data->size));
+  if(tile->tileset->format && tile->tileset->format->mime_type)
+    apr_table_set(headers, "Content-Type", tile->tileset->format->mime_type);
+  else {
+    mapcache_image_format_type imgfmt = mapcache_imageio_header_sniff(ctx,tile->encoded_data);
+    if(imgfmt == GC_JPEG) {
+      apr_table_set(headers, "Content-Type", "image/jpeg");
+    } else if (imgfmt == GC_PNG) {
+      apr_table_set(headers, "Content-Type", "image/png");
+    }
+  }
 
+  if(rcache->rest.add_headers) {
+    rcache->rest.add_headers(ctx,rcache,tile,url,headers);
+  }
+  if(rcache->rest.set_tile.add_headers) {
+    rcache->rest.set_tile.add_headers(ctx,rcache,tile,url,headers);
+  }
+
+  pc = _rest_get_connection(ctx, rcache, tile);
+  GC_CHECK_ERROR(ctx);
+  curl = pc->connection;
+
+  _put_request(ctx, curl, tile->encoded_data, url, headers);
+  if(GC_HAS_ERROR(ctx)) {
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    return;
+  }
+
+  mapcache_connection_pool_release_connection(ctx,pc);
+}
 
 static void _mapcache_cache_rest_operation_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *cache, mapcache_rest_operation *op)
 {
@@ -1309,21 +1229,6 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
     dcache->timeout = 120;
   }
   
-  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
-    dcache->retry_count = atoi(cur_node->txt);
-    if(dcache->retry_count > 10) {
-      ctx->set_error(ctx,400,"rest cache <retries> count of %d is unreasonably large. max is 10",dcache->retry_count);
-      return;
-    }
-  }
-  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
-    dcache->retry_delay = (double)atof(cur_node->txt);
-    if(dcache->retry_delay < 0) {
-      ctx->set_error(ctx,400,"rest cache retry delay of %f must be positive",dcache->retry_delay);
-      return;
-    }
-  }
-
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {
     ezxml_t header_node;
     dcache->rest.common_headers = apr_table_make(ctx->pool,3);
@@ -1469,8 +1374,6 @@ static void _mapcache_cache_rest_configuration_post_config(mapcache_context *ctx
 }
 
 void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache) {
-  cache->retry_count = 2;
-  cache->retry_delay = 0.1;
   cache->use_redirects = 0;
   cache->rest.get_tile.method = MAPCACHE_REST_METHOD_GET;
   cache->rest.set_tile.method = MAPCACHE_REST_METHOD_PUT;
@@ -1483,7 +1386,6 @@ void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache)
   cache->cache._tile_get = _mapcache_cache_rest_get;
   cache->cache._tile_exists = _mapcache_cache_rest_has_tile;
   cache->cache._tile_set = _mapcache_cache_rest_set;
-  cache->cache._tile_multi_set = _mapcache_cache_rest_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_rest_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_rest_configuration_parse_xml;
 }
