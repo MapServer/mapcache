@@ -94,6 +94,7 @@ option(WITH_GEOTIFF "Allow GeoTIFF metadata creation for TIFF cache backends" OF
 option(WITH_PCRE "Use PCRE for regex tests" OFF)
 option(WITH_MAPSERVER "Enable (experimental) support for the mapserver library" OFF)
 option(WITH_RIAK "Use Riak as a cache backend" OFF)
+option(WITH_GDAL "Choose if GDAL raster support should be built in" ON)
 
 find_package(PNG)
 if(PNG_FOUND)
@@ -162,6 +163,17 @@ if(WITH_PIXMAN)
     report_optional_not_found(PIXMAN)
   endif(PIXMAN_FOUND)
 endif (WITH_PIXMAN)
+
+if(WITH_GDAL)
+  find_package(GDAL)
+  if(GDAL_FOUND)
+    include_directories(${GDAL_INCLUDE_DIR})
+    target_link_libraries(mapcache ${GDAL_LIBRARY})
+    set (USE_GDAL 1)
+  else(GDAL_FOUND)
+    report_optional_not_found(GDAL)
+  endif(GDAL_FOUND)
+endif(WITH_GDAL)
 
 if(WITH_PCRE)
    find_package(PCRE)
@@ -301,6 +313,7 @@ status_optional_component("Experimental TIFF write support" "${USE_TIFF_WRITE}" 
 status_optional_component("PCRE" "${USE_PCRE}" "${PCRE_LIBRARY}")
 status_optional_component("Experimental mapserver support" "${USE_MAPSERVER}" "${MAPSERVER_LIBRARY}")
 status_optional_component("RIAK" "${USE_RIAK}" "${RIAK_LIBRARY}")
+status_optional_component("GDAL" "${USE_GDAL}" "${GDAL_LIBRARY}")
 
 INSTALL(TARGETS mapcache DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
