@@ -413,16 +413,17 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         int j;
         for(j=0; j<grid_link->grid->nlevels; j++) {
           ezxml_t matrixlimits = ezxml_add_child(limits,"TileMatrixLimits",0);
+          int row;
           ezxml_set_txt(ezxml_add_child(matrixlimits,"TileMatrix",0),
                         apr_psprintf(ctx->pool,"%s:%d",grid_link->grid->name,j));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].minx));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxx-1));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileCol",0),
                         apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].miny));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileCol",0),
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileRow",0),
                         apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxy-1));
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileCol",0),
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].minx));
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileCol",0),
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxx-1));
         }
       }
 
