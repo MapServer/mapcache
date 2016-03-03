@@ -407,15 +407,8 @@ void _mapcache_cache_rest_add_headers_from_file(mapcache_context *ctx, char *fil
         continue;
       }
 
-      /* skip leading spaces, after colon and before actual value (should be 0) */
-      header_val++;
-      while(*header_val) {
-        if(*header_val == ' ' || *header_val =='\r' || *header_val == '\n')
-          header_val++;
-      }
-
       if(!*header_val) {
-        /* malformed line, skip it */
+        /* malformed/empty line, skip it */
         continue;
       }
 
@@ -426,6 +419,11 @@ void _mapcache_cache_rest_add_headers_from_file(mapcache_context *ctx, char *fil
           break;
         }
         header_endval++;
+      }
+
+      if(!*header_val) {
+        /* empty header value, skip it */
+        continue;
       }
 
       apr_table_set(headers, header_name, header_val);
