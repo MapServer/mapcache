@@ -407,6 +407,8 @@ void _mapcache_cache_rest_add_headers_from_file(mapcache_context *ctx, char *fil
         continue;
       }
 
+      header_val++;
+
       if(!*header_val) {
         /* malformed/empty line, skip it */
         continue;

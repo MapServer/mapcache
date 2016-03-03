@@ -176,6 +176,7 @@ void mapcache_connection_pool_invalidate_connection(mapcache_context *ctx, mapca
       pc->private->destructor(pc->connection);
       free(pc->private->key);
       free(pc);
+      break;
     }
     pred = pc;
     pc = pc->private->next;
