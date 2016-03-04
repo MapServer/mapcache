@@ -3,10 +3,11 @@
  *
  * Project:  MapServer
  * Purpose:  MapCache tile caching support file: GDAL datasource support (incomplete and disabled)
- * Author:   Thomas Bonfort and the MapServer team.
+ * Author:   Thomas Bonfort, Even Rouault and the MapServer team.
  *
  ******************************************************************************
  * Copyright (c) 1996-2011 Regents of the University of Minnesota.
+ * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com> (for GDALAutoCreateWarpedVRT who CreateWarpedVRT is derived from)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -37,9 +38,18 @@
 #include <gdal.h>
 #include <cpl_conv.h>
 
-#include "gdal_alg.h"
+#include "gdalwarper.h"
 #include "cpl_string.h"
 #include "ogr_srs_api.h"
+#include "gdal_vrt.h"
+
+#define MAPCACHE_DEFAULT_RESAMPLE_ALG           GRA_Bilinear
+
+/* Note: this will also work with GDAL >= 2.0 */
+#if GDAL_VERSION_MAJOR < 2
+#define USE_PRE_GDAL2_METHOD
+#endif
+/*#define USE_PRE_GDAL2_METHOD*/
 
 typedef struct mapcache_source_gdal mapcache_source_gdal;
 
@@ -49,76 +59,328 @@ typedef struct mapcache_source_gdal mapcache_source_gdal;
  */
 struct mapcache_source_gdal {
   mapcache_source source;
-  char *datastr; /**< the gdal source string*/
+  const char *datastr; /**< the gdal source string*/
   apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
-  GDALDatasetH *poDataset;
+  GDALDatasetH hDataset;
+  GDALResampleAlg eResampleAlg; /**< resampling algorithm */
+  const char *srcOvrLevel; /**< strategy to pickup source overview: AUTO, NONE, 
+                                AUTO-xxx, xxxx. See -ovr doc in http://www.gdal.org/gdalwarp.html.
+                                Only used for GDAL >= 2.0 (could probably be made to work for USE_PRE_GDAL2_METHOD with more work) */
 };
 
-/************************************************************************/
-/*                        GDALWarpCreateOutput()                        */
-/*                                                                      */
-/*      Create the output file based on various commandline options,    */
-/*      and the input file.                                             */
-/************************************************************************/
-
-static GDALDatasetH
-GDALWarpCreateOutput( GDALDatasetH hSrcDS, const char *pszSourceSRS, const char *pszTargetSRS,
-                      int width, int height, mapcache_extent *extent)
+#ifdef USE_PRE_GDAL2_METHOD
+/* Creates a (virtual) dataset that matches an overview level of the source
+   dataset. This dataset has references on the source dataset, so it should
+   be closed before it.
+*/
+static GDALDatasetH CreateOverviewVRTDataset(GDALDatasetH hSrcDS,
+                                             int iOvrLevel)
 {
-    GDALDriverH hDriver;
-    GDALDatasetH hDstDS;
-    void *hTransformArg;
+  double adfSrcGeoTransform[6];
+  int iBand;
+  GDALRasterBandH hFirstBand = GDALGetRasterBand(hSrcDS, 1);
+  GDALRasterBandH hOvr = GDALGetOverview( hFirstBand, iOvrLevel );
+  int nFullResXSize = GDALGetRasterBandXSize(hFirstBand);
+  int nFullResYSize = GDALGetRasterBandYSize(hFirstBand);
+  int nVRTXSize = GDALGetRasterBandXSize(hOvr);
+  int nVRTYSize = GDALGetRasterBandYSize(hOvr);
+
+  VRTDatasetH hVRTDS = VRTCreate( nVRTXSize, nVRTYSize );
+
+  /* Scale geotransform */
+  if( GDALGetGeoTransform( hSrcDS, adfSrcGeoTransform) == CE_None )
+  {
+    adfSrcGeoTransform[1] *= (double)nFullResXSize / nVRTXSize;
+    adfSrcGeoTransform[2] *= (double)nFullResYSize / nVRTYSize;
+    adfSrcGeoTransform[4] *= (double)nFullResXSize / nVRTXSize;
+    adfSrcGeoTransform[5] *= (double)nFullResYSize / nVRTYSize;
+    GDALSetProjection( hVRTDS, GDALGetProjectionRef(hSrcDS) );
+    GDALSetGeoTransform( hVRTDS, adfSrcGeoTransform );
+  }
+
+  /* Scale GCPs */
+  if( GDALGetGCPCount(hSrcDS) > 0 )
+  {
+    const GDAL_GCP* pasGCPsMain = GDALGetGCPs(hSrcDS);
+    int nGCPCount = GDALGetGCPCount(hSrcDS);
+    GDAL_GCP* pasGCPList = GDALDuplicateGCPs( nGCPCount, pasGCPsMain );
+    int i;
+    for(i = 0; i < nGCPCount; i++)
+    {
+        pasGCPList[i].dfGCPPixel *= (double)nVRTXSize / nFullResXSize;
+        pasGCPList[i].dfGCPLine *= (double)nVRTYSize / nFullResYSize;
+    }
+    GDALSetGCPs( hVRTDS, nGCPCount, pasGCPList, GDALGetGCPProjection(hSrcDS) );
+    GDALDeinitGCPs( nGCPCount, pasGCPList );
+    CPLFree( pasGCPList );
+  }
+
+  /* Create bands */
+  for(iBand = 1; iBand <= GDALGetRasterCount(hSrcDS); iBand++ )
+  {
+    GDALRasterBandH hSrcBand;
+    GDALRasterBandH hVRTBand;
+    int bNoDataSet = FALSE;
+    double dfNoData;
+
+    VRTAddBand( hVRTDS, GDT_Byte, NULL );
+    hVRTBand = GDALGetRasterBand(hVRTDS, iBand);
+    hSrcBand = GDALGetOverview(GDALGetRasterBand(hSrcDS, iBand), iOvrLevel);
+    dfNoData = GDALGetRasterNoDataValue(hSrcBand, &bNoDataSet);
+    if( bNoDataSet )
+      GDALSetRasterNoDataValue(hVRTBand, dfNoData);
+
+    /* Note: the consumer of this VRT is the warper, which doesn't do any */
+    /* subsampled RasterIO requests, so NEAR is fine */
+    VRTAddSimpleSource( hVRTBand, hSrcBand,
+                        0, 0, nVRTXSize, nVRTYSize,
+                        0, 0, nVRTXSize, nVRTYSize,
+                        "NEAR", VRT_NODATA_UNSET );
+  }
+
+  return hVRTDS;
+}
+#endif
+
+/* Derived from GDALAutoCreateWarpedVRT(), with various improvements. */
+/* Returns a warped VRT that covers the passed extent, in pszDstWKT. */
+/* The provided width and height are used, but the size of the returned dataset */
+/* may not match those values. In the USE_PRE_GDAL2_METHOD, it should match them. */
+/* In the non USE_PRE_GDAL2_METHOD case, it might be a multiple of those values. */
+/* phTmpDS is an output parameter (a temporary VRT in the USE_PRE_GDAL2_METHOD case). */
+static GDALDatasetH  
+CreateWarpedVRT( GDALDatasetH hSrcDS, 
+                 const char *pszSrcWKT,
+                 const char *pszDstWKT,
+                 int width, int height,
+                 const mapcache_extent *extent,
+                 GDALResampleAlg eResampleAlg, 
+                 double dfMaxError, 
+                 char** papszWarpOptions,
+                 GDALDatasetH *phTmpDS )
+
+{
+    int i;
+    GDALWarpOptions *psWO;
     double adfDstGeoTransform[6];
-    double res_x, res_y;
-    int nPixels,nLines;
-
-    hDriver = GDALGetDriverByName( "MEM" );
+    GDALDatasetH hDstDS;
+    int    nDstPixels, nDstLines;
+    CPLErr eErr;
+    int bHaveNodata = FALSE;
+    char** papszOptions = NULL;
 
 /* -------------------------------------------------------------------- */
-/*      Create a transformation object from the source to               */
-/*      destination coordinate system.                                  */
+/*      Populate the warp options.                                      */
 /* -------------------------------------------------------------------- */
-    hTransformArg =
-        GDALCreateGenImgProjTransformer( hSrcDS, pszSourceSRS,
-                                         NULL, pszTargetSRS,
-                                         TRUE, 1000.0, 0 );
 
-    if( hTransformArg == NULL )
+    psWO = GDALCreateWarpOptions();
+    psWO->papszWarpOptions = CSLDuplicate(papszWarpOptions);
+
+    psWO->eResampleAlg = eResampleAlg;
+
+    psWO->hSrcDS = hSrcDS;
+
+    psWO->nBandCount = GDALGetRasterCount( hSrcDS );
+    if( psWO->nBandCount == 4 )
+    {
+        psWO->nBandCount = 3;
+        psWO->nSrcAlphaBand = 4;
+        psWO->nDstAlphaBand = 4;
+    }
+    /* Due to the reprojection, we might get transparency in the edges */
+    else if( psWO->nBandCount == 3 )
+        psWO->nDstAlphaBand = 4;
+
+    psWO->panSrcBands = (int*)CPLMalloc( sizeof(int) * psWO->nBandCount );
+    psWO->panDstBands = (int*)CPLMalloc( sizeof(int) * psWO->nBandCount );
+
+    for( i = 0; i < psWO->nBandCount; i++ )
+    {
+        psWO->panSrcBands[i] = i+1;
+        psWO->panDstBands[i] = i+1;
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Set nodata values if existing                                   */
+/* -------------------------------------------------------------------- */
+    GDALGetRasterNoDataValue( GDALGetRasterBand(hSrcDS, 1), &bHaveNodata);
+    if( bHaveNodata )
+    {
+        psWO->padfSrcNoDataReal = (double *) 
+            CPLMalloc(psWO->nBandCount*sizeof(double));
+        psWO->padfSrcNoDataImag = (double *) 
+            CPLCalloc(psWO->nBandCount, sizeof(double)); /* zero initialized */
+
+        for( i = 0; i < psWO->nBandCount; i++ )
+        {
+            GDALRasterBandH hBand = GDALGetRasterBand( hSrcDS, i+1 );
+
+            double dfReal = GDALGetRasterNoDataValue( hBand, &bHaveNodata );
+
+            if( bHaveNodata )
+            {
+                psWO->padfSrcNoDataReal[i] = dfReal;
+            }
+            else
+            {
+                psWO->padfSrcNoDataReal[i] = -123456.789;
+            }
+        }
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Create the transformer.                                         */
+/* -------------------------------------------------------------------- */
+    psWO->pfnTransformer = GDALGenImgProjTransform;
+    psWO->pTransformerArg = 
+        GDALCreateGenImgProjTransformer( psWO->hSrcDS, pszSrcWKT, 
+                                         NULL, pszDstWKT,
+                                         TRUE, 1.0, 0 );
+
+    if( psWO->pTransformerArg == NULL )
+    {
+        GDALDestroyWarpOptions( psWO );
         return NULL;
+    }
 
 /* -------------------------------------------------------------------- */
-/*      Get approximate output definition.                              */
+/*      Figure out the desired output bounds and resolution.            */
 /* -------------------------------------------------------------------- */
-    if( GDALSuggestedWarpOutput( hSrcDS,
-                                 GDALGenImgProjTransform, hTransformArg,
-                                 adfDstGeoTransform, &nPixels, &nLines )
-        != CE_None )
+    eErr =
+        GDALSuggestedWarpOutput( hSrcDS, psWO->pfnTransformer, 
+                                 psWO->pTransformerArg, 
+                                 adfDstGeoTransform, &nDstPixels, &nDstLines );
+    if( eErr != CE_None )
+    {
+        GDALDestroyTransformer( psWO->pTransformerArg );
+        GDALDestroyWarpOptions( psWO );
         return NULL;
+    }
 
-    GDALDestroyGenImgProjTransformer( hTransformArg );
+/* -------------------------------------------------------------------- */
+/*      To minimize the risk of extra resampling done by generic        */
+/*      RasterIO itself and maximize resampling done in the wraper,     */
+/*      adjust the resolution so that the overview factor of the output */
+/*      dataset that will indirectly query matches an exiting overview  */
+/*      factor of the input dataset.                                    */
+/* -------------------------------------------------------------------- */
+    {
+        double dfDesiredXRes = (extent->maxx - extent->minx) / width;
+        double dfDesiredYRes = (extent->maxy - extent->miny) / height;
+        double dfDesiredRes = MIN( dfDesiredXRes, dfDesiredYRes );
+        double dfGuessedFullRes = MIN( adfDstGeoTransform[1],
+                                   fabs(adfDstGeoTransform[5]) );
+        double dfApproxDstOvrRatio = dfDesiredRes / dfGuessedFullRes;
 
-    res_x = (extent->maxx - extent->minx) / width;
-    res_y = (extent->maxy - extent->miny) / height;
+        GDALRasterBandH hFirstBand = GDALGetRasterBand(hSrcDS, 1);
+        int nOvrCount = GDALGetOverviewCount(hFirstBand);
+        int nSrcXSize = GDALGetRasterBandXSize(hFirstBand);
+        int i;
+        double dfSrcOvrRatio = 1.0;
+        int iSelectedOvr = -1;
+        for( i = 0; *phTmpDS == NULL && i < nOvrCount; i ++)
+        {
+            GDALRasterBandH hOvr = GDALGetOverview(hFirstBand, i);
+            int nOvrXSize = GDALGetRasterBandXSize(hOvr);
+            double dfCurOvrRatio = (double)nSrcXSize / nOvrXSize;
+            if(dfCurOvrRatio > dfApproxDstOvrRatio+0.1 ) /* +0.1 to avoid rounding issues */
+            {
+                break;
+            }
+            dfSrcOvrRatio = dfCurOvrRatio;
+            iSelectedOvr = i;
+        }
 
+#ifdef USE_PRE_GDAL2_METHOD
+        if( iSelectedOvr >= 0 )
+        {
+            GDALDestroyTransformer( psWO->pTransformerArg );
+            GDALDestroyWarpOptions( psWO );
+
+            *phTmpDS = CreateOverviewVRTDataset(hSrcDS, iSelectedOvr);
+            return CreateWarpedVRT( *phTmpDS,
+                                    pszSrcWKT,
+                                    pszDstWKT,
+                                    width, height,
+                                    extent,
+                                    eResampleAlg, 
+                                    dfMaxError, 
+                                    papszWarpOptions,
+                                    phTmpDS );
+        }
+#endif
+
+        adfDstGeoTransform[1] = dfDesiredXRes / dfSrcOvrRatio;
+        adfDstGeoTransform[5] = -dfDesiredYRes / dfSrcOvrRatio;
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Compute geotransform and raster dimension for our extent of     */
+/*      interest.                                                       */
+/* -------------------------------------------------------------------- */
     adfDstGeoTransform[0] = extent->minx;
+    adfDstGeoTransform[2] = 0.0;
     adfDstGeoTransform[3] = extent->maxy;
-    adfDstGeoTransform[1] = res_x;
-    adfDstGeoTransform[5] = -res_y;
+    adfDstGeoTransform[4] = 0.0;
+    nDstPixels = (int)( (extent->maxx - extent->minx) / adfDstGeoTransform[1] + 0.5 );
+    nDstLines = (int)( (extent->maxy - extent->miny) / fabs(adfDstGeoTransform[5]) + 0.5 );
+    /*printf("nDstPixels=%d nDstLines=%d\n", nDstPixels, nDstLines);*/
 
+/* -------------------------------------------------------------------- */
+/*      Update the transformer to include an output geotransform        */
+/*      back to pixel/line coordinates.                                 */
+/* -------------------------------------------------------------------- */
 
-    hDstDS = GDALCreate( hDriver, "temp_gdal", width, height, 4, GDT_Byte, NULL);
+    GDALSetGenImgProjTransformerDstGeoTransform( 
+        psWO->pTransformerArg, adfDstGeoTransform );
 
+/* -------------------------------------------------------------------- */
+/*      Do we want to apply an approximating transformation?            */
+/* -------------------------------------------------------------------- */
+    if( dfMaxError > 0.0 )
+    {
+        psWO->pTransformerArg = 
+            GDALCreateApproxTransformer( psWO->pfnTransformer, 
+                                         psWO->pTransformerArg, 
+                                         dfMaxError );
+        psWO->pfnTransformer = GDALApproxTransform;
+        GDALApproxTransformerOwnsSubtransformer(psWO->pTransformerArg, TRUE);
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Create the VRT file.                                            */
+/* -------------------------------------------------------------------- */
+
+    /* We could potentially used GDALCreateWarpedVRT() instead of this logic */
+    /* but GDALCreateWarpedVRT() in GDAL < 2.0.1 doesn't create the destination */
+    /* alpha band. */
+
+    papszOptions = CSLSetNameValue(NULL, "SUBCLASS", "VRTWarpedDataset");
+    hDstDS = GDALCreate( GDALGetDriverByName("VRT"), "", nDstPixels, nDstLines,
+                         psWO->nBandCount + ((psWO->nDstAlphaBand != 0) ? 1 : 0),
+                         GDT_Byte, papszOptions );
+    CSLDestroy(papszOptions);
     if( hDstDS == NULL )
+    {
+        GDALDestroyWarpOptions( psWO );
         return NULL;
+    }
 
-/* -------------------------------------------------------------------- */
-/*      Write out the projection definition.                            */
-/* -------------------------------------------------------------------- */
-    GDALSetProjection( hDstDS, pszTargetSRS );
+    psWO->hDstDS = hDstDS;
+
     GDALSetGeoTransform( hDstDS, adfDstGeoTransform );
+    if( GDALInitializeWarpedVRT( hDstDS, psWO ) != CE_None )
+    {
+        GDALClose(hDstDS);
+        GDALDestroyWarpOptions( psWO );
+        return NULL;
+    }
+
+    GDALDestroyWarpOptions( psWO );
 
     return hDstDS;
 }
+
 
 /**
  * \private \memberof mapcache_source_gdal
@@ -128,14 +390,13 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
 {
   mapcache_source_gdal *gdal = (mapcache_source_gdal*)map->tileset->source;
   GDALDatasetH  hSrcDS,hDstDS;
+  GDALDatasetH hTmpDS = NULL;
   OGRSpatialReferenceH hDstSRS;
   char *src_srs,*dst_srs;
   mapcache_buffer *data;
-  char **papszWarpOptions = NULL;
-  void *hTransformArg, *hGenImgProjArg=NULL;
-  GDALTransformerFunc pfnTransformer = NULL;
-  GDALRasterBandH *redband, *greenband, *blueband, *alphaband;
   unsigned char *rasterdata;
+  CPLErr eErr;
+  int bands_bgra[] = { 3, 2, 1, 4 }; /* mapcache buffer order is BGRA */
 
   CPLErrorReset();
 
@@ -144,14 +405,17 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
   /* -------------------------------------------------------------------- */
   hSrcDS = GDALOpen( gdal->datastr, GA_ReadOnly );
 
-  if( hSrcDS == NULL )
-    exit( 2 );
+  if( hSrcDS == NULL ) {
+    ctx->set_error(ctx, 500, "Cannot open gdal source for %s .\n", gdal->source.name );
+    return;
+  }
 
   /* -------------------------------------------------------------------- */
-  /*      Check that there's at least one raster band                     */
+  /*      Check that there's 3 or 4 raster bands.                         */
   /* -------------------------------------------------------------------- */
-  if ( GDALGetRasterCount(hSrcDS) == 0 ) {
-    ctx->set_error(ctx, 500, "Input gdal source for %s has no raster bands.\n", gdal->source.name );
+  if ( GDALGetRasterCount(hSrcDS) != 3 && GDALGetRasterCount(hSrcDS) != 4) {
+    ctx->set_error(ctx, 500, "Input gdal source for %s has %d raster bands, but only 3 or 4 are supported.\n",
+                   gdal->source.name, GDALGetRasterCount(hSrcDS) );
     GDALClose(hSrcDS);
     return;
   }
@@ -171,80 +435,90 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
 
 
   hDstSRS = OSRNewSpatialReference( NULL );
-  if( OSRSetFromUserInput( hDstSRS, map->grid_link->grid->srs ) == OGRERR_NONE )
+  if( OSRSetFromUserInput( hDstSRS, map->grid_link->grid->srs ) == OGRERR_NONE ) {
+    dst_srs = NULL;
     OSRExportToWkt( hDstSRS, &dst_srs );
+  }
   else {
     ctx->set_error(ctx,500,"failed to parse gdal srs %s",map->grid_link->grid->srs);
+    GDALClose(hSrcDS);
     return;
   }
 
   OSRDestroySpatialReference( hDstSRS );
 
-  hDstDS = GDALWarpCreateOutput( hSrcDS, src_srs, dst_srs, map->width, map->height, &map->extent);
-  papszWarpOptions = CSLSetNameValue( papszWarpOptions, "INIT", "0" );
+  hDstDS = CreateWarpedVRT( hSrcDS, src_srs, dst_srs,
+                            map->width, map->height,
+                            &map->extent,
+                            gdal->eResampleAlg, 0.125, NULL, &hTmpDS );
 
-/* -------------------------------------------------------------------- */
-/*      Create a transformation object from the source to               */
-/*      destination coordinate system.                                  */
-/* -------------------------------------------------------------------- */
-  hGenImgProjArg = GDALCreateGenImgProjTransformer( hSrcDS, src_srs,
-                                                    hDstDS, dst_srs,
-                                                    TRUE, 1000.0, 0 );
+  CPLFree(dst_srs);
 
-  if( hGenImgProjArg == NULL ) {
-    ctx->set_error(ctx,500,"failed to GDALCreateGenImgProjTransformer()");
+  if( hDstDS == NULL ) {
+    ctx->set_error(ctx, 500,"CreateWarpedVRT() failed");
+    GDALClose(hSrcDS);
     return;
   }
 
-/* -------------------------------------------------------------------- */
-/*      Warp the transformer with a linear approximator                 */
-/* -------------------------------------------------------------------- */
-  hTransformArg = GDALCreateApproxTransformer( GDALGenImgProjTransform,
-                                               hGenImgProjArg, 0.1 );
-  pfnTransformer = GDALApproxTransform;
-
-  /* -------------------------------------------------------------------- */
-  /*      Now actually invoke the warper to do the work.                  */
-  /* -------------------------------------------------------------------- */
-  GDALSimpleImageWarp( hSrcDS, hDstDS, 0, NULL,
-                       pfnTransformer, hTransformArg,
-                       GDALDummyProgress, NULL, papszWarpOptions );
-
-
-  CSLDestroy( papszWarpOptions );
-
-  GDALDestroyApproxTransformer( hTransformArg );
-  GDALDestroyGenImgProjTransformer( hGenImgProjArg );
-
-  if(GDALGetRasterCount(hDstDS) < 3) {
-    ctx->set_error(ctx, 500,"gdal did not create a 3/4 band image");
+  if(GDALGetRasterCount(hDstDS) != 4) {
+    ctx->set_error(ctx, 500,"gdal did not create a 4 band image");
+    GDALClose(hDstDS); /* close first this one, as it references hSrcDS */
+    GDALClose(hSrcDS);
     return;
-  }
-
-
-  redband = GDALGetRasterBand(hDstDS,1);
-  greenband = GDALGetRasterBand(hDstDS,2);
-  blueband = GDALGetRasterBand(hDstDS,3);
-  if(GDALGetRasterCount(hDstDS) > 3) {
-    alphaband = GDALGetRasterBand(hDstDS,4);
-  } else {
-    alphaband = NULL;
   }
 
   data = mapcache_buffer_create(map->height*map->width*4,ctx->pool);
   rasterdata = data->buf;
 
-  GDALRasterIO(blueband,GF_Read,0,0,map->width,map->height, rasterdata,map->width,map->height,GDT_Byte,4,4*map->width);
-  GDALRasterIO(greenband,GF_Read,0,0,map->width,map->height, rasterdata+1,map->width, map->height,GDT_Byte,4,4*map->width);
-  GDALRasterIO(redband,GF_Read,0,0,map->width,map->height,rasterdata+2,map->width,map->height,GDT_Byte,4,4*map->width);
-  if(GDALGetRasterCount(hDstDS)>=4)
-    GDALRasterIO(alphaband,GF_Read,0,0,map->width,map->height,rasterdata+3,map->width,map->height,GDT_Byte,4,4*map->width);
-  else {
-    unsigned char *alphaptr;
-    int i;
-    for(alphaptr = rasterdata+3, i=0; i<map->width*map->height; i++, alphaptr+=4) {
-      *alphaptr = 255;
+#if GDAL_VERSION_MAJOR >= 2
+  {
+    GDALRasterIOExtraArg sExtraArg;
+    INIT_RASTERIO_EXTRA_ARG(sExtraArg);
+    if( gdal->eResampleAlg == GRA_Bilinear )
+      sExtraArg.eResampleAlg = GRIORA_Bilinear;
+    else if( gdal->eResampleAlg == GRA_Cubic )
+      sExtraArg.eResampleAlg = GRIORA_Cubic;
+    else if( gdal->eResampleAlg == GRA_CubicSpline )
+      sExtraArg.eResampleAlg = GRIORA_CubicSpline;
+    else if( gdal->eResampleAlg == GRA_Lanczos )
+      sExtraArg.eResampleAlg = GRIORA_Lanczos;
+    else if( gdal->eResampleAlg == GRA_Average )
+      sExtraArg.eResampleAlg = GRIORA_Average;
+
+    if( gdal->srcOvrLevel != NULL )
+    {
+      /* If the user specified a particular strategy to choose the source */
+      /* overview level, apply it now */
+      GDALSetMetadataItem(hDstDS, "SrcOvrLevel",gdal->srcOvrLevel, NULL);
     }
+
+    /* Hopefully, given how we adjust hDstDS resolution, we should query */
+    /* exactly at the resolution of one overview level of hDstDS, and not */
+    /* do extra resampling in generic RasterIO, but just in case specify */
+    /* the resampling alg in sExtraArg. */
+    eErr = GDALDatasetRasterIOEx( hDstDS, GF_Read,0,0,
+                                  GDALGetRasterXSize(hDstDS),
+                                  GDALGetRasterYSize(hDstDS),
+                                  rasterdata,map->width,map->height,GDT_Byte,
+                                  4, bands_bgra,
+                                  4,4*map->width,1, &sExtraArg );
+  }
+#else
+  eErr = GDALDatasetRasterIO( hDstDS, GF_Read,0,0,
+                              GDALGetRasterXSize(hDstDS),
+                              GDALGetRasterYSize(hDstDS),
+                              rasterdata,map->width,map->height,GDT_Byte,
+                              4, bands_bgra,
+                              4,4*map->width,1 );
+#endif
+
+  if( eErr != CE_None ) {
+    ctx->set_error(ctx, 500,"GDAL I/O error occured");
+    GDALClose(hDstDS); /* close first this one, as it references hTmpDS or hSrcDS */
+    if( hTmpDS )
+      GDALClose(hTmpDS); /* references hSrcDS, so close before */
+    GDALClose(hSrcDS);
+    return;
   }
 
   map->raw_image = mapcache_image_create(ctx);
@@ -252,13 +526,11 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
   map->raw_image->h = map->height;
   map->raw_image->stride = map->width * 4;
   map->raw_image->data = rasterdata;
-  if(alphaband)
-    map->raw_image->has_alpha = MC_ALPHA_UNKNOWN;
-  else
-    map->raw_image->has_alpha = MC_ALPHA_NO;
+  map->raw_image->has_alpha = MC_ALPHA_UNKNOWN;
 
-
-  GDALClose( hDstDS );
+  GDALClose( hDstDS ); /* close first this one, as it references hTmpDS or hSrcDS */
+  if( hTmpDS )
+    GDALClose(hTmpDS); /* references hSrcDS, so close before */
   GDALClose( hSrcDS);
 }
 
@@ -290,17 +562,45 @@ void _mapcache_source_gdal_configuration_check(mapcache_context *ctx, mapcache_c
     mapcache_source *source)
 {
   mapcache_source_gdal *src = (mapcache_source_gdal*)source;
+  const char* pszResampleAlg;
+
   /* check all required parameters are configured */
-  if(!strlen(src->datastr)) {
+  if( src->datastr == NULL || !strlen(src->datastr)) {
     ctx->set_error(ctx, 500, "gdal source %s has no data",source->name);
     return;
   }
-  src->poDataset = (GDALDatasetH*)GDALOpen(src->datastr,GA_ReadOnly);
-  if( src->poDataset == NULL ) {
+  src->hDataset = GDALOpen(src->datastr,GA_ReadOnly);
+  if( src->hDataset == NULL ) {
     ctx->set_error(ctx, 500, "gdalOpen failed on data %s", src->datastr);
     return;
   }
+  GDALClose(src->hDataset);
+  src->hDataset = NULL;
 
+  src->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;
+  pszResampleAlg = apr_table_get(src->gdal_params,"resampleAlg");
+  if( pszResampleAlg != NULL ) {
+    if( EQUALN( pszResampleAlg, "NEAR", 4) )
+      src->eResampleAlg = GRA_NearestNeighbour;
+    else if( EQUAL( pszResampleAlg, "BILINEAR") )
+      src->eResampleAlg = GRA_Bilinear;
+    else if( EQUAL( pszResampleAlg, "CUBIC") )
+      src->eResampleAlg = GRA_Cubic;
+    else if( EQUAL( pszResampleAlg, "CUBICSPLINE") )
+      src->eResampleAlg = GRA_CubicSpline;
+    else if( EQUAL( pszResampleAlg, "LANCZOS") )
+      src->eResampleAlg = GRA_Lanczos;
+#if GDAL_VERSION_MAJOR >= 2
+    else if( EQUAL( pszResampleAlg, "AVERAGE") )
+      src->eResampleAlg = GRA_Average;
+#endif
+    else {
+      ctx->set_error(ctx, 500, "unsupported resampleAlg: %s", pszResampleAlg);
+      return;
+    }
+  }
+
+  src->srcOvrLevel = apr_table_get(src->gdal_params,"srcOvrLevel");
 }
 #endif //USE_GDAL
 
