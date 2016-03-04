@@ -200,6 +200,10 @@ static void load_config(mapcache_context *ctx, char *filename)
   if(GC_HAS_ERROR(ctx)) goto failed_load;
   mapcache_configuration_post_config(ctx, cfg);
   if(GC_HAS_ERROR(ctx)) goto failed_load;
+  if(mapcache_config_services_enabled(ctx,cfg) <= 0) {
+    ctx->set_error(ctx,500,"no mapcache <service>s configured/enabled, no point in continuing.");
+    goto failed_load;
+  }
 
   /* no error, destroy the previous pool if we are reloading the config */
   if(config_pool) {

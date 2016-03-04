@@ -646,6 +646,10 @@ MS_DLL_EXPORT void mapcache_service_dispatch_request(mapcache_context *ctx,
                                        char *pathinfo,
                                        apr_table_t *params,
                                        mapcache_cfg *config);
+/**
+ * \brief return the number of enabled/configured services
+ */
+MS_DLL_EXPORT int mapcache_config_services_enabled(mapcache_context *ctx, mapcache_cfg *config);
 
 
 /** @} */

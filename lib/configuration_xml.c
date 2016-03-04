@@ -1087,8 +1087,6 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
   } else if ((node = ezxml_child(doc,"services")) != NULL) {
     ctx->log(ctx,MAPCACHE_WARN,"<services> tag is deprecated, use <service type=\"wms\" enabled=\"true|false\">");
     parseServices(ctx, node, config);
-  } else {
-    ctx->set_error(ctx, 400, "no <services> configured");
   }
   if(GC_HAS_ERROR(ctx)) goto cleanup;
 
