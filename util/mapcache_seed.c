@@ -227,19 +227,22 @@ int trypop_queue(struct seed_cmd *cmd)
   return ret;
 }
 
+#define SEEDER_OPT_THREAD_DELAY 256
+
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
   { "cache", 'C', TRUE, "override cache used by selected tileset (useful for selectively seeding fallback/multitier caches)"},
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
+  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
 #endif
   { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
   { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
   { "force", 'f', FALSE, "force tile recreation even if it already exists" },
   { "grid", 'g', TRUE, "grid to seed" },
   { "help", 'h', FALSE, "show help" },
-  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"level-by-level\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and level-by-level for others. Use this flag to override." },
+  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"scanline\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and scanline for others. Use this flag to override." },
 #ifdef USE_CLIPPERS
   { "ogr-layer", 'l', TRUE, "layer inside datasource"},
 #endif
@@ -514,7 +517,7 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
   tile->z = curz;
 }
 
-void cmd_worker()
+void feed_worker()
 {
   int n;
   mapcache_tile *tile;
@@ -716,8 +719,15 @@ int seed_process() {
   return 0;
 }
 #endif
+
 static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
   seed_worker();
+  return NULL;
+}
+
+static void* APR_THREAD_FUNC feed_thread_fn(apr_thread_t *thread, void *data) {
+  //start the thread that will populate the queue.
+  feed_worker();
   return NULL;
 }
 
@@ -849,9 +859,8 @@ int main(int argc, const char **argv)
   /* initialize apr_getopt_t */
   apr_getopt_t *opt;
   const char *configfile=NULL;
-  apr_thread_t **threads;
-  apr_thread_t *log_thread;
-  apr_threadattr_t *thread_attrs;
+  apr_thread_t **seed_threads;
+  apr_thread_t *log_thread,*feed_thread;
   const char *tileset_name=NULL;
   const char *tileset_transfer_name=NULL;
   const char *grid_name = NULL;
@@ -868,6 +877,7 @@ int main(int argc, const char **argv)
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
   double *extent_array = NULL;
+  double thread_delay = 0.0;
 
 #ifdef USE_CLIPPERS
   OGRFeatureH hFeature;
@@ -924,10 +934,10 @@ int main(int argc, const char **argv)
       case 'i':
         if(!strcmp(optarg,"drill-down")) {
           iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
-        } else if(!strcmp(optarg,"level-by-level")) {
+        } else if(!strcmp(optarg,"level-by-level") || !strcmp(optarg, "scanline")) {
           iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
         } else {
-          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"level-by-level\"");
+          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"scanline\"");
         }
         break;
       case 'L':
@@ -1034,6 +1044,11 @@ int main(int argc, const char **argv)
         break;
       case 'w':
         ogr_where = optarg;
+        break;
+      case SEEDER_OPT_THREAD_DELAY:
+        thread_delay = strtod(optarg, NULL);
+        if(thread_delay < 0.0 )
+          return usage(argv[0], "failed to parse thread_delay, expecting positive number of seconds");
         break;
 #endif
 
@@ -1244,7 +1259,7 @@ int main(int argc, const char **argv)
     /* ensure our metasize is a power of 2 in drill down mode */
     if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
       if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
-        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"level-by-level\"");
+        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"scanline\"");
       }
     }
 
@@ -1392,7 +1407,7 @@ int main(int argc, const char **argv)
         pids[i] = pid;
       }
     }
-    cmd_worker();
+    feed_worker();
     for(i=0; i<nprocesses; i++) {
       int stat_loc;
       waitpid(pids[i],&stat_loc,0);
@@ -1402,23 +1417,37 @@ int main(int argc, const char **argv)
     return usage(argv[0],"bug: multi process support not available");
 #endif
   } else {
+    apr_threadattr_t *seed_thread_attrs;
     //create the queue where tile requests will be put
     apr_queue_create(&work_queue,nthreads,ctx.pool);
 
-    //start the rendering threads.
-    apr_threadattr_create(&thread_attrs, ctx.pool);
-    threads = (apr_thread_t**)apr_pcalloc(ctx.pool, nthreads*sizeof(apr_thread_t*));
-    for(n=0; n<nthreads; n++) {
-      apr_thread_create(&threads[n], thread_attrs, seed_thread, NULL, ctx.pool);
+    {
+      /* start the feeding thread */
+      apr_threadattr_t *feed_thread_attrs;
+      //start the rendering threads.
+      apr_threadattr_create(&feed_thread_attrs, ctx.pool);
+      apr_thread_create(&feed_thread, feed_thread_attrs, feed_thread_fn, NULL, ctx.pool);
     }
 
-    //start the thread that will populate the queue.
-    cmd_worker();
+
+
+    //start the rendering threads.
+    apr_threadattr_create(&seed_thread_attrs, ctx.pool);
+    seed_threads = (apr_thread_t**)apr_pcalloc(ctx.pool, nthreads*sizeof(apr_thread_t*));
+    for(n=0; n<nthreads; n++) {
+      if(n && thread_delay > 0) {
+        apr_sleep((int)(thread_delay * 1000000));
+      }
+      apr_thread_create(&seed_threads[n], seed_thread_attrs, seed_thread, NULL, ctx.pool);
+    }
+
 
     //the worker has finished generating the list of tiles to be seeded, now wait for the rendering threads to finish
     for(n=0; n<nthreads; n++) {
-      apr_thread_join(&rv, threads[n]);
+      apr_thread_join(&rv, seed_threads[n]);
     }
+
+    apr_thread_join(&rv, feed_thread);
   }
   {
     int retries=0;
