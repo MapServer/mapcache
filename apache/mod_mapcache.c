@@ -679,7 +679,7 @@ static const char* mapcache_add_alias(cmd_parms *cmd, void *cfg, const char *ali
   if(mapcache_config_services_enabled(ctx, alias_entry->cfg) <= 0) {
     return "no mapcache <service>s configured/enabled, no point in continuing.";
   }
-  if(quick && *quick) {
+  if(quick && !strcmp(quick,"quick")) {
     APR_ARRAY_PUSH(sconfig->quickaliases,mapcache_alias_entry*) = alias_entry;
     ap_log_error(APLOG_MARK, APLOG_INFO, 0, cmd->server, "loaded mapcache configuration file from %s on (quick) endpoint %s", alias_entry->configfile, alias_entry->endpoint);
   } else {
