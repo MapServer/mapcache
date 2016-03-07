@@ -435,10 +435,10 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_cache *pcach
      * i.e. normally only once.
      */
     tile->mtime = finfo.mtime;
-    tile->encoded_data = mapcache_buffer_create(size,ctx->pool);
 
 #ifndef NOMMAP
 
+    tile->encoded_data = mapcache_buffer_create(0,ctx->pool);
     rv = apr_mmap_create(&tilemmap,f,0,finfo.size,APR_MMAP_READ,ctx->pool);
     if(rv != APR_SUCCESS) {
       char errmsg[120];
@@ -448,6 +448,7 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_cache *pcach
     tile->encoded_data->buf = tilemmap->mm;
     tile->encoded_data->size = tile->encoded_data->avail = finfo.size;
 #else
+    tile->encoded_data = mapcache_buffer_create(size,ctx->pool);
     //manually add the data to our buffer
     apr_file_read(f,(void*)tile->encoded_data->buf,&size);
     tile->encoded_data->size = size;

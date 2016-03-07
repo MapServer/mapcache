@@ -57,7 +57,6 @@ mapcache_buffer *mapcache_buffer_create(size_t initialStorage, apr_pool_t* pool)
   mapcache_buffer *buffer = apr_pcalloc(pool, sizeof(mapcache_buffer));
   if(!buffer) return NULL;
   buffer->pool = pool;
-  if(initialStorage <=0) initialStorage = 1;
   buffer->avail = initialStorage;
   if(buffer->avail) {
     buffer->buf = malloc(buffer->avail);
