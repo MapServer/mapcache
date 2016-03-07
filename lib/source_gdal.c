@@ -140,6 +140,7 @@ static mapcache_pooled_connection* _gdal_get_connection(mapcache_context *ctx, m
 
   params.gdal = gdal;
   params.dst_srs = dst_srs;
+  params.gdal_data = gdal_data;
 
   key = apr_pstrcat(ctx->pool, gdal_data, dst_srs, NULL);
 
@@ -479,7 +480,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
 
   CPLErrorReset();
 
-  pc = _gdal_get_connection(ctx, gdal, gdal->datastr, map->grid_link->grid->srs);
+  pc = _gdal_get_connection(ctx, gdal, map->grid_link->grid->srs, gdal->datastr );
   GC_CHECK_ERROR(ctx);
 
   gdal_conn = (gdal_connection*) pc->connection;
