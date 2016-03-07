@@ -270,9 +270,9 @@ static const apr_getopt_option_t seed_options[] = {
 
 void handle_sig_int(int signal)
 {
+#define signal_msg "SIGINT received, waiting for threads to finish\npress ctrl-C again to force terminate\n"
   if(!sig_int_received) {
-    fprintf(stderr,"SIGINT received, waiting for threads to finish\n");
-    fprintf(stderr,"press ctrl-C again to force terminate, you might end up with locked tiles\n");
+    write(2,signal_msg,strlen(signal_msg));
     sig_int_received = 1;
   } else {
     exit(signal);
