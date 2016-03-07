@@ -1032,6 +1032,11 @@ int main(int argc, const char **argv)
         }
         apr_table_set(argdimensions,dimkey,dimvalue);
         break;
+      case SEEDER_OPT_THREAD_DELAY:
+        thread_delay = strtod(optarg, NULL);
+        if(thread_delay < 0.0 )
+          return usage(argv[0], "failed to parse thread_delay, expecting positive number of seconds");
+        break;
 #ifdef USE_CLIPPERS
       case 'd':
         ogr_datasource = optarg;
@@ -1044,11 +1049,6 @@ int main(int argc, const char **argv)
         break;
       case 'w':
         ogr_where = optarg;
-        break;
-      case SEEDER_OPT_THREAD_DELAY:
-        thread_delay = strtod(optarg, NULL);
-        if(thread_delay < 0.0 )
-          return usage(argv[0], "failed to parse thread_delay, expecting positive number of seconds");
         break;
 #endif
 
