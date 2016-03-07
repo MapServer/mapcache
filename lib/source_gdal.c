@@ -61,7 +61,6 @@ struct mapcache_source_gdal {
   mapcache_source source;
   const char *datastr; /**< the gdal source string*/
   const char *srs_wkt;
-  apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
   GDALResampleAlg eResampleAlg; /**< resampling algorithm */
   const char *srcOvrLevel; /**< strategy to pickup source overview: AUTO, NONE, 
                                 AUTO-xxx, xxxx. See -ovr doc in http://www.gdal.org/gdalwarp.html.
@@ -585,10 +584,29 @@ void _mapcache_source_gdal_configuration_parse(mapcache_context *ctx, ezxml_t no
     src->datastr = apr_pstrdup(ctx->pool,cur_node->txt);
   }
 
-  if ((cur_node = ezxml_child(node,"gdalparams")) != NULL) {
-    for(cur_node = cur_node->child; cur_node; cur_node = cur_node->sibling) {
-      apr_table_set(src->gdal_params, cur_node->name, cur_node->txt);
+  if ((cur_node = ezxml_child(node,"resample")) != NULL && *cur_node->txt) {
+    if( EQUALN( cur_node->txt, "NEAR", 4) )
+      src->eResampleAlg = GRA_NearestNeighbour;
+    else if( EQUAL( cur_node->txt, "BILINEAR") )
+      src->eResampleAlg = GRA_Bilinear;
+    else if( EQUAL( cur_node->txt, "CUBIC") )
+      src->eResampleAlg = GRA_Cubic;
+    else if( EQUAL( cur_node->txt, "CUBICSPLINE") )
+      src->eResampleAlg = GRA_CubicSpline;
+    else if( EQUAL( cur_node->txt, "LANCZOS") )
+      src->eResampleAlg = GRA_Lanczos;
+#if GDAL_VERSION_MAJOR >= 2
+    else if( EQUAL( cur_node->txt, "AVERAGE") )
+      src->eResampleAlg = GRA_Average;
+#endif
+    else {
+      ctx->set_error(ctx, 500, "unsupported gdal <resample>: %s", cur_node->txt);
+      return;
     }
+  }
+
+  if ((cur_node = ezxml_child(node,"overview-strategy")) != NULL && *cur_node->txt) {
+    src->srcOvrLevel = apr_pstrdup(ctx->pool,cur_node->txt);
   }
 }
 
@@ -600,7 +618,6 @@ void _mapcache_source_gdal_configuration_check(mapcache_context *ctx, mapcache_c
     mapcache_source *source)
 {
   mapcache_source_gdal *src = (mapcache_source_gdal*)source;
-  const char* pszResampleAlg;
   GDALDatasetH hDataset;
 
   /* check all required parameters are configured */
@@ -627,30 +644,6 @@ void _mapcache_source_gdal_configuration_check(mapcache_context *ctx, mapcache_c
   }
   GDALClose(hDataset);
 
-  src->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;
-  pszResampleAlg = apr_table_get(src->gdal_params,"resampleAlg");
-  if( pszResampleAlg != NULL ) {
-    if( EQUALN( pszResampleAlg, "NEAR", 4) )
-      src->eResampleAlg = GRA_NearestNeighbour;
-    else if( EQUAL( pszResampleAlg, "BILINEAR") )
-      src->eResampleAlg = GRA_Bilinear;
-    else if( EQUAL( pszResampleAlg, "CUBIC") )
-      src->eResampleAlg = GRA_Cubic;
-    else if( EQUAL( pszResampleAlg, "CUBICSPLINE") )
-      src->eResampleAlg = GRA_CubicSpline;
-    else if( EQUAL( pszResampleAlg, "LANCZOS") )
-      src->eResampleAlg = GRA_Lanczos;
-#if GDAL_VERSION_MAJOR >= 2
-    else if( EQUAL( pszResampleAlg, "AVERAGE") )
-      src->eResampleAlg = GRA_Average;
-#endif
-    else {
-      ctx->set_error(ctx, 500, "unsupported resampleAlg: %s", pszResampleAlg);
-      return;
-    }
-  }
-
-  src->srcOvrLevel = apr_table_get(src->gdal_params,"srcOvrLevel");
 }
 #endif //USE_GDAL
 
@@ -667,7 +660,7 @@ mapcache_source* mapcache_source_gdal_create(mapcache_context *ctx)
   source->source.render_map = _mapcache_source_gdal_render_metatile;
   source->source.configuration_check = _mapcache_source_gdal_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_gdal_configuration_parse;
-  source->gdal_params = apr_table_make(ctx->pool,4);
+  source->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;
   GDALAllRegister();
   return (mapcache_source*)source;
 #else
