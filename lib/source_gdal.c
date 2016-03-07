@@ -60,14 +60,93 @@ typedef struct mapcache_source_gdal mapcache_source_gdal;
 struct mapcache_source_gdal {
   mapcache_source source;
   const char *datastr; /**< the gdal source string*/
+  const char *srs_wkt;
   apr_table_t *gdal_params; /**< GDAL parameters specified in configuration */
-  GDALDatasetH hDataset;
   GDALResampleAlg eResampleAlg; /**< resampling algorithm */
   const char *srcOvrLevel; /**< strategy to pickup source overview: AUTO, NONE, 
                                 AUTO-xxx, xxxx. See -ovr doc in http://www.gdal.org/gdalwarp.html.
                                 Only used for GDAL >= 2.0 (could probably be made to work for USE_PRE_GDAL2_METHOD with more work) */
 };
 
+typedef struct {
+  mapcache_source_gdal *gdal;
+  const char *gdal_data;
+  const char *dst_srs;
+} gdal_connection_params;
+
+typedef struct {
+  GDALDatasetH hSrcDS;
+  char *dst_srs_wkt;
+} gdal_connection;
+
+void mapcache_source_gdal_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
+  gdal_connection_params *p = (gdal_connection_params*)params;
+  gdal_connection *c = malloc(sizeof(gdal_connection));
+  OGRSpatialReferenceH hDstSRS;
+
+  *conn_ = NULL;
+  /* -------------------------------------------------------------------- */
+  /*      Open source dataset.                                            */
+  /* -------------------------------------------------------------------- */
+  c->hSrcDS = GDALOpen( p->gdal_data, GA_ReadOnly );
+
+  if( c->hSrcDS == NULL ) {
+    ctx->set_error(ctx, 500, "Cannot open gdal source for %s .\n", p->gdal->source.name );
+    free(c);
+    return;
+  }
+
+  /* -------------------------------------------------------------------- */
+  /*      Check that there's 3 or 4 raster bands.                         */
+  /* -------------------------------------------------------------------- */
+  if ( GDALGetRasterCount(c->hSrcDS) != 3 && GDALGetRasterCount(c->hSrcDS) != 4) {
+    ctx->set_error(ctx, 500, "Input gdal source for %s has %d raster bands, but only 3 or 4 are supported.\n",
+                   p->gdal->source.name, GDALGetRasterCount(c->hSrcDS) );
+    GDALClose(c->hSrcDS);
+    free(c);
+    return;
+  }
+
+
+
+  hDstSRS = OSRNewSpatialReference( NULL );
+  if( OSRSetFromUserInput( hDstSRS, p->dst_srs ) == OGRERR_NONE ) {
+    c->dst_srs_wkt = NULL;
+    OSRExportToWkt( hDstSRS, &c->dst_srs_wkt );
+  }
+  else {
+    ctx->set_error(ctx,500,"failed to parse gdal srs %s",p->dst_srs);
+    GDALClose(c->hSrcDS);
+    free(c);
+    return;
+  }
+
+  OSRDestroySpatialReference( hDstSRS );
+  *conn_ = c;
+}
+
+void mapcache_source_gdal_connection_destructor(void *conn_) {
+  gdal_connection *c = (gdal_connection*)conn_;
+  CPLFree(c->dst_srs_wkt);
+  GDALClose(c->hSrcDS);
+  free(c);
+}
+
+static mapcache_pooled_connection* _gdal_get_connection(mapcache_context *ctx, mapcache_source_gdal *gdal, const char *dst_srs, const char *gdal_data)
+{
+  mapcache_pooled_connection *pc;
+  gdal_connection_params params;
+  char *key;
+
+  params.gdal = gdal;
+  params.dst_srs = dst_srs;
+
+  key = apr_pstrcat(ctx->pool, gdal_data, dst_srs, NULL);
+
+  pc = mapcache_connection_pool_get_connection(ctx,key,mapcache_source_gdal_connection_constructor,
+          mapcache_source_gdal_connection_destructor, &params);
+  return pc;
+}
 #ifdef USE_PRE_GDAL2_METHOD
 /* Creates a (virtual) dataset that matches an overview level of the source
    dataset. This dataset has references on the source dataset, so it should
@@ -389,81 +468,39 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
 void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *map)
 {
   mapcache_source_gdal *gdal = (mapcache_source_gdal*)map->tileset->source;
-  GDALDatasetH  hSrcDS,hDstDS;
+  gdal_connection *gdal_conn;
+  GDALDatasetH  hDstDS;
   GDALDatasetH hTmpDS = NULL;
-  OGRSpatialReferenceH hDstSRS;
-  char *src_srs,*dst_srs;
   mapcache_buffer *data;
   unsigned char *rasterdata;
   CPLErr eErr;
+  mapcache_pooled_connection *pc;
   int bands_bgra[] = { 3, 2, 1, 4 }; /* mapcache buffer order is BGRA */
 
   CPLErrorReset();
 
-  /* -------------------------------------------------------------------- */
-  /*      Open source dataset.                                            */
-  /* -------------------------------------------------------------------- */
-  hSrcDS = GDALOpen( gdal->datastr, GA_ReadOnly );
+  pc = _gdal_get_connection(ctx, gdal, gdal->datastr, map->grid_link->grid->srs);
+  GC_CHECK_ERROR(ctx);
 
-  if( hSrcDS == NULL ) {
-    ctx->set_error(ctx, 500, "Cannot open gdal source for %s .\n", gdal->source.name );
-    return;
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*      Check that there's 3 or 4 raster bands.                         */
-  /* -------------------------------------------------------------------- */
-  if ( GDALGetRasterCount(hSrcDS) != 3 && GDALGetRasterCount(hSrcDS) != 4) {
-    ctx->set_error(ctx, 500, "Input gdal source for %s has %d raster bands, but only 3 or 4 are supported.\n",
-                   gdal->source.name, GDALGetRasterCount(hSrcDS) );
-    GDALClose(hSrcDS);
-    return;
-  }
-
-  if( GDALGetProjectionRef( hSrcDS ) != NULL
-      && strlen(GDALGetProjectionRef( hSrcDS )) > 0 ) {
-    src_srs = apr_pstrdup(ctx->pool,GDALGetProjectionRef( hSrcDS ));
-  } else if( GDALGetGCPProjection( hSrcDS ) != NULL
-           && strlen(GDALGetGCPProjection(hSrcDS)) > 0
-           && GDALGetGCPCount( hSrcDS ) > 1 ) {
-    src_srs = apr_pstrdup(ctx->pool,GDALGetGCPProjection( hSrcDS ));
-  } else {
-    ctx->set_error(ctx, 500, "Input gdal source for %s has no defined SRS\n", gdal->source.name );
-    GDALClose(hSrcDS);
-    return;
-  }
+  gdal_conn = (gdal_connection*) pc->connection;
 
 
-  hDstSRS = OSRNewSpatialReference( NULL );
-  if( OSRSetFromUserInput( hDstSRS, map->grid_link->grid->srs ) == OGRERR_NONE ) {
-    dst_srs = NULL;
-    OSRExportToWkt( hDstSRS, &dst_srs );
-  }
-  else {
-    ctx->set_error(ctx,500,"failed to parse gdal srs %s",map->grid_link->grid->srs);
-    GDALClose(hSrcDS);
-    return;
-  }
 
-  OSRDestroySpatialReference( hDstSRS );
-
-  hDstDS = CreateWarpedVRT( hSrcDS, src_srs, dst_srs,
+  hDstDS = CreateWarpedVRT( gdal_conn->hSrcDS, gdal->srs_wkt, gdal_conn->dst_srs_wkt,
                             map->width, map->height,
                             &map->extent,
                             gdal->eResampleAlg, 0.125, NULL, &hTmpDS );
 
-  CPLFree(dst_srs);
-
   if( hDstDS == NULL ) {
     ctx->set_error(ctx, 500,"CreateWarpedVRT() failed");
-    GDALClose(hSrcDS);
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
     return;
   }
 
   if(GDALGetRasterCount(hDstDS) != 4) {
     ctx->set_error(ctx, 500,"gdal did not create a 4 band image");
     GDALClose(hDstDS); /* close first this one, as it references hSrcDS */
-    GDALClose(hSrcDS);
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
     return;
   }
 
@@ -517,7 +554,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
     GDALClose(hDstDS); /* close first this one, as it references hTmpDS or hSrcDS */
     if( hTmpDS )
       GDALClose(hTmpDS); /* references hSrcDS, so close before */
-    GDALClose(hSrcDS);
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
     return;
   }
 
@@ -531,7 +568,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
   GDALClose( hDstDS ); /* close first this one, as it references hTmpDS or hSrcDS */
   if( hTmpDS )
     GDALClose(hTmpDS); /* references hSrcDS, so close before */
-  GDALClose( hSrcDS);
+  mapcache_connection_pool_release_connection(ctx,pc);
 }
 
 /**
@@ -563,19 +600,31 @@ void _mapcache_source_gdal_configuration_check(mapcache_context *ctx, mapcache_c
 {
   mapcache_source_gdal *src = (mapcache_source_gdal*)source;
   const char* pszResampleAlg;
+  GDALDatasetH hDataset;
 
   /* check all required parameters are configured */
   if( src->datastr == NULL || !strlen(src->datastr)) {
     ctx->set_error(ctx, 500, "gdal source %s has no data",source->name);
     return;
   }
-  src->hDataset = GDALOpen(src->datastr,GA_ReadOnly);
-  if( src->hDataset == NULL ) {
+  hDataset = GDALOpen(src->datastr,GA_ReadOnly);
+  if( hDataset == NULL ) {
     ctx->set_error(ctx, 500, "gdalOpen failed on data %s", src->datastr);
     return;
   }
-  GDALClose(src->hDataset);
-  src->hDataset = NULL;
+  if( GDALGetProjectionRef( hDataset ) != NULL
+      && strlen(GDALGetProjectionRef( hDataset )) > 0 ) {
+    src->srs_wkt = apr_pstrdup(ctx->pool,GDALGetProjectionRef( hDataset ));
+  } else if( GDALGetGCPProjection( hDataset ) != NULL
+           && strlen(GDALGetGCPProjection(hDataset)) > 0
+           && GDALGetGCPCount( hDataset ) > 1 ) {
+    src->srs_wkt = apr_pstrdup(ctx->pool,GDALGetGCPProjection( hDataset ));
+  } else {
+    ctx->set_error(ctx, 500, "Input gdal source for %s has no defined SRS\n", source->name );
+    GDALClose(hDataset);
+    return;
+  }
+  GDALClose(hDataset);
 
   src->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;
   pszResampleAlg = apr_table_get(src->gdal_params,"resampleAlg");
