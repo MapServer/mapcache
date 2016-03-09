@@ -50,6 +50,11 @@
 #include <time.h>
 #include <apr_time.h>
 
+#ifdef USE_GOOGLEPERF
+#include <gperftools/profiler.h>
+#endif
+
+
 #define MAPCACHE_SUCCESS 0
 #define MAPCACHE_FAILURE 1
 #define MAPCACHE_TRUE 1

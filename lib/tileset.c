@@ -462,11 +462,18 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
     return;
   }
 #endif
+#ifdef USE_GOOGLEPERF
+    ProfilerStart("/tmp/gdal-source.gperf");
+    ProfilerRegisterThread();
+#endif
   tileset->source->render_map(ctx, &mt->map);
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
   mapcache_cache_tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
+#ifdef USE_GOOGLEPERF
+    ProfilerStop();
+#endif
 }
 
 
