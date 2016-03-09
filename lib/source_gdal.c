@@ -65,6 +65,7 @@ struct mapcache_source_gdal {
   const char *srcOvrLevel; /**< strategy to pickup source overview: AUTO, NONE, 
                                 AUTO-xxx, xxxx. See -ovr doc in http://www.gdal.org/gdalwarp.html.
                                 Only used for GDAL >= 2.0 (could probably be made to work for USE_PRE_GDAL2_METHOD with more work) */
+  int bUseConnectionPool;
 };
 
 typedef struct {
@@ -474,15 +475,23 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
   mapcache_buffer *data;
   unsigned char *rasterdata;
   CPLErr eErr;
-  mapcache_pooled_connection *pc;
+  mapcache_pooled_connection *pc = NULL;
   int bands_bgra[] = { 3, 2, 1, 4 }; /* mapcache buffer order is BGRA */
 
   CPLErrorReset();
 
-  pc = _gdal_get_connection(ctx, gdal, map->grid_link->grid->srs, gdal->datastr );
-  GC_CHECK_ERROR(ctx);
-
-  gdal_conn = (gdal_connection*) pc->connection;
+  if(gdal->bUseConnectionPool == MAPCACHE_TRUE) {
+    pc = _gdal_get_connection(ctx, gdal, map->grid_link->grid->srs, gdal->datastr );
+    GC_CHECK_ERROR(ctx);
+    gdal_conn = (gdal_connection*) pc->connection;
+  } else {
+    gdal_connection_params params;
+    params.gdal = gdal;
+    params.dst_srs = map->grid_link->grid->srs;
+    params.gdal_data = gdal->datastr;
+    mapcache_source_gdal_connection_constructor(ctx, (void**)(&gdal_conn), &params);
+    GC_CHECK_ERROR(ctx);
+  }
 
 
 
@@ -493,14 +502,22 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
 
   if( hDstDS == NULL ) {
     ctx->set_error(ctx, 500,"CreateWarpedVRT() failed");
-    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    if(gdal->bUseConnectionPool == MAPCACHE_TRUE) {
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
+    } else {
+      mapcache_source_gdal_connection_destructor(gdal_conn);
+    }
     return;
   }
 
   if(GDALGetRasterCount(hDstDS) != 4) {
     ctx->set_error(ctx, 500,"gdal did not create a 4 band image");
     GDALClose(hDstDS); /* close first this one, as it references hSrcDS */
-    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    if(gdal->bUseConnectionPool == MAPCACHE_TRUE) {
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
+    } else {
+      mapcache_source_gdal_connection_destructor(gdal_conn);
+    }
     return;
   }
 
@@ -554,7 +571,11 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
     GDALClose(hDstDS); /* close first this one, as it references hTmpDS or hSrcDS */
     if( hTmpDS )
       GDALClose(hTmpDS); /* references hSrcDS, so close before */
-    mapcache_connection_pool_invalidate_connection(ctx,pc);
+    if(gdal->bUseConnectionPool == MAPCACHE_TRUE) {
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
+    } else {
+      mapcache_source_gdal_connection_destructor(gdal_conn);
+    }
     return;
   }
 
@@ -568,7 +589,11 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
   GDALClose( hDstDS ); /* close first this one, as it references hTmpDS or hSrcDS */
   if( hTmpDS )
     GDALClose(hTmpDS); /* references hSrcDS, so close before */
-  mapcache_connection_pool_release_connection(ctx,pc);
+  if(gdal->bUseConnectionPool == MAPCACHE_TRUE) {
+    mapcache_connection_pool_release_connection(ctx,pc);
+  } else {
+    mapcache_source_gdal_connection_destructor(gdal_conn);
+  }
 }
 
 /**
@@ -582,6 +607,16 @@ void _mapcache_source_gdal_configuration_parse(mapcache_context *ctx, ezxml_t no
 
   if ((cur_node = ezxml_child(node,"data")) != NULL) {
     src->datastr = apr_pstrdup(ctx->pool,cur_node->txt);
+  }
+  if ((cur_node = ezxml_child(node,"connection_pooled")) != NULL) {
+    if(!strcasecmp(cur_node->txt,"false")) {
+      src->bUseConnectionPool = MAPCACHE_FALSE;
+    } else if(!strcasecmp(cur_node->txt,"true")) {
+      src->bUseConnectionPool = MAPCACHE_TRUE;
+    } else {
+      ctx->set_error(ctx,400,"failed to parse <connection_pooled> (%s). Expecting true or false",cur_node->txt);
+      return;
+    }
   }
 
   if ((cur_node = ezxml_child(node,"resample")) != NULL && *cur_node->txt) {
@@ -661,6 +696,7 @@ mapcache_source* mapcache_source_gdal_create(mapcache_context *ctx)
   source->source.configuration_check = _mapcache_source_gdal_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_gdal_configuration_parse;
   source->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;
+  source->bUseConnectionPool = MAPCACHE_TRUE;
   GDALAllRegister();
   return (mapcache_source*)source;
 #else
