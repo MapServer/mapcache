@@ -64,6 +64,7 @@ apr_queue_t *log_queue;
 #include "ogr_api.h"
 #include "geos_c.h"
 int nClippers = 0;
+int ogr_touches = 1;
 const GEOSPreparedGeometry **clippers=NULL;
 #endif
 
@@ -262,6 +263,9 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+#ifdef USE_CLIPPERS
+  { "ogr-not-touches", 'T', FALSE, "skip tiles only touching features"},
+#endif
   { NULL, 0, 0, NULL }
 };
 
@@ -319,8 +323,10 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
-      intersects = 1;
-      break;
+      if(ogr_touches || !GEOSPreparedTouches(clipper,mtbboxg)) {
+        intersects = 1;
+        break;
+      }
     }
   }
   GEOSGeom_destroy(mtbboxg);
@@ -1034,6 +1040,9 @@ int main(int argc, const char **argv)
         break;
       case 'w':
         ogr_where = optarg;
+        break;
+      case 'T':
+        ogr_touches = 0;
         break;
 #endif
 
