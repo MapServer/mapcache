@@ -456,12 +456,10 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
   mapcache_tileset *tileset = mt->map.tileset;
-#ifdef DEBUG
   if(!tileset->source || tileset->read_only) {
-    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source or that is read-only");
+    ctx->set_error(ctx,500,"tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
-#endif
 #ifdef USE_GOOGLEPERF
     ProfilerStart("/tmp/gdal-source.gperf");
     ProfilerRegisterThread();
