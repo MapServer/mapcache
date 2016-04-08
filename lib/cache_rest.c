@@ -100,6 +100,7 @@ struct mapcache_cache_rest {
   int use_redirects;
   int timeout;
   int connection_timeout;
+  int detect_blank;
   mapcache_rest_provider provider;
 };
 
@@ -1138,6 +1139,19 @@ static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcac
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
   GC_CHECK_ERROR(ctx);
 
+  if(rcache->detect_blank) {
+    if(!tile->raw_image) {
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+    }
+    if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+      if(tile->raw_image->data[3] == 0) {
+        /* We have a blank (uniform) image who's first pixel is fully transparent, thus the whole image is transparent */
+        return;
+      }
+    }
+  }
+
   if(!tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
     GC_CHECK_ERROR(ctx);
@@ -1228,7 +1242,14 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
   } else {
     dcache->timeout = 120;
   }
-  
+
+  dcache->detect_blank = 0;
+  if ((cur_node = ezxml_child(node, "detect_blank")) != NULL) {
+    if(strcasecmp(cur_node->txt,"false")) {
+      dcache->detect_blank = 1;
+    }
+  }
+
   if ((cur_node = ezxml_child(node,"headers")) != NULL) {
     ezxml_t header_node;
     dcache->rest.common_headers = apr_table_make(ctx->pool,3);
