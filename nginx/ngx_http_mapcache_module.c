@@ -63,7 +63,6 @@ ngx_http_mapcache_create_conf(ngx_conf_t *cf)
   mapcache_context *ctx = apr_pcalloc(process_pool, sizeof(mapcache_ngx_context));
   ctx->pool = process_pool;
   ctx->connection_pool = NULL;
-  ctx->threadlock = NULL;
   mapcache_context_init(ctx);
   ctx->log = ngx_mapcache_context_log;
   ctx->clone = ngx_mapcache_context_clone;

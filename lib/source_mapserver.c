@@ -91,10 +91,6 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
   struct mc_mapobj *mcmap;
   apr_reslist_t *mapobjs = NULL;
   if(!mapobj_container || NULL == (mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING))) {
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
     if(!mapobj_container) {
       mapobj_container = apr_hash_make(ctx->process_pool);
     }
@@ -111,19 +107,11 @@ static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
                               src, ctx->process_pool);
       if (rv != APR_SUCCESS) {
         ctx->set_error(ctx, 500, "failed to create mapobj connection pool for cache %s", src->source.name);
-#ifdef APR_HAS_THREADS
-        if(ctx->threadlock)
-          apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
         return NULL;
       }
       apr_hash_set(mapobj_container,src->source.name,APR_HASH_KEY_STRING,mapobjs);
     }
     assert(mapobjs);
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
   }
   rv = apr_reslist_acquire(mapobjs, (void **) &mcmap);
   if (rv != APR_SUCCESS) {
