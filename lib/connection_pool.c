@@ -78,7 +78,7 @@ apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_
   apr_status_t rv;
   *cp = apr_pcalloc(server_pool, sizeof(mapcache_connection_pool));
   (*cp)->server_pool = server_pool;
-  rv = apr_reslist_create(&((*cp)->connexions), 1, 5, 200, 60*1000000,
+  rv = apr_reslist_create(&((*cp)->connexions), 1, 5, 1024, 60*1000000,
       mapcache_connection_container_creator,
       mapcache_connection_container_destructor,
       NULL,

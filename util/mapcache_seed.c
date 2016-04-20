@@ -235,8 +235,8 @@ static const apr_getopt_option_t seed_options[] = {
   { "cache", 'C', TRUE, "override cache used by selected tileset (useful for selectively seeding fallback/multitier caches)"},
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
-  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
 #endif
+  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
   { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
   { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
   { "force", 'f', FALSE, "force tile recreation even if it already exists" },
