@@ -196,7 +196,11 @@ static void _set_headers(mapcache_context *ctx, CURL *curl, apr_table_t *headers
     apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
     int i;
     for (i = 0; i < array->nelts; i++) {
-      curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",elts[i].val,NULL));
+      if(strlen(elts[i].val) > 0) {
+        curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",elts[i].val,NULL));
+      } else {
+        curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,":",NULL));
+      }
     }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_headers);
   }
@@ -220,7 +224,6 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
   apr_table_unset(headers, "Content-Length");
 #endif
 
-  _set_headers(ctx, curl, headers);
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
@@ -232,6 +235,10 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
   /* HTTP PUT please */
   curl_easy_setopt(curl, CURLOPT_PUT, 1L);
+
+  /* don't use an Expect: 100 Continue header */
+  apr_table_set(headers, "Expect", "");
+  _set_headers(ctx, curl, headers);
 
   /* specify target URL, and note that this URL should include a file
    *        name, not only a directory */
