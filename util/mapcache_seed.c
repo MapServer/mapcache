@@ -411,7 +411,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         /* the tile exists in the source tileset,
            check if the tile exists in the destination cache */
         tile->tileset = tileset_transfer;
-        if (mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
+        if (!force && mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
           action = MAPCACHE_CMD_SKIP;
         } else {
           action = MAPCACHE_CMD_TRANSFER;
@@ -424,7 +424,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
     }
   } else {
     // the tile does not exist
-    if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
+    if (mode == MAPCACHE_CMD_SEED) {
       action = mode;
     } else {
       action = MAPCACHE_CMD_SKIP;
@@ -666,17 +666,12 @@ void seed_worker()
         mapcache_tileset_tile_set_get_with_subdimensions(&seed_ctx,tile);
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
-      int i;
-      mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-      for (i = 0; i < mt->ntiles; i++) {
-        mapcache_tile *subtile = &mt->tiles[i];
-        mapcache_tileset_tile_get(&seed_ctx, subtile);
-        if(!subtile->nodata && !GC_HAS_ERROR(&seed_ctx)) {
-          mapcache_tileset *tmp_tileset = subtile->tileset;
-          subtile->tileset = tileset_transfer;
-          mapcache_cache_tile_set(&seed_ctx, subtile->tileset->_cache, subtile);
-          subtile->tileset = tmp_tileset;
-        }
+      mapcache_tileset_tile_get(&seed_ctx, tile);
+      if(!tile->nodata && !GC_HAS_ERROR(&seed_ctx)) {
+        mapcache_tileset *tmp_tileset = tile->tileset;
+        tile->tileset = tileset_transfer;
+        mapcache_cache_tile_set(&seed_ctx, tile->tileset->_cache, tile);
+        tile->tileset = tmp_tileset;
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
@@ -1275,6 +1270,7 @@ int main(int argc, const char **argv)
   }
 
   if (mode == MAPCACHE_CMD_TRANSFER) {
+    tileset->metasize_x = tileset->metasize_y = 1;
     if (!tileset_transfer_name)
       return usage(argv[0],"tileset where tiles should be transferred to not specified");
 
