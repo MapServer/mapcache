@@ -85,6 +85,7 @@ int error_detected = 0;
 double percent_failed_allowed = 1.0;
 int n_metatiles_tot = 0;
 int n_nodata_tot = 0;
+int rate_limit = 0;
 FILE *failed_log = NULL, *retry_log = NULL;
 #define FAIL_BACKLOG_COUNT 1000
 
@@ -230,6 +231,7 @@ int trypop_queue(struct seed_cmd *cmd)
 }
 
 #define SEEDER_OPT_THREAD_DELAY 256
+#define SEEDER_OPT_RATE_LIMIT 257
 
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
@@ -238,7 +240,6 @@ static const apr_getopt_option_t seed_options[] = {
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
 #endif
-  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
   { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
   { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
   { "force", 'f', FALSE, "force tile recreation even if it already exists" },
@@ -267,6 +268,8 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+  { "rate-limit", SEEDER_OPT_RATE_LIMIT, TRUE, "maximum number of metatiles/second to seed"},
+  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
   { NULL, 0, 0, NULL }
 };
 
@@ -551,6 +554,11 @@ void feed_worker()
       y < grid_link->grid_limits[z].maxy
     );
   } else {
+    double last_time = 0;
+    double delay = 0.0;
+    if(rate_limit > 0) {
+      delay = 1.0 / (double)rate_limit;
+    }
     while(1) {
       int action;
       apr_pool_clear(cmd_ctx.pool);
@@ -579,6 +587,21 @@ void feed_worker()
         cmd.y = y;
         cmd.z = z;
         cmd.command = action;
+        if(rate_limit > 0) {
+          struct mctimeval now;
+          double now_time;
+          mapcache_gettimeofday(&now,NULL);
+          now_time = now.tv_sec + now.tv_usec / 1000000.0;
+
+          if((now_time - last_time) < delay) {
+            apr_sleep((int)((delay - (now_time - last_time)) * 1000000));
+            /*last_time = now_time + delay - (now_time - last_time); //now plus the time we slept */
+            last_time = delay + last_time;
+          } else {
+            last_time = now_time;
+          }
+
+        }
         push_queue(cmd);
       }
 
@@ -1036,7 +1059,12 @@ int main(int argc, const char **argv)
       case SEEDER_OPT_THREAD_DELAY:
         thread_delay = strtod(optarg, NULL);
         if(thread_delay < 0.0 )
-          return usage(argv[0], "failed to parse thread_delay, expecting positive number of seconds");
+          return usage(argv[0], "failed to parse thread-delay, expecting positive number of seconds");
+        break;
+      case SEEDER_OPT_RATE_LIMIT:
+        rate_limit = (int)strtol(optarg, NULL, 10);
+        if(rate_limit <= 0 )
+          return usage(argv[0], "failed to parse rate-limit, expecting positive number of metatiles per seconds");
         break;
 #ifdef USE_CLIPPERS
       case 'd':
