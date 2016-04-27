@@ -892,6 +892,11 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   tile->encoded_data = assembled_buffer;
   tile->raw_image = assembled_image;
   tile->nodata = assembled_nodata;
+
+  /* TODO: this is a perf optmization for a specific use-case */
+  if(tile->nodata) {
+    goto cleanup;
+  }
   
   if(!tile->nodata && !tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);

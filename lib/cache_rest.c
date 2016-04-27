@@ -1142,11 +1142,11 @@ static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcac
   mapcache_pooled_connection *pc;
   CURL *curl;
 
-  _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
-  headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
-  GC_CHECK_ERROR(ctx);
 
   if(rcache->detect_blank) {
+    if(tile->nodata) {
+      return;
+    }
     if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
@@ -1158,6 +1158,10 @@ static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcac
       }
     }
   }
+
+  _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.set_tile, &url);
+  headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.set_tile);
+  GC_CHECK_ERROR(ctx);
 
   if(!tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);

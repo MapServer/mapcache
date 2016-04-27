@@ -83,7 +83,8 @@ int force = 0;
 int sig_int_received = 0;
 int error_detected = 0;
 double percent_failed_allowed = 1.0;
-int n_metatiles_tot=0;
+int n_metatiles_tot = 0;
+int n_nodata_tot = 0;
 FILE *failed_log = NULL, *retry_log = NULL;
 #define FAIL_BACKLOG_COUNT 1000
 
@@ -124,6 +125,7 @@ typedef enum {
 struct seed_status {
   s_status status;
   int x,y,z;
+  int nodata;
   char *msg;
 };
 
@@ -683,6 +685,7 @@ void seed_worker()
       st->x=tile->x;
       st->y=tile->y;
       st->z=tile->z;
+      st->nodata = tile->nodata;
       if(seed_ctx.get_error(&seed_ctx)) {
         st->status = MAPCACHE_STATUS_FAIL;
         st->msg = strdup(seed_ctx.get_error_message(&seed_ctx));
@@ -752,6 +755,9 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
     if(st->status == MAPCACHE_STATUS_OK) {
       failed[cur]=0;
       n_metatiles_tot++;
+      if(st->nodata) {
+        n_nodata_tot++;
+      }
       if(!quiet) {
         struct mctimeval now;
         mapcache_gettimeofday(&now,NULL);
@@ -1462,10 +1468,17 @@ int main(int argc, const char **argv)
     struct mctimeval now_t;
     float duration;
     int ntilestot = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+    int nnodatatot = n_nodata_tot*tileset->metasize_x*tileset->metasize_y;
     mapcache_gettimeofday(&now_t,NULL);
     duration = ((now_t.tv_sec-starttime.tv_sec)*1000000+(now_t.tv_usec-starttime.tv_usec))/1000000.0;
 
-    printf("\nseeded %d metatiles (%d tiles) in %.1f seconds at %.1f tiles/sec\n",n_metatiles_tot, ntilestot, duration, ntilestot/duration);
+    printf("\nseeded %d metatiles (%d total tiles, %d non-empty tiles) in %.1f seconds at %.1f tiles/sec (%.1f non-empty tiles/sec)\n",
+           n_metatiles_tot,
+           ntilestot,
+           nnodatatot,
+           duration,
+           ntilestot/duration,
+           nnodatatot/duration);
   } else {
     if(!error_detected) {
       printf("0 tiles needed to be seeded, exiting\n");
