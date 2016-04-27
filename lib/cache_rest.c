@@ -1154,6 +1154,7 @@ static void _mapcache_cache_rest_set(mapcache_context *ctx, mapcache_cache *pcac
     if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       if(tile->raw_image->data[3] == 0) {
         /* We have a blank (uniform) image who's first pixel is fully transparent, thus the whole image is transparent */
+        tile->nodata = 1;
         return;
       }
     }
