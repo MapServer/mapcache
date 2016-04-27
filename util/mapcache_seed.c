@@ -1475,10 +1475,10 @@ int main(int argc, const char **argv)
     printf("\nseeded %d metatiles (%d total tiles, %d non-empty tiles) in %.1f seconds at %.1f tiles/sec (%.1f non-empty tiles/sec)\n",
            n_metatiles_tot,
            ntilestot,
-           nnodatatot,
+           ntilestot-nnodatatot,
            duration,
            ntilestot/duration,
-           nnodatatot/duration);
+           (ntilestot-nnodatatot)/duration);
   } else {
     if(!error_detected) {
       printf("0 tiles needed to be seeded, exiting\n");
