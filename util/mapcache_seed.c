@@ -268,7 +268,7 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
-  { "rate-limit", SEEDER_OPT_RATE_LIMIT, TRUE, "maximum number of metatiles/second to seed"},
+  { "rate-limit", SEEDER_OPT_RATE_LIMIT, TRUE, "maximum number of tiles/second to seed"},
   { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
   { NULL, 0, 0, NULL }
 };
@@ -557,7 +557,8 @@ void feed_worker()
     double last_time = 0;
     double delay = 0.0;
     if(rate_limit > 0) {
-      delay = 1.0 / (double)rate_limit;
+      /* compute time between seed commands accounting for max rate-limit and current metasize */
+      delay = (tileset->metasize_x * tileset->metasize_y) / (double)rate_limit;
     }
     while(1) {
       int action;
@@ -1064,7 +1065,7 @@ int main(int argc, const char **argv)
       case SEEDER_OPT_RATE_LIMIT:
         rate_limit = (int)strtol(optarg, NULL, 10);
         if(rate_limit <= 0 )
-          return usage(argv[0], "failed to parse rate-limit, expecting positive number of metatiles per seconds");
+          return usage(argv[0], "failed to parse rate-limit, expecting positive number of tiles per seconds");
         break;
 #ifdef USE_CLIPPERS
       case 'd':
