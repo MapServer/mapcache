@@ -1141,13 +1141,13 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
-  for(node = ezxml_child(doc,"tileset"); node; node = node->next) {
-    parseTileset(ctx, node, config);
+  for(node = ezxml_child(doc,"ruleset"); node; node = node->next) {
+    parseRuleset(ctx, node, config);
     if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
-  for(node = ezxml_child(doc,"ruleset"); node; node = node->next) {
-    parseRuleset(ctx, node, config);
+  for(node = ezxml_child(doc,"tileset"); node; node = node->next) {
+    parseTileset(ctx, node, config);
     if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
