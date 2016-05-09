@@ -741,7 +741,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
     gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
     gridlink->intermediate_grids = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
-    gridlink->rules = NULL;
+    gridlink->rules = apr_array_make(ctx->pool,0,sizeof(mapcache_rule*));
 
     ruleset_name = (char*)ezxml_attr(cur_node,"ruleset");
     if(ruleset_name) {
@@ -797,8 +797,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     mapcache_grid_compute_limits(grid,extent,gridlink->grid_limits,tolerance);
 
     if(ruleset) {
-      gridlink->rules = apr_array_make(ctx->pool,grid->nlevels,sizeof(mapcache_rule*));
-
       for(i = 0; i < grid->nlevels; i++) {
         mapcache_rule *rule = mapcache_ruleset_rule_find(ruleset->rules, i);
 

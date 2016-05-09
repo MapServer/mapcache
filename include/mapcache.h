@@ -1049,7 +1049,7 @@ struct mapcache_grid_link {
   int minz,maxz;
 
   /**
-   * rules (mapcache_rule) for each zoom level or NULL
+   * rules (mapcache_rule) for each zoom level
    * index in array = zoom level
    */
   apr_array_header_t *rules;
