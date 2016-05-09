@@ -42,7 +42,7 @@ mapcache_ruleset* mapcache_ruleset_create(apr_pool_t *pool)
 /*
  * allocate and initialize a new rule
  */
-mapcache_rule* mapcache_rule_create(apr_pool_t *pool)
+mapcache_rule* mapcache_ruleset_rule_create(apr_pool_t *pool)
 {
   mapcache_rule* rule = (mapcache_rule*)apr_pcalloc(pool, sizeof(mapcache_rule));
   rule->zoom_level = -1;
@@ -56,9 +56,9 @@ mapcache_rule* mapcache_rule_create(apr_pool_t *pool)
 /*
  * clone a rule
  */
-mapcache_rule* mapcache_rule_clone(apr_pool_t *pool, mapcache_rule *rule)
+mapcache_rule* mapcache_ruleset_rule_clone(apr_pool_t *pool, mapcache_rule *rule)
 {
-  mapcache_rule* clone = mapcache_rule_create(pool);
+  mapcache_rule* clone = mapcache_ruleset_rule_create(pool);
 
   clone->zoom_level = rule->zoom_level;
   clone->hidden_color = rule->hidden_color;
@@ -78,16 +78,63 @@ mapcache_rule* mapcache_rule_clone(apr_pool_t *pool, mapcache_rule *rule)
 }
 
 /*
- * get rule for zoom level, or NULL if none exist
+ * find rule for zoom level, or NULL if none exist
  */
-mapcache_rule* mapcache_rule_get(mapcache_ruleset *ruleset, int zoom_level)
+mapcache_rule* mapcache_ruleset_rule_find(apr_array_header_t *rules, int zoom_level)
 {
   int i;
   mapcache_rule* rule;
-  for(i = 0; i < ruleset->rules->nelts; i++) {
-    if ((rule = APR_ARRAY_IDX(ruleset->rules, i, mapcache_rule*))->zoom_level == zoom_level) {
+
+  if (!rules) {
+    return NULL;
+  }
+
+  for(i = 0; i < rules->nelts; i++) {
+    if ((rule = APR_ARRAY_IDX(rules, i, mapcache_rule*))->zoom_level == zoom_level) {
       return rule;
     }
   }
   return NULL;
+}
+
+/*
+ * get rule at index, or NULL if none exist
+ */
+mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx)
+{
+  mapcache_rule *rule;
+
+  if(!rules || idx < 0 || idx >= rules->nelts) {
+    return NULL;
+  }
+
+  rule = APR_ARRAY_IDX(rules, idx, mapcache_rule*);
+  return rule;
+}
+
+/*
+ * check if tile is within visible extent
+ */
+int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile) {
+  if(!rule || !rule->visible_limits) {
+    return MAPCACHE_TRUE;
+  }
+
+  if(tile->x < rule->visible_limits->minx || tile->y < rule->visible_limits->miny || 
+     tile->x > rule->visible_limits->maxx || tile->y > rule->visible_limits->maxy) {
+    return MAPCACHE_FALSE;
+  }
+
+  return MAPCACHE_TRUE;
+}
+
+/*
+ * check if tile is readonly
+ */
+int mapcache_ruleset_is_readonly_tile(mapcache_rule* rule, mapcache_tile *tile) {
+  if(rule && rule->readonly) {
+    return MAPCACHE_TRUE;
+  }
+
+  return MAPCACHE_FALSE;
 }

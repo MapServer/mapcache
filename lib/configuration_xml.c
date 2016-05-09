@@ -179,24 +179,21 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 
   /* parse rules */
   for(cur_node = ezxml_child(node,"rule"), i = 0; cur_node; cur_node = cur_node->next, i++) {
-    mapcache_rule *rule = mapcache_rule_create(ctx->pool);
+    mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
     ezxml_t visible_extent = ezxml_child(cur_node, "visible_extent");
     ezxml_t readonly = ezxml_child(cur_node, "readonly");
     char* zoom_level = (char*)ezxml_attr(cur_node, "zoom_level");
 
     if(zoom_level && *zoom_level) {
-      int j;
       int z = atoi(zoom_level);
       if (z < 0) {
         ctx->set_error(ctx, 400, "zoom_level is negative in rule %d", i+1);
         return;
       }
       /* check for duplicate rule for this zoom level */
-      for (j = 0; j < i; j++) {
-        if(APR_ARRAY_IDX(ruleset->rules, j, mapcache_rule*)->zoom_level == z) {
-          ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", z);
-          return;
-        }
+      if(mapcache_ruleset_rule_find(ruleset->rules, z) != NULL) {
+        ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", z);
+        return;
       }
       rule->zoom_level = z;
     } else {
@@ -792,10 +789,10 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       gridlink->rules = apr_array_make(ctx->pool,grid->nlevels,sizeof(mapcache_rule*));
 
       for(i = 0; i < grid->nlevels; i++) {
-        mapcache_rule *rule = mapcache_rule_get(ruleset, i);
+        mapcache_rule *rule = mapcache_ruleset_rule_find(ruleset->rules, i);
 
         if(rule) {
-          mapcache_rule *rule_clone = mapcache_rule_clone(ctx->pool, rule);
+          mapcache_rule *rule_clone = mapcache_ruleset_rule_clone(ctx->pool, rule);
           if(rule->visible_extent) {
             mapcache_grid_compute_limits_at_level(grid,rule_clone->visible_extent,rule_clone->visible_limits,tolerance,i);
           }

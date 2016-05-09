@@ -1324,21 +1324,42 @@ mapcache_ruleset* mapcache_ruleset_create(apr_pool_t *pool);
  * \brief allocate and initialize a new rule
  * @param pool
  */
-mapcache_rule* mapcache_rule_create(apr_pool_t *pool);
+mapcache_rule* mapcache_ruleset_rule_create(apr_pool_t *pool);
 
 /**
  * \brief clone a rule
  * @param pool
  * @param rule
  */
-mapcache_rule* mapcache_rule_clone(apr_pool_t *pool, mapcache_rule *rule);
+mapcache_rule* mapcache_ruleset_rule_clone(apr_pool_t *pool, mapcache_rule *rule);
 
 /**
  * \brief get rule for zoom level, or NULL if none exist
  * @param ruleset
  * @param zoom_level
  */
-mapcache_rule* mapcache_rule_get(mapcache_ruleset *ruleset, int zoom_level);
+mapcache_rule* mapcache_ruleset_rule_find(apr_array_header_t *rules, int zoom_level);
+
+/**
+ * \brief get rule at index, or NULL if none exist
+ * @param rules
+ * @param idx
+ */
+mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx);
+
+/**
+ * \brief check if tile is within visible extent
+ * @param rule
+ * @param tile
+ */
+int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile);
+
+/**
+ * \brief check if tile is readonly
+ * @param rule
+ * @param tile
+ */
+int mapcache_ruleset_is_readonly_tile(mapcache_rule* rule, mapcache_tile *tile);
 
 
 /* in grid.c */
