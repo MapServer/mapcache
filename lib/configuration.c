@@ -127,6 +127,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   cfg->grids = apr_hash_make(pool);
   cfg->image_formats = apr_hash_make(pool);
   cfg->metadata = apr_table_make(pool,3);
+  cfg->rulesets = apr_hash_make(pool);
 
   mapcache_configuration_add_image_format(cfg,
           mapcache_imageio_create_png_format(pool,"PNG",MAPCACHE_COMPRESSION_FAST),
@@ -239,6 +240,11 @@ mapcache_cache *mapcache_configuration_get_cache(mapcache_cfg *config, const cha
 mapcache_grid *mapcache_configuration_get_grid(mapcache_cfg *config, const char *key)
 {
   return (mapcache_grid*)apr_hash_get(config->grids, (void*)key, APR_HASH_KEY_STRING);
+}
+
+mapcache_ruleset *mapcache_configuration_get_ruleset(mapcache_cfg *config, const char *key)
+{
+  return (mapcache_ruleset*)apr_hash_get(config->rulesets, (void*)key, APR_HASH_KEY_STRING);
 }
 
 mapcache_tileset *mapcache_configuration_get_tileset(mapcache_cfg *config, const char *key)

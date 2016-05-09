@@ -103,6 +103,8 @@ typedef struct mapcache_image mapcache_image;
 typedef struct mapcache_grid mapcache_grid;
 typedef struct mapcache_grid_level mapcache_grid_level;
 typedef struct mapcache_grid_link mapcache_grid_link;
+typedef struct mapcache_rule mapcache_rule;
+typedef struct mapcache_ruleset mapcache_ruleset;
 typedef struct mapcache_context mapcache_context;
 typedef struct mapcache_dimension mapcache_dimension;
 typedef struct mapcache_requested_dimension mapcache_requested_dimension;
@@ -835,6 +837,11 @@ struct mapcache_cfg {
   apr_hash_t *grids;
 
   /**
+   * hashtable containing (pre)defined rulesets
+   */
+  apr_hash_t *rulesets;
+
+  /**
    * the format to use for some miscelaneaous operations:
    *  - creating an empty image
    *  - creating an error image
@@ -888,6 +895,7 @@ MS_DLL_EXPORT mapcache_cache* mapcache_configuration_get_cache(mapcache_cfg *con
 mapcache_grid *mapcache_configuration_get_grid(mapcache_cfg *config, const char *key);
 MS_DLL_EXPORT mapcache_tileset* mapcache_configuration_get_tileset(mapcache_cfg *config, const char *key);
 mapcache_image_format *mapcache_configuration_get_image_format(mapcache_cfg *config, const char *key);
+mapcache_ruleset *mapcache_configuration_get_ruleset(mapcache_cfg *config, const char *key);
 void mapcache_configuration_add_image_format(mapcache_cfg *config, mapcache_image_format *format, const char * key);
 void mapcache_configuration_add_source(mapcache_cfg *config, mapcache_source *source, const char * key);
 void mapcache_configuration_add_grid(mapcache_cfg *config, mapcache_grid *grid, const char * key);
@@ -1041,6 +1049,12 @@ struct mapcache_grid_link {
   int minz,maxz;
 
   /**
+   * rules (mapcache_rule) for each zoom level or NULL
+   * index in array = zoom level
+   */
+  apr_array_header_t *rules;
+
+  /**
    * tiles above this zoom level will not be stored to the cache, but will be
    * dynamically generated (either by reconstructing from lower level tiles, or
    * by "proxying" the source
@@ -1050,6 +1064,46 @@ struct mapcache_grid_link {
   mapcache_outofzoom_strategy outofzoom_strategy;
 
   apr_array_header_t *intermediate_grids;
+};
+
+/**\class mapcache_rule
+ * \brief a zoom level rule
+ */
+struct mapcache_rule {
+  /**
+   * rule for zoom level
+   */
+  int zoom_level;
+  /**
+   * hidden tile color
+   */
+  unsigned int hidden_color;
+  /**
+   * readonly
+   */
+  int readonly;
+  /**
+   * visible extent
+   */
+  mapcache_extent *visible_extent;
+  /**
+   * visible limits
+   */
+  mapcache_extent_i *visible_limits;
+};
+
+/**\class mapcache_ruleset
+ * \brief a set of rules
+ */
+struct mapcache_ruleset {
+  /**
+   * the name of this ruleset
+   */
+  char *name;
+  /**
+   * rules (mapcache_rule)
+   */
+  apr_array_header_t *rules;
 };
 
 /**\class mapcache_tileset
@@ -1258,6 +1312,35 @@ MS_DLL_EXPORT mapcache_http_response* mapcache_core_proxy_request(mapcache_conte
 MS_DLL_EXPORT mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx);
 
 
+/* in ruleset.c */
+
+/**
+ * \brief allocate and initialize a new ruleset
+ * @param pool
+ */
+mapcache_ruleset* mapcache_ruleset_create(apr_pool_t *pool);
+
+/**
+ * \brief allocate and initialize a new rule
+ * @param pool
+ */
+mapcache_rule* mapcache_rule_create(apr_pool_t *pool);
+
+/**
+ * \brief clone a rule
+ * @param pool
+ * @param rule
+ */
+mapcache_rule* mapcache_rule_clone(apr_pool_t *pool, mapcache_rule *rule);
+
+/**
+ * \brief get rule for zoom level, or NULL if none exist
+ * @param ruleset
+ * @param zoom_level
+ */
+mapcache_rule* mapcache_rule_get(mapcache_ruleset *ruleset, int zoom_level);
+
+
 /* in grid.c */
 mapcache_grid* mapcache_grid_create(apr_pool_t *pool);
 
@@ -1300,6 +1383,7 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
  * \param tolerance the number of tiles around the given extent that can be requested without returning an error.
  */
 MS_DLL_EXPORT void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance);
+void mapcache_grid_compute_limits_at_level(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits_ptr, int tolerance, int zoom_level);
 
 /* in util.c */
 MS_DLL_EXPORT int mapcache_util_extract_int_list(mapcache_context *ctx, const char* args, const char *sep, int **numbers,
