@@ -244,6 +244,7 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       APR_ARRAY_PUSH(ruleset->rules, mapcache_rule*) = clone_rule;
     }
   }
+  mapcache_configuration_add_ruleset(config,ruleset,ruleset->name);
 }
 
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
@@ -803,6 +804,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         if(rule) {
           mapcache_rule *rule_clone = mapcache_ruleset_rule_clone(ctx->pool, rule);
           if(rule->visible_extent) {
+            rule_clone->visible_limits = apr_pcalloc(ctx->pool, sizeof(mapcache_extent_i));
             mapcache_grid_compute_limits_at_level(grid,rule_clone->visible_extent,rule_clone->visible_limits,tolerance,i);
           }
           APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = rule_clone;

@@ -899,6 +899,7 @@ mapcache_ruleset *mapcache_configuration_get_ruleset(mapcache_cfg *config, const
 void mapcache_configuration_add_image_format(mapcache_cfg *config, mapcache_image_format *format, const char * key);
 void mapcache_configuration_add_source(mapcache_cfg *config, mapcache_source *source, const char * key);
 void mapcache_configuration_add_grid(mapcache_cfg *config, mapcache_grid *grid, const char * key);
+void mapcache_configuration_add_ruleset(mapcache_cfg *config, mapcache_ruleset *ruleset, const char * key);
 void mapcache_configuration_add_tileset(mapcache_cfg *config, mapcache_tileset *tileset, const char * key);
 void mapcache_configuration_add_cache(mapcache_cfg *config, mapcache_cache *cache, const char * key);
 

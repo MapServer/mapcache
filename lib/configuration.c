@@ -271,6 +271,11 @@ void mapcache_configuration_add_grid(mapcache_cfg *config, mapcache_grid *grid, 
   apr_hash_set(config->grids, key, APR_HASH_KEY_STRING, (void*)grid);
 }
 
+void mapcache_configuration_add_ruleset(mapcache_cfg *config, mapcache_ruleset *ruleset, const char * key)
+{
+  apr_hash_set(config->rulesets, key, APR_HASH_KEY_STRING, (void*)ruleset);
+}
+
 void mapcache_configuration_add_tileset(mapcache_cfg *config, mapcache_tileset *tileset, const char * key)
 {
   tileset->config = config;
