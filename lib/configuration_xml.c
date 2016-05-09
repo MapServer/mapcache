@@ -177,46 +177,46 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   ruleset = mapcache_ruleset_create(ctx->pool);
   ruleset->name = name;
 
-  /* parse rules */
+  /* parse rules, <rule> */
   for(cur_node = ezxml_child(node,"rule"), i = 0; cur_node; cur_node = cur_node->next, i++) {
-    mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
+    int *zoom, nzoom, j;
+    char* zoom_attr = (char*)ezxml_attr(cur_node, "zoom_level");
     ezxml_t visible_extent = ezxml_child(cur_node, "visible_extent");
     ezxml_t readonly = ezxml_child(cur_node, "readonly");
-    char* zoom_level = (char*)ezxml_attr(cur_node, "zoom_level");
-
-    if(zoom_level && *zoom_level) {
-      int z = atoi(zoom_level);
-      if (z < 0) {
-        ctx->set_error(ctx, 400, "zoom_level is negative in rule %d", i+1);
-        return;
-      }
-      /* check for duplicate rule for this zoom level */
-      if(mapcache_ruleset_rule_find(ruleset->rules, z) != NULL) {
-        ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", z);
-        return;
-      }
-      rule->zoom_level = z;
-    } else {
-        ctx->set_error(ctx, 400, "zoom_level not set in rule %d", i+1);
-        return;
-    }
+    mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
 
     if(readonly) {
       rule->readonly = 1;
     }
 
+    /* parse zoom_level attribute */
+    if(zoom_attr && *zoom_attr) {
+      char *value = apr_pstrdup(ctx->pool, zoom_attr);
+      if(MAPCACHE_SUCCESS != mapcache_util_extract_int_list(ctx, value, NULL, &zoom, &nzoom) || nzoom < 1) {
+        ctx->set_error(ctx, 400, "failed to parse zoom_level array %s in ruleset %s, rule %d. "
+                      "(expecting space separated integers, eg <rule zoom_level=\"0 1 2\">)",
+                       value, ruleset->name, i+1);
+        return;
+      }
+    } else {
+        ctx->set_error(ctx, 400, "zoom_level not set in rule %d", i+1);
+        return;
+    }
+
+    /* parse visible_extent */
     if(visible_extent && visible_extent->txt && *visible_extent->txt) {
-      char *hidden_color = (char*)ezxml_attr(visible_extent, "hidden_color");
-      mapcache_extent extent = {0,0,0,0};
       double *values;
       int nvalues;
+      char *hidden_color = (char*)ezxml_attr(visible_extent, "hidden_color");
       char *value = apr_pstrdup(ctx->pool,visible_extent->txt);
+      mapcache_extent extent = {0,0,0,0};
+
       if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, value, NULL, &values, &nvalues) ||
           nvalues != 4) {
-        ctx->set_error(ctx, 400, "failed to parse visible_extent array %s in rule %d."
+        ctx->set_error(ctx, 400, "failed to parse visible_extent array %s in ruleset %s, rule %d. "
                        "(expecting 4 space separated numbers, got %d (%f %f %f %f)"
-                       "eg <visible_extent>-180 -90 180 90</visible_extent>",
-                       value,i+1,nvalues,values[0],values[1],values[2],values[3]);
+                       "eg <visible_extent>-180 -90 180 90</visible_extent>)",
+                       value,ruleset->name,i+1,nvalues,values[0],values[1],values[2],values[3]);
         return;
       }
       extent.minx = values[0];
@@ -227,11 +227,22 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       *rule->visible_extent = extent;
 
       if (hidden_color && *hidden_color) {
-        rule->hidden_color = (int)strtol(hidden_color, NULL, 16);
+        /* parse color, base 16 */
+        rule->hidden_color = (unsigned int)strtol(hidden_color, NULL, 16);
       }
     }
 
-    APR_ARRAY_PUSH(ruleset->rules,mapcache_rule*) = rule;
+    /* add this rule for given zoom_levels */
+    for(j = 0; j < nzoom; j++) {
+      mapcache_rule *clone_rule = mapcache_ruleset_rule_clone(ctx->pool, rule);
+      /* check for duplicate rule for this zoom level */
+      if(mapcache_ruleset_rule_find(ruleset->rules, zoom[j]) != NULL) {
+        ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", zoom[j]);
+        return;
+      }
+      clone_rule->zoom_level = zoom[j];
+      APR_ARRAY_PUSH(ruleset->rules, mapcache_rule*) = clone_rule;
+    }
   }
 }
 
