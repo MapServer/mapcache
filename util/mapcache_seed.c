@@ -439,6 +439,27 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
   return action;
 }
 
+double rate_limit_last_time = 0;
+double rate_limit_delay = 0.0;
+
+void rate_limit_sleep() {
+  if(rate_limit > 0) {
+    struct mctimeval now;
+    double now_time;
+    mapcache_gettimeofday(&now,NULL);
+    now_time = now.tv_sec + now.tv_usec / 1000000.0;
+
+    if((now_time - rate_limit_last_time) < rate_limit_delay) {
+      apr_sleep((int)((rate_limit_delay - (now_time - rate_limit_last_time)) * 1000000));
+      /*last_time = now_time + delay - (now_time - last_time); //now plus the time we slept */
+      rate_limit_last_time = rate_limit_delay + rate_limit_last_time;
+    } else {
+      rate_limit_last_time = now_time;
+    }
+
+  }
+}
+
 void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
 {
   cmd action;
@@ -465,6 +486,8 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
     cmd.y = tile->y;
     cmd.z = tile->z;
     cmd.command = action;
+    if(rate_limit > 0)
+      rate_limit_sleep();
     push_queue(cmd);
   }
   
@@ -535,6 +558,10 @@ void feed_worker()
   apr_pool_create(&cmd_ctx.pool,ctx.pool);
   tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
   tile->dimensions = mapcache_requested_dimensions_clone(ctx.pool,dimensions);
+  if(rate_limit > 0) {
+    /* compute time between seed commands accounting for max rate-limit and current metasize */
+    rate_limit_delay = (tileset->metasize_x * tileset->metasize_y) / (double)rate_limit;
+  }
   if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
     do {
       tile->x = x;
@@ -554,12 +581,6 @@ void feed_worker()
       y < grid_link->grid_limits[z].maxy
     );
   } else {
-    double last_time = 0;
-    double delay = 0.0;
-    if(rate_limit > 0) {
-      /* compute time between seed commands accounting for max rate-limit and current metasize */
-      delay = (tileset->metasize_x * tileset->metasize_y) / (double)rate_limit;
-    }
     while(1) {
       int action;
       apr_pool_clear(cmd_ctx.pool);
@@ -588,21 +609,8 @@ void feed_worker()
         cmd.y = y;
         cmd.z = z;
         cmd.command = action;
-        if(rate_limit > 0) {
-          struct mctimeval now;
-          double now_time;
-          mapcache_gettimeofday(&now,NULL);
-          now_time = now.tv_sec + now.tv_usec / 1000000.0;
-
-          if((now_time - last_time) < delay) {
-            apr_sleep((int)((delay - (now_time - last_time)) * 1000000));
-            /*last_time = now_time + delay - (now_time - last_time); //now plus the time we slept */
-            last_time = delay + last_time;
-          } else {
-            last_time = now_time;
-          }
-
-        }
+        if(rate_limit > 0)
+          rate_limit_sleep();
         push_queue(cmd);
       }
 
