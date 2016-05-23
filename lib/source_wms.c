@@ -227,7 +227,7 @@ mapcache_source* mapcache_source_wms_create(mapcache_context *ctx)
   }
   mapcache_source_init(ctx, &(source->source));
   source->source.type = MAPCACHE_SOURCE_WMS;
-  source->source.render_map = _mapcache_source_wms_render_map;
+  source->source._render_map = _mapcache_source_wms_render_map;
   source->source.configuration_check = _mapcache_source_wms_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_wms_configuration_parse_xml;
   source->source.query_info = _mapcache_source_wms_query;

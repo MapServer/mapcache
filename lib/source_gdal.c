@@ -692,7 +692,7 @@ mapcache_source* mapcache_source_gdal_create(mapcache_context *ctx)
   }
   mapcache_source_init(ctx, &(source->source));
   source->source.type = MAPCACHE_SOURCE_GDAL;
-  source->source.render_map = _mapcache_source_gdal_render_metatile;
+  source->source._render_map = _mapcache_source_gdal_render_metatile;
   source->source.configuration_check = _mapcache_source_gdal_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_gdal_configuration_parse;
   source->eResampleAlg = MAPCACHE_DEFAULT_RESAMPLE_ALG;

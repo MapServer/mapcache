@@ -28,6 +28,7 @@
  *****************************************************************************/
 
 #include "mapcache.h"
+#include <apr_time.h>
 
 
 
@@ -36,6 +37,35 @@ void mapcache_source_init(mapcache_context *ctx, mapcache_source *source)
   mapcache_extent tmp_extent = {-1,-1,-1,-1};
   source->data_extent = tmp_extent;
   source->metadata = apr_table_make(ctx->pool,3);
+  source->retry_count = 1;
+  source->retry_delay = 0.1;
+}
+
+
+void mapcache_source_render_map(mapcache_context *ctx, mapcache_source *source, mapcache_map *map) {
+  int i;
+#ifdef DEBUG
+  ctx->log(ctx, MAPCACHE_DEBUG, "calling render_map on source (%s): tileset=%s, grid=%s, extent=(%f,%f,%f,%f)",
+           source->name, map->tileset->name, map->grid_link->grid->name,
+           map->extent.minx, map->extent.miny, map->extent.maxx, map->extent.maxy);
+#endif
+  for(i=0;i<=source->retry_count;i++) {
+    if(i) { /* not our first try */
+      ctx->log(ctx, MAPCACHE_INFO, "source (%s) render_map retry %d of %d. previous try returned error: %s",
+               source->name, i, source->retry_count, ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(source->retry_delay > 0) {
+        double wait = source->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    source->_render_map(ctx,map);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
 }
 /* vim: ts=2 sts=2 et sw=2
 */

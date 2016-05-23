@@ -464,7 +464,7 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
     ProfilerStart("/tmp/gdal-source.gperf");
     ProfilerRegisterThread();
 #endif
-  tileset->source->render_map(ctx, &mt->map);
+  mapcache_source_render_map(ctx, tileset->source, &mt->map);
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);

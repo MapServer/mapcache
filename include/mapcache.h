@@ -280,6 +280,8 @@ struct mapcache_source {
   mapcache_extent data_extent; /**< extent in which this source can produce data */
   mapcache_source_type type;
   apr_table_t *metadata;
+  unsigned int retry_count;
+  double retry_delay;
 
   apr_array_header_t *info_formats;
   /**
@@ -287,7 +289,7 @@ struct mapcache_source {
    *
    * sets the mapcache_metatile::tile::data for the given tile
    */
-  void (*render_map)(mapcache_context *ctx, mapcache_map *map);
+  void (*_render_map)(mapcache_context *ctx, mapcache_map *map);
 
   void (*query_info)(mapcache_context *ctx, mapcache_feature_info *fi);
 
@@ -904,6 +906,11 @@ void mapcache_configuration_add_cache(mapcache_cfg *config, mapcache_cache *cach
  * \memberof mapcache_source
  */
 void mapcache_source_init(mapcache_context *ctx, mapcache_source *source);
+
+/**
+ * \memberof mapcache_source
+ */
+void mapcache_source_render_map(mapcache_context *ctx, mapcache_source *source, mapcache_map *map);
 
 /**
  * \memberof mapcache_source_gdal

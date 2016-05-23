@@ -458,7 +458,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
         return NULL;
       }
     }
-    basemap->tileset->source->render_map(ctx, basemap);
+    mapcache_source_render_map(ctx, basemap->tileset->source, basemap);
     if(GC_HAS_ERROR(ctx)) return NULL;
     if(req_map->nmaps>1) {
       if(!basemap->raw_image) {
@@ -467,7 +467,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
       }
       for(i=1; i<req_map->nmaps; i++) {
         mapcache_map *overlaymap = req_map->maps[i];
-        overlaymap->tileset->source->render_map(ctx, overlaymap);
+        mapcache_source_render_map(ctx, overlaymap->tileset->source, overlaymap);
         if(GC_HAS_ERROR(ctx)) return NULL;
         if(!overlaymap->raw_image) {
           overlaymap->raw_image = mapcache_imageio_decode(ctx,overlaymap->encoded_data);

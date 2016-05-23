@@ -356,6 +356,20 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     parseMetadata(ctx, cur_node, source->metadata);
     GC_CHECK_ERROR(ctx);
   }
+  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
+    source->retry_count = atoi(cur_node->txt);
+    if(source->retry_count > 10) {
+      ctx->set_error(ctx,400,"source (%s) <retries> count of %d is unreasonably large. max is 10", source->name, source->retry_count);
+      return;
+    }
+  }
+  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
+    source->retry_delay = (double)atof(cur_node->txt);
+    if(source->retry_delay < 0) {
+      ctx->set_error(ctx,400,"source (%s) retry delay of %f must be positive",source->name, source->retry_delay);
+      return;
+    }
+  }
 
   source->configuration_parse_xml(ctx,node,source);
   GC_CHECK_ERROR(ctx);
