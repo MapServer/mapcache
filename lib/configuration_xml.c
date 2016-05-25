@@ -181,7 +181,7 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   for(cur_node = ezxml_child(node,"rule"), i = 0; cur_node; cur_node = cur_node->next, i++) {
     int *zoom, nzoom, j;
     char* zoom_attr = (char*)ezxml_attr(cur_node, "zoom_level");
-    ezxml_t visible_extent = ezxml_child(cur_node, "visible_extent");
+    ezxml_t visibility = ezxml_child(cur_node, "visibility");
     ezxml_t readonly = ezxml_child(cur_node, "readonly");
     mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
 
@@ -203,32 +203,40 @@ void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         return;
     }
 
-    /* parse visible_extent */
-    if(visible_extent && visible_extent->txt && *visible_extent->txt) {
-      double *values;
-      int nvalues;
-      char *hidden_color = (char*)ezxml_attr(visible_extent, "hidden_color");
-      char *value = apr_pstrdup(ctx->pool,visible_extent->txt);
-      mapcache_extent extent = {0,0,0,0};
-
-      if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, value, NULL, &values, &nvalues) ||
-          nvalues != 4) {
-        ctx->set_error(ctx, 400, "failed to parse visible_extent array %s in ruleset %s, rule %d. "
-                       "(expecting 4 space separated numbers, got %d (%f %f %f %f)"
-                       "eg <visible_extent>-180 -90 180 90</visible_extent>)",
-                       value,ruleset->name,i+1,nvalues,values[0],values[1],values[2],values[3]);
-        return;
-      }
-      extent.minx = values[0];
-      extent.miny = values[1];
-      extent.maxx = values[2];
-      extent.maxy = values[3];
-      rule->visible_extent = (mapcache_extent*)apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
-      *rule->visible_extent = extent;
+    /* parse visibility, <visibility> */
+    if(visibility) {
+      char *hidden_color = (char*)ezxml_attr(visibility, "hidden_color");
+      ezxml_t extent_node;
 
       if (hidden_color && *hidden_color) {
         /* parse color, base 16 */
         rule->hidden_color = (unsigned int)strtol(hidden_color, NULL, 16);
+      }
+
+      /* parse extents, <extent> */
+      for (extent_node = ezxml_child(visibility,"extent"); extent_node; extent_node = extent_node->next) {
+        double *values;
+        int nvalues;
+        char *value = apr_pstrdup(ctx->pool,extent_node->txt);
+        mapcache_extent extent = {0,0,0,0};
+        mapcache_extent *pextent;
+
+        if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, value, NULL, &values, &nvalues) ||
+            nvalues != 4) {
+          ctx->set_error(ctx, 400, "failed to parse extent array %s in ruleset %s, rule %d. "
+                         "(expecting 4 space separated numbers, got %d (%f %f %f %f)"
+                         "eg <extent>-180 -90 180 90</extent>)",
+                         value,ruleset->name,i+1,nvalues,values[0],values[1],values[2],values[3]);
+          return;
+        }
+
+        extent.minx = values[0];
+        extent.miny = values[1];
+        extent.maxx = values[2];
+        extent.maxy = values[3];
+        pextent =  (mapcache_extent*)apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+        *pextent = extent;
+        APR_ARRAY_PUSH(rule->visible_extents, mapcache_extent*) = pextent;
       }
     }
 
@@ -803,9 +811,15 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 
         if(rule) {
           mapcache_rule *rule_clone = mapcache_ruleset_rule_clone(ctx->pool, rule);
-          if(rule->visible_extent) {
-            rule_clone->visible_limits = apr_pcalloc(ctx->pool, sizeof(mapcache_extent_i));
-            mapcache_grid_compute_limits_at_level(grid,rule_clone->visible_extent,rule_clone->visible_limits,tolerance,i);
+
+          if(rule->visible_extents) {
+            int j;
+            for(j = 0; j < rule->visible_extents->nelts; j++) {
+              mapcache_extent *visible_extent = APR_ARRAY_IDX(rule->visible_extents, j, mapcache_extent*);
+              mapcache_extent_i *visible_limit = apr_pcalloc(ctx->pool, sizeof(mapcache_extent_i));
+              mapcache_grid_compute_limits_at_level(grid,visible_extent,visible_limit,tolerance,i);
+              APR_ARRAY_PUSH(rule_clone->visible_limits, mapcache_extent_i*) = visible_limit;
+            }
           }
           APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = rule_clone;
         } else {

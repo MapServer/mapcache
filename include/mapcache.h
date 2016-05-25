@@ -1084,13 +1084,13 @@ struct mapcache_rule {
    */
   int readonly;
   /**
-   * visible extent
+   * visible extents, array of mapcache_extent
    */
-  mapcache_extent *visible_extent;
+  apr_array_header_t *visible_extents;
   /**
-   * visible limits
+   * visible limits, array of mapcache_extent_i
    */
-  mapcache_extent_i *visible_limits;
+  apr_array_header_t *visible_limits;
 };
 
 /**\class mapcache_ruleset

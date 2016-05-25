@@ -46,8 +46,8 @@ mapcache_rule* mapcache_ruleset_rule_create(apr_pool_t *pool)
 {
   mapcache_rule* rule = (mapcache_rule*)apr_pcalloc(pool, sizeof(mapcache_rule));
   rule->zoom_level = -1;
-  rule->visible_extent = NULL;
-  rule->visible_limits = NULL;
+  rule->visible_extents = apr_array_make(pool,0,sizeof(mapcache_extent*));
+  rule->visible_limits = apr_array_make(pool,0,sizeof(mapcache_extent_i*));
   rule->hidden_color = 0xffffff; //default = white
   rule->readonly = 0;
   return rule;
@@ -64,14 +64,24 @@ mapcache_rule* mapcache_ruleset_rule_clone(apr_pool_t *pool, mapcache_rule *rule
   clone->hidden_color = rule->hidden_color;
   clone->readonly = rule->readonly;
 
-  if(rule->visible_extent) {
-    clone->visible_extent = (mapcache_extent*)apr_pcalloc(pool, sizeof(mapcache_extent));
-    *clone->visible_extent = *rule->visible_extent;
+  if(rule->visible_extents) {
+    int i;
+    for(i = 0; i < rule->visible_extents->nelts; i++) {
+      mapcache_extent *extent_clone = (mapcache_extent*)apr_pcalloc(pool, sizeof(mapcache_extent));
+      mapcache_extent *extent = APR_ARRAY_IDX(rule->visible_extents, i, mapcache_extent*);
+      *extent_clone = *extent;
+      APR_ARRAY_PUSH(clone->visible_extents, mapcache_extent*) = extent_clone;
+    }
   }
 
   if(rule->visible_limits) {
-    clone->visible_limits = (mapcache_extent_i*)apr_pcalloc(pool, sizeof(mapcache_extent_i));
-    *clone->visible_limits = *rule->visible_limits;
+    int i;
+    for(i = 0; i < rule->visible_limits->nelts; i++) {
+      mapcache_extent_i *extent_clone = (mapcache_extent_i*)apr_pcalloc(pool, sizeof(mapcache_extent_i));
+      mapcache_extent_i *extent = APR_ARRAY_IDX(rule->visible_limits, i, mapcache_extent_i*);
+      *extent_clone = *extent;
+      APR_ARRAY_PUSH(clone->visible_limits, mapcache_extent_i*) = extent_clone;
+    }
   }
   
   return clone;
@@ -113,19 +123,25 @@ mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx)
 }
 
 /*
- * check if tile is within visible extent
+ * check if tile is within visible extents
  */
 int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile) {
-  if(!rule || !rule->visible_limits) {
+  int i;
+
+  if(!rule || !rule->visible_limits || apr_is_empty_array(rule->visible_limits)) {
     return MAPCACHE_TRUE;
   }
 
-  if(tile->x < rule->visible_limits->minx || tile->y < rule->visible_limits->miny || 
-     tile->x > rule->visible_limits->maxx || tile->y > rule->visible_limits->maxy) {
-    return MAPCACHE_FALSE;
+  for(i = 0; i < rule->visible_limits->nelts; i++) {
+    mapcache_extent_i *extent = APR_ARRAY_IDX(rule->visible_limits, i, mapcache_extent_i*);
+
+    if(tile->x >= extent->minx && tile->y >= extent->miny && 
+       tile->x <= extent->maxx && tile->y <= extent->maxy) {
+      return MAPCACHE_TRUE;
+    }
   }
 
-  return MAPCACHE_TRUE;
+  return MAPCACHE_FALSE;
 }
 
 /*
