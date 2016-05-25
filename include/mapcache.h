@@ -1308,6 +1308,9 @@ MS_DLL_EXPORT int mapcache_util_extract_double_list(mapcache_context *ctx, const
                                       int *numbers_count);
 char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 const char *replacement );
+void mapcache_util_quadkey_decode(mapcache_context *ctx, const char *quadkey, int *x, int *y, int *z);
+
+char* mapcache_util_quadkey_encode(mapcache_context *ctx, int x, int y, int z);
 
 /**
  * \brief replace dangerous characters in string

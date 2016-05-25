@@ -98,31 +98,11 @@ void _mapcache_service_ve_parse_request(mapcache_context *ctx, mapcache_service 
   quadkey = apr_table_get(params, "tile");
   tile = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
   if (quadkey) {
-    z = strlen(quadkey);
+    mapcache_util_quadkey_decode(ctx, quadkey, &x, &y, &z);
+    GC_CHECK_ERROR(ctx);
     if (z < 1 || z >= grid_link->grid->nlevels) {
       ctx->set_error(ctx, 404, "received ve request with invalid z level %d\n", z);
       return;
-    }
-    x = y = 0;
-    for (i = z; i; i--) {
-      int mask = 1 << (i - 1);
-      switch (quadkey[z - i]) {
-        case '0':
-          break;
-        case '1':
-          x |= mask;
-          break;
-        case '2':
-          y |= mask;
-          break;
-        case '3':
-          x |= mask;
-          y |= mask;
-          break;
-        default:
-          ctx->set_error(ctx, 404, "Invalid Quadkey sequence");
-          return;
-      }
     }
   } else {
     ctx->set_error(ctx, 400, "received ve request with no tile quadkey");

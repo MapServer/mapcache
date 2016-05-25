@@ -356,19 +356,109 @@ char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, 
   return key;
 }
 
+void mapcache_util_quadkey_decode(mapcache_context *ctx, const char *quadkey, int *x, int *y, int *z) {
+  int i;
+  if(!quadkey || !*quadkey) {
+    *z = *x = *y = 0;
+    return;
+  }
+  *z = strlen(quadkey);
+  *x = *y = 0;
+  for (i = *z; i; i--) {
+    int mask = 1 << (i - 1);
+    switch (quadkey[*z - i]) {
+      case '0':
+        break;
+      case '1':
+        *x |= mask;
+        break;
+      case '2':
+        *y |= mask;
+        break;
+      case '3':
+        *x |= mask;
+        *y |= mask;
+        break;
+      default:
+        ctx->set_error(ctx, 400, "Invalid Quadkey sequence");
+        return;
+    }
+  }
+}
+
+char* mapcache_util_quadkey_encode(mapcache_context *ctx, int x, int y, int z) {
+  int i;
+  char *key = apr_pcalloc(ctx->pool, z+1);
+  memset(key,'0',z);
+  for (i = z; i > 0; i--) {
+    int mask = 1 << (i - 1);
+    if ((x & mask) != 0)
+    {
+      key[z - i]++;
+    }
+    if ((y & mask) != 0)
+    {
+      key[z - i] += 2;
+    }
+  }
+  return key;
+}
+
 char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *template,
                                  char* sanitized_chars, char *sanitize_to)
 {
   char *path;
   if(template) {
-    path = mapcache_util_str_replace(ctx->pool, template, "{x}",
-                                     apr_psprintf(ctx->pool, "%d", tile->x));
-    path = mapcache_util_str_replace(ctx->pool, path, "{y}",
-                                     apr_psprintf(ctx->pool, "%d", tile->y));
-    path = mapcache_util_str_replace(ctx->pool, path, "{z}",
-                                     apr_psprintf(ctx->pool, "%d", tile->z));
-    if(strstr(path,"{dim}")) {
-      path = mapcache_util_str_replace(ctx->pool, path, "{dim}", mapcache_util_get_tile_dimkey(ctx,tile,sanitized_chars,sanitize_to));
+    path = apr_pstrdup(ctx->pool, template);
+
+    if(strstr(path,"{x}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{x}",
+                                       apr_psprintf(ctx->pool,"%d",tile->x));
+    else if(strstr(path,"{inv_x}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{inv_x}",
+                                       apr_psprintf(ctx->pool,"%d",
+                                                    tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1));
+    if(strstr(path,"{y}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{y}",
+                                       apr_psprintf(ctx->pool,"%d",tile->y));
+    else if(strstr(path,"{inv_y}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{inv_y}",
+                                       apr_psprintf(ctx->pool,"%d",
+                                                    tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1));
+    if(strstr(path,"{z}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{z}",
+                                       apr_psprintf(ctx->pool,"%d",tile->z));
+    else if(strstr(path,"{inv_z}"))
+      path = mapcache_util_str_replace(ctx->pool,path, "{inv_z}",
+                                       apr_psprintf(ctx->pool,"%d",
+                                                    tile->grid_link->grid->nlevels - tile->z - 1));
+    if(strstr(path,"{quadkey}")) {
+      char *quadkey = mapcache_util_quadkey_encode(ctx, tile->x, tile->y, tile->z);
+      path = mapcache_util_str_replace(ctx->pool,path, "{quadkey}", quadkey);
+    }
+
+    if(tile->dimensions) {
+      if(strstr(path,"{dim:")) {
+        char *dimstring="";
+        int i = tile->dimensions->nelts;
+        while(i--) {
+          char *single_dim;
+          mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+
+          /* compute value for eventual {dim} replacement */
+          dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",entry->cached_value,NULL);
+
+          /* check for {dim:name} replacement */
+          single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+          if(strstr(path,single_dim)) {
+            path = mapcache_util_str_replace(ctx->pool,path, single_dim, entry->cached_value);
+          }
+        }
+      }
+      if(strstr(path,"{dim}")) {
+        path = mapcache_util_str_replace(ctx->pool,path, "{dim}",
+                                         mapcache_util_get_tile_dimkey(ctx,tile,sanitized_chars,sanitize_to));
+      }
     }
     if(strstr(path,"{tileset}"))
       path = mapcache_util_str_replace(ctx->pool, path, "{tileset}", tile->tileset->name);
