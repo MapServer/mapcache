@@ -48,8 +48,8 @@ mapcache_rule* mapcache_ruleset_rule_create(apr_pool_t *pool)
   rule->zoom_level = -1;
   rule->visible_extents = apr_array_make(pool,0,sizeof(mapcache_extent*));
   rule->visible_limits = apr_array_make(pool,0,sizeof(mapcache_extent_i*));
-  rule->hidden_color = 0xffffff; //default = white
-  rule->readonly = 0;
+  rule->hidden_color = 0x00ffffff; // default is white with full transparency
+  rule->hidden_tile = NULL;
   return rule;
 }
 
@@ -62,7 +62,7 @@ mapcache_rule* mapcache_ruleset_rule_clone(apr_pool_t *pool, mapcache_rule *rule
 
   clone->zoom_level = rule->zoom_level;
   clone->hidden_color = rule->hidden_color;
-  clone->readonly = rule->readonly;
+  clone->hidden_tile = rule->hidden_tile; //no need to copy, just point to same buffer/tile.
 
   if(rule->visible_extents) {
     int i;
@@ -108,7 +108,7 @@ mapcache_rule* mapcache_ruleset_rule_find(apr_array_header_t *rules, int zoom_le
 }
 
 /*
- * get rule at index, or NULL if none exist
+ * get rule at index, or NULL if index is out of bounds.
  */
 mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx)
 {
@@ -123,7 +123,7 @@ mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx)
 }
 
 /*
- * check if tile is within visible extents
+ * check if tile is within visible limits
  */
 int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile) {
   int i;
@@ -139,17 +139,6 @@ int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile) {
        tile->x <= extent->maxx && tile->y <= extent->maxy) {
       return MAPCACHE_TRUE;
     }
-  }
-
-  return MAPCACHE_FALSE;
-}
-
-/*
- * check if tile is readonly
- */
-int mapcache_ruleset_is_readonly_tile(mapcache_rule* rule, mapcache_tile *tile) {
-  if(rule && rule->readonly) {
-    return MAPCACHE_TRUE;
   }
 
   return MAPCACHE_FALSE;

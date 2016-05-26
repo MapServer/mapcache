@@ -35,15 +35,9 @@ int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcac
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_get on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->grid_link->grid->name,tile->z,tile->x, tile->y);
 #endif
 
-  /* if tile is outside visible extent, create a blank tile and return */
+  /* if tile is outside visible limits, return a blank tile */
   if (mapcache_ruleset_is_visible_tile(rule, tile) == MAPCACHE_FALSE) {
-    int tile_sx, tile_sy;
-    tile_sx = tile->grid_link->grid->tile_sx;
-    tile_sy = tile->grid_link->grid->tile_sy;
-    tile->encoded_data = tile->tileset->format->create_empty_image(ctx, tile->tileset->format, tile_sx, tile_sy, rule->hidden_color);
-    if(GC_HAS_ERROR(ctx)) {
-      return MAPCACHE_FAILURE;
-    }
+    tile->encoded_data = rule->hidden_tile;
     return MAPCACHE_SUCCESS;
   }
 
@@ -68,16 +62,9 @@ int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcac
 
 void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
   int i;
-  mapcache_rule *rule = mapcache_ruleset_rule_get(tile->grid_link->rules, tile->z);
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_delete on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->grid_link->grid->name,tile->z,tile->x, tile->y);
 #endif
-
-  /* if tile has a readonly rule, return */
-  if (mapcache_ruleset_is_readonly_tile(rule, tile) == MAPCACHE_TRUE) {
-    return;
-  }
-
   if(tile->tileset->read_only)
     return;
   for(i=0;i<=cache->retry_count;i++) {
@@ -132,16 +119,9 @@ int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, map
 
 void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
   int i;
-  mapcache_rule *rule = mapcache_ruleset_rule_get(tile->grid_link->rules, tile->z);
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_set on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->grid_link->grid->name,tile->z,tile->x, tile->y);
 #endif
-
-  /* if tile has a readonly rule, return */
-  if (mapcache_ruleset_is_readonly_tile(rule, tile) == MAPCACHE_TRUE) {
-    return;
-  }
-
   if(tile->tileset->read_only)
     return;
   for(i=0;i<=cache->retry_count;i++) {
@@ -168,15 +148,6 @@ void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache,
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_multi_set on cache (%s): (tileset=%s, grid=%s, first tile: z=%d, x=%d, y=%d",cache->name,tiles[0].tileset->name,tiles[0].grid_link->grid->name,
       tiles[0].z,tiles[0].x, tiles[0].y);
 #endif
-
-  /* if any tile has a readonly rule, return */
-  for(i = 0; i < ntiles; i++) {
-    mapcache_rule *rule = mapcache_ruleset_rule_get((tiles+i)->grid_link->rules, (tiles+i)->z);
-    if (mapcache_ruleset_is_readonly_tile(rule, tiles+i) == MAPCACHE_TRUE) {
-      return;
-    }
-  }
-
   if((&tiles[0])->tileset->read_only)
     return;
   if(cache->_tile_multi_set) {

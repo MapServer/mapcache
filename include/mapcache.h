@@ -1076,13 +1076,13 @@ struct mapcache_rule {
    */
   int zoom_level;
   /**
-   * hidden tile color
+   * color of tiles when outside visible extent, ARGB
    */
   unsigned int hidden_color;
   /**
-   * readonly
+   * tile to return when outside visible extent
    */
-  int readonly;
+  mapcache_buffer *hidden_tile;
   /**
    * visible extents, array of mapcache_extent
    */
@@ -1354,13 +1354,6 @@ mapcache_rule* mapcache_ruleset_rule_get(apr_array_header_t *rules, int idx);
  * @param tile
  */
 int mapcache_ruleset_is_visible_tile(mapcache_rule* rule, mapcache_tile *tile);
-
-/**
- * \brief check if tile is readonly
- * @param rule
- * @param tile
- */
-int mapcache_ruleset_is_readonly_tile(mapcache_rule* rule, mapcache_tile *tile);
 
 
 /* in grid.c */
