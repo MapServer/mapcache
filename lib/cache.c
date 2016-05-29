@@ -37,7 +37,8 @@ int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcac
 
   /* if tile is outside visible limits, return a blank tile */
   if (mapcache_ruleset_is_visible_tile(rule, tile) == MAPCACHE_FALSE) {
-    tile->encoded_data = rule->hidden_tile;
+    tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
+    mapcache_buffer_append(tile->encoded_data, rule->hidden_tile->size, rule->hidden_tile->buf);
     return MAPCACHE_SUCCESS;
   }
 

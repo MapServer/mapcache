@@ -817,6 +817,9 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 
     // setup zoom level rules if configured
     if(ruleset) {
+      mapcache_buffer *last_hidden_tile = NULL;
+      unsigned int last_hidden_color;
+
       // prepare one rule per zoom level. if rule is missing it will be NULL
       for(i = 0; i < grid->nlevels; i++) {
         mapcache_rule *rule = mapcache_ruleset_rule_find(ruleset->rules, i);
@@ -827,16 +830,23 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
           if(rule->visible_extents) {
             int j;
 
-            // create empty tile in configured format to return when outside visible extent
-            if(tileset->format) {
-              rule_clone->hidden_tile = tileset->format->create_empty_image(ctx, tileset->format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
-            } else {
-              rule_clone->hidden_tile = config->default_image_format->create_empty_image(ctx, config->default_image_format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+            // create blank tile in configured format to return when outside visible extent
+            // try to reuse last tile if possible
+            if(last_hidden_tile == NULL || last_hidden_color != rule->hidden_color) {
+              if(tileset->format) {
+                last_hidden_tile = tileset->format->create_empty_image(ctx, tileset->format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              } else {
+                last_hidden_tile = config->default_image_format->create_empty_image(ctx, config->default_image_format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              }
+
+              if(GC_HAS_ERROR(ctx)) {
+                return;
+              }
+
+              last_hidden_color = rule->hidden_color;
             }
 
-            if(GC_HAS_ERROR(ctx)) {
-              return;
-            }
+            rule_clone->hidden_tile = last_hidden_tile;
 
             // compute limits for extents
             for(j = 0; j < rule->visible_extents->nelts; j++) {
