@@ -496,10 +496,18 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
     bbox = ezxml_add_child(tmset,"ows:BoundingBox",0);
 
-    ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent.minx, grid->extent.miny));
-    ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent.maxx, grid->extent.maxy));
+    if(mapcache_is_axis_inverted(grid->srs)) {
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.miny, grid->extent.minx));
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.maxy, grid->extent.maxx));
+    } else {
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.minx, grid->extent.miny));
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.maxx, grid->extent.maxy));
+    }
+
     ezxml_set_attr(bbox,"crs",mapcache_grid_get_crs(ctx,grid));
 
     ezxml_set_txt(ezxml_add_child(tmset,"ows:SupportedCRS",0),mapcache_grid_get_crs(ctx,grid));
