@@ -156,12 +156,14 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   if(req->post_body && req->post_len>0) {
     curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, req->post_body);
   }
+
+  if(!http_code)
+    curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
+
   /* get it! */
   ret = curl_easy_perform(curl_handle);
   if(http_code)
     curl_easy_getinfo (curl_handle, CURLINFO_RESPONSE_CODE, http_code);
-  else
-    curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
 
   if(ret != CURLE_OK) {
     ctx->set_error(ctx, 502, "curl failed to request url %s : %s", req->url, error_msg);
