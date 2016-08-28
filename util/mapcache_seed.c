@@ -64,7 +64,7 @@ apr_queue_t *log_queue;
 #include "ogr_api.h"
 #include "geos_c.h"
 int nClippers = 0;
-int ogr_touches = 1;
+int use_ogr_touches = 0;
 const GEOSPreparedGeometry **clippers=NULL;
 #endif
 
@@ -228,6 +228,8 @@ int trypop_queue(struct seed_cmd *cmd)
   return ret;
 }
 
+#define SEEDER_OPT_OGR_TOUCHES 258
+
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
@@ -264,7 +266,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
 #ifdef USE_CLIPPERS
-  { "ogr-not-touches", 'T', FALSE, "skip tiles only touching features"},
+  { "ogr-touches", SEEDER_OPT_OGR_TOUCHES, FALSE, "include tiles only touching features"},
 #endif
   { NULL, 0, 0, NULL }
 };
@@ -323,7 +325,7 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
-      if(ogr_touches || !GEOSPreparedTouches(clipper,mtbboxg)) {
+      if(use_ogr_touches || !GEOSPreparedTouches(clipper,mtbboxg)) {
         intersects = 1;
         break;
       }
@@ -835,9 +837,17 @@ int usage(const char *progname, char *msg, ...)
 
   while(seed_options[i].name) {
     if(seed_options[i].has_arg==TRUE) {
-      printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      if(seed_options[i].optch > 255) {
+        printf("  |--%s [value]: %s\n",seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      }
     } else {
-      printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      if(seed_options[i].optch > 255) {
+        printf("  |--%s: %s\n",seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      }
     }
     i++;
   }
@@ -1041,8 +1051,8 @@ int main(int argc, const char **argv)
       case 'w':
         ogr_where = optarg;
         break;
-      case 'T':
-        ogr_touches = 0;
+      case SEEDER_OPT_OGR_TOUCHES:
+        use_ogr_touches = 1;
         break;
 #endif
 
