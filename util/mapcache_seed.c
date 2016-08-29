@@ -64,7 +64,7 @@ apr_queue_t *log_queue;
 #include "ogr_api.h"
 #include "geos_c.h"
 int nClippers = 0;
-int use_ogr_touches = 0;
+int ogr_exclude_touching = 0;
 const GEOSPreparedGeometry **clippers=NULL;
 #endif
 
@@ -228,7 +228,7 @@ int trypop_queue(struct seed_cmd *cmd)
   return ret;
 }
 
-#define SEEDER_OPT_OGR_TOUCHES 258
+#define SEEDER_OPT_OGR_EXCLUDE_TOUCHING 258
 
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
@@ -266,7 +266,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
 #ifdef USE_CLIPPERS
-  { "ogr-touches", SEEDER_OPT_OGR_TOUCHES, FALSE, "include tiles only touching features"},
+  { "ogr-exclude-touching", SEEDER_OPT_OGR_EXCLUDE_TOUCHING, FALSE, "exclude tiles only touching features"},
 #endif
   { NULL, 0, 0, NULL }
 };
@@ -325,7 +325,7 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
-      if(use_ogr_touches || !GEOSPreparedTouches(clipper,mtbboxg)) {
+      if(!ogr_exclude_touching || !GEOSPreparedTouches(clipper,mtbboxg)) {
         intersects = 1;
         break;
       }
@@ -1051,8 +1051,8 @@ int main(int argc, const char **argv)
       case 'w':
         ogr_where = optarg;
         break;
-      case SEEDER_OPT_OGR_TOUCHES:
-        use_ogr_touches = 1;
+      case SEEDER_OPT_OGR_EXCLUDE_TOUCHING:
+        ogr_exclude_touching = 1;
         break;
 #endif
 
