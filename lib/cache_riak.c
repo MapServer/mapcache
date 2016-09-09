@@ -104,7 +104,6 @@ static mapcache_pooled_connection* _riak_get_connection(mapcache_context *ctx, m
 
 static int _mapcache_cache_riak_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
     int error;
-	  int retries = 3;
     RIACK_STRING key,bucket;
     struct RIACK_GET_OBJECT obj;
     struct RIACK_CLIENT *client;
@@ -130,25 +129,9 @@ static int _mapcache_cache_riak_has_tile(mapcache_context *ctx, mapcache_cache *
     }
     client = pc->connection;
 
-	do
-    {
-        error = riack_get(client, bucket, key, 0, &obj);
-        if (error != RIACK_SUCCESS) {
-            ctx->log(ctx, MAPCACHE_WARN, "Retry %d in riak_has_tile for tile %s from cache %s due to error %d", (4-retries), key.value, cache->cache.name, error);
-            for (error = riack_reconnect(client);
-                 error != RIACK_SUCCESS && retries > 0;
-                 error = riack_reconnect(client))
-            {
-              --retries;
-            }
-
-            --retries;
-        }
-    }
-    while (error != RIACK_SUCCESS && retries >= 0);
+    error = riack_get(client, bucket, key, 0, &obj);
 
     if (error != RIACK_SUCCESS) {
-        riack_free_get_object(client, &obj);    // riack_get allocates the returned object so we need to deallocate it.
         mapcache_connection_pool_invalidate_connection(ctx,pc);
         ctx->set_error(ctx, 500, "riak: failed to get key %s: %d", key, error);
         return MAPCACHE_FALSE;
@@ -212,8 +195,6 @@ static void _mapcache_cache_riak_delete(mapcache_context *ctx, mapcache_cache *p
  */
 static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
     int error;
-    int connect_error = RIACK_SUCCESS;
-    int retries = 3;
     RIACK_STRING key,bucket;
     struct RIACK_GET_OBJECT obj;
     struct RIACK_GET_PROPERTIES properties;
@@ -250,33 +231,11 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
     }
     client = pc->connection;
 
-    // If we get an error it is advised that we call reconnect.  It also appears
-    // that every now and then we get an error and need to retry once again to
-    // get it to work.
-    do
-    {
-        error = riack_get(client, bucket, key, &properties, &obj);
-        if (error != RIACK_SUCCESS) {
-            ctx->log(ctx, MAPCACHE_WARN, "Retry %d in riak_get for tile %s from cache %s due to error %d", (4-retries), key.value, cache->cache.name, error);
-            for (connect_error = riack_reconnect(client);
-                 connect_error != RIACK_SUCCESS && retries > 0;
-                 connect_error = riack_reconnect(client))
-            {
-              --retries;
-            }
-
-            --retries;
-        }
-    }
-    while (error != RIACK_SUCCESS && retries >= 0);
+    error = riack_get(client, bucket, key, &properties, &obj);
 
     if (error != RIACK_SUCCESS)
     {
-        if (connect_error != RIACK_SUCCESS)
-            mapcache_connection_pool_invalidate_connection(ctx,pc);
-        else
-            mapcache_connection_pool_release_connection(ctx,pc);
-
+        mapcache_connection_pool_invalidate_connection(ctx,pc);
         ctx->set_error(ctx, 500, "Failed to get tile %s from cache %s due to error %d", key.value, cache->cache.name, error);
         return MAPCACHE_FAILURE;
     }
@@ -311,8 +270,6 @@ static int _mapcache_cache_riak_get(mapcache_context *ctx, mapcache_cache *pcach
 static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
     char *key,*content_type;
     int error;
-    int connect_error = RIACK_SUCCESS;
-    int retries = 3;
     struct RIACK_OBJECT object;
     struct RIACK_CONTENT content;
     struct RIACK_PUT_PROPERTIES properties;
@@ -375,27 +332,9 @@ static void _mapcache_cache_riak_set(mapcache_context *ctx, mapcache_cache *pcac
     content.data = (uint8_t*)tile->encoded_data->buf;
     content.data_len = tile->encoded_data->size;
 
-    // If we get an error it is advised that we call reconnect.  It also appears
-    // that every now and then we get an error and need to retry once again to
-    // get it to work.
-    do
-    {
-        error = riack_put(client, object, 0, &properties);
-        if (error != RIACK_SUCCESS) {
-            ctx->log(ctx, MAPCACHE_WARN, "Retry %d in riak_set for tile %s from cache %s due to eror %d", (4 - retries), key, cache->cache.name, error);
-            for (connect_error = riack_reconnect(client);
-                 connect_error != RIACK_SUCCESS && retries > 0;
-                 connect_error = riack_reconnect(client))
-            {
-                --retries;
-            }
+    error = riack_put(client, object, 0, &properties);
 
-            --retries;
-        }
-    }
-    while (error != RIACK_SUCCESS && retries >= 0);
-
-    if (connect_error != RIACK_SUCCESS)
+    if (error != RIACK_SUCCESS)
       mapcache_connection_pool_invalidate_connection(ctx,pc);
     else
       mapcache_connection_pool_release_connection(ctx,pc);
