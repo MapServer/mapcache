@@ -414,7 +414,6 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         int j;
         for(j=0; j<grid_link->grid->nlevels; j++) {
           ezxml_t matrixlimits = ezxml_add_child(limits,"TileMatrixLimits",0);
-          int row;
           ezxml_set_txt(ezxml_add_child(matrixlimits,"TileMatrix",0),
                         apr_psprintf(ctx->pool,"%s:%d",grid_link->grid->name,j));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileRow",0),
