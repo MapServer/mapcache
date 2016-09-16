@@ -802,7 +802,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
 
   if(!matrixset) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEMATRIXSET");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilematrixset");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileMatrixSet");
     return;
   } else {
     int i;
@@ -814,49 +814,49 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
     if(!grid_link) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEMATRIXSET %s",matrixset);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilematrixset");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrixSet");
       return;
     }
   }
 
   if(!matrix) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEMATRIX");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilematrix");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileMatrix");
     return;
   } else {
     char *endptr;
     level = (int)strtol(matrix,&endptr,10);
     if(*endptr != 0 || level < grid_link->minz || level >= grid_link->maxz) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEMATRIX %s", matrix);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilematrix");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrix");
       return;
     }
   }
 
   if(!tilerow) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEROW");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilerow");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileRow");
     return;
   } else {
     char *endptr;
     row = (int)strtol(tilerow,&endptr,10);
     if(*endptr != 0 || row < 0) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEROW %s",tilerow);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilerow");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileRow");
       return;
     }
   }
 
   if(!tilecol) {
     ctx->set_error(ctx, 404, "received wmts request with no TILECOL");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilecol");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileCol");
     return;
   } else {
     char *endptr;
     col = (int)strtol(tilecol,&endptr,10);
     if(endptr == tilecol || col < 0) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILECOL %s",tilecol);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilecol");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileCol");
       return;
     }
   }
@@ -960,9 +960,19 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       req->tiles[i]->y = y;
       if(i==0) {
         /* no need to validate all the tiles as they all have the same x,y,z */
-        mapcache_tileset_tile_validate(ctx,req->tiles[0]);
+        mapcache_tileset_tile_validate_z(ctx,req->tiles[0]);
         if(GC_HAS_ERROR(ctx)) {
-          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
+          if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrix");
+          return;
+        }
+        mapcache_tileset_tile_validate_x(ctx,req->tiles[0]);
+        if(GC_HAS_ERROR(ctx)) {
+          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","TileCol");
+          return;
+        }
+        mapcache_tileset_tile_validate_y(ctx,req->tiles[0]);
+        if(GC_HAS_ERROR(ctx)) {
+          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","TileRow");
           return;
         }
       }
