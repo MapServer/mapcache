@@ -349,7 +349,11 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 #endif
 
   if(mode != MAPCACHE_CMD_TRANSFER && force) {
-    tile_exists = 0;
+    if(mode == MAPCACHE_CMD_DELETE) {
+      tile_exists = 1;
+    } else {
+      tile_exists = 0;
+    }
   } else {
     int i;
     if(tile->tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {

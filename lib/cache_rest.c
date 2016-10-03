@@ -321,7 +321,7 @@ static int _delete_request(mapcache_context *ctx, CURL *curl, char *url, apr_tab
   res = curl_easy_perform(curl);
   /* Check for errors */
   if(res != CURLE_OK) {
-    ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest head %s",curl_easy_strerror(res));
+    ctx->set_error(ctx, 500, "curl_easy_perform() failed in rest delete %s",curl_easy_strerror(res));
     http_code = 500;
   } else {
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
@@ -1078,7 +1078,7 @@ static void _mapcache_cache_rest_delete(mapcache_context *ctx, mapcache_cache *p
   }
   mapcache_connection_pool_release_connection(ctx,pc);
 
-  if(status!=200 && status!=202 && status!=204) {
+  if(status!=200 && status!=202 && status!=204 && status!=404 && status!=410) {
     //ctx->set_error(ctx,500,"rest delete returned code %d", status);
   }
 }
