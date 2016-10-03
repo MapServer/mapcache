@@ -316,6 +316,7 @@ static int _delete_request(mapcache_context *ctx, CURL *curl, char *url, apr_tab
   curl_easy_setopt(curl, CURLOPT_URL, url);
 
   curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+  curl_easy_setopt(curl, CURLOPT_NOBODY, 1);
 
   /* Now run off and do what you've been told! */
   res = curl_easy_perform(curl);
