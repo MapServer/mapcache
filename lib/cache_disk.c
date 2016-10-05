@@ -421,8 +421,8 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_cache *pcach
                        ctx->pool)) == APR_SUCCESS) {
     rv = apr_file_info_get(&finfo, APR_FINFO_SIZE|APR_FINFO_MTIME, f);
     if(!finfo.size) {
-      ctx->set_error(ctx, 500, "tile %s has no data",filename);
-      return MAPCACHE_FAILURE;
+      ctx->log(ctx, MAPCACHE_WARN, "tile %s has 0 length data",filename);
+      return MAPCACHE_CACHE_MISS;
     }
 
     size = finfo.size;
@@ -612,6 +612,12 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
     GC_CHECK_ERROR(ctx);
   }
 
+  bytes = (apr_size_t)tile->encoded_data->size;
+  if(bytes == 0) {
+      ctx->set_error(ctx, 500, "attempting to write 0 length tile to %s",filename);
+      return; /* we could not create the file */
+  }
+
   /*
    * depending on configuration file creation will retry if it fails.
    * this can happen on nfs mounted network storage.
@@ -631,20 +637,20 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
     GC_CHECK_ERROR(ctx);
   }
 
-  bytes = (apr_size_t)tile->encoded_data->size;
   ret = apr_file_write(f,(void*)tile->encoded_data->buf,&bytes);
   if(ret != APR_SUCCESS) {
     ctx->set_error(ctx, 500,  "failed to write data to file %s (wrote %d of %d bytes): %s",filename, (int)bytes, (int)tile->encoded_data->size, apr_strerror(ret,errmsg,120));
     return; /* we could not create the file */
   }
 
-  if(bytes != tile->encoded_data->size) {
-    ctx->set_error(ctx, 500, "failed to write image data to %s, wrote %d of %d bytes", filename, (int)bytes, (int)tile->encoded_data->size);
-  }
   ret = apr_file_close(f);
   if(ret != APR_SUCCESS) {
     ctx->set_error(ctx, 500,  "failed to close file %s:%s",filename, apr_strerror(ret,errmsg,120));
-    return; /* we could not create the file */
+  }
+
+  if(bytes != tile->encoded_data->size) {
+    ctx->set_error(ctx, 500, "failed to write image data to %s, wrote %d of %d bytes", filename, (int)bytes, (int)tile->encoded_data->size);
+    apr_file_remove(filename, ctx->pool);
   }
 
 }
