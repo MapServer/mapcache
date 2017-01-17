@@ -917,6 +917,11 @@ void mapcache_source_query_info(mapcache_context *ctx, mapcache_source *source,
 mapcache_source* mapcache_source_gdal_create(mapcache_context *ctx);
 
 /**
+ * \memberof mapcache_source_fallback
+ */
+mapcache_source* mapcache_source_fallback_create(mapcache_context *ctx);
+
+/**
  * \memberof mapcache_source_wms
  */
 mapcache_source* mapcache_source_wms_create(mapcache_context *ctx);
