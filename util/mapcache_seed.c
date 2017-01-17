@@ -277,7 +277,10 @@ void handle_sig_int(int signal)
 {
 #define signal_msg "SIGINT received, waiting for threads to finish\npress ctrl-C again to force terminate\n"
   if(!sig_int_received) {
-    write(2,signal_msg,strlen(signal_msg));
+    int err = write(2,signal_msg,strlen(signal_msg));
+    if(err) {
+      //nothing we can really do here
+    }
     sig_int_received = 1;
   } else {
     exit(signal);

@@ -357,7 +357,9 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
         int nSrcXSize = GDALGetRasterBandXSize(hFirstBand);
         int i;
         double dfSrcOvrRatio = 1.0;
+#ifdef USE_PRE_GDAL2_METHOD
         int iSelectedOvr = -1;
+#endif
         for( i = 0; *phTmpDS == NULL && i < nOvrCount; i ++)
         {
             GDALRasterBandH hOvr = GDALGetOverview(hFirstBand, i);
@@ -368,7 +370,9 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
                 break;
             }
             dfSrcOvrRatio = dfCurOvrRatio;
+#ifdef USE_PRE_GDAL2_METHOD
             iSelectedOvr = i;
+#endif
         }
 
 #ifdef USE_PRE_GDAL2_METHOD

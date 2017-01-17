@@ -640,6 +640,13 @@ static void header_gnome_sort(char **headers, int size)
     }
 }
 
+static const char* my_apr_table_get(apr_table_t *t, char *key) {
+  const char *val = apr_table_get(t,key);
+  if(!val) val = "";
+  return val;
+}
+
+
 static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char* method, mapcache_cache_rest *rcache, mapcache_tile *tile, char *url, apr_table_t *headers)
 {
   char *stringToSign, **aheaders, *resource = url, x_amz_date[64];
@@ -668,11 +675,10 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
     apr_table_set(headers, "Content-MD5", b64);
   }
 
-  head = apr_table_get(headers, "Content-MD5");
-  if(!head) head = "";
+  head = my_apr_table_get(headers, "Content-MD5");
   stringToSign=apr_pstrcat(ctx->pool, method, "\n", head, "\n", NULL);
-  head = apr_table_get(headers, "Content-Type");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-Type");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
 
   /* Date: header, left empty as we are using x-amz-date */
   stringToSign=apr_pstrcat(ctx->pool, stringToSign, "\n", NULL);
@@ -717,6 +723,7 @@ static void _mapcache_cache_google_headers_add(mapcache_context *ctx, const char
 
   apr_table_set( headers, "Authorization", apr_pstrcat(ctx->pool,"AWS ", google->access, ":", b64, NULL));
 }
+
 static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char* method, mapcache_cache_rest *rcache, mapcache_tile *tile, char *url, apr_table_t *headers)
 {
   char *stringToSign, **aheaders, *canonical_headers="", *canonical_resource=NULL, *resource = url, x_ms_date[64];
@@ -741,28 +748,28 @@ static void _mapcache_cache_azure_headers_add(mapcache_context *ctx, const char*
   apr_table_set(headers,"x-ms-blob-type","BlockBlob");
 
   stringToSign = apr_pstrcat(ctx->pool, method, "\n", NULL);
-  head = apr_table_get(headers, "Content-Encoding");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Content-Language");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Content-Length");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Content-MD5");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Content-Type");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Date");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "If-Modified-Since");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "If-Match");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "If-None-Match");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "If-Unmodified-Since");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
-  head = apr_table_get(headers, "Range");
-  if(!head) head = ""; stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-Encoding");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-Language");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-Length");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-MD5");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Content-Type");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Date");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "If-Modified-Since");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "If-Match");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "If-None-Match");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "If-Unmodified-Since");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
+  head = my_apr_table_get(headers, "Range");
+  stringToSign=apr_pstrcat(ctx->pool, stringToSign, head, "\n", NULL);
 
   ahead = apr_table_elts(headers);
   aheaders = apr_pcalloc(ctx->pool, ahead->nelts * sizeof(char*));
