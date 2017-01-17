@@ -886,11 +886,18 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   tile->raw_image = assembled_image;
   tile->nodata = assembled_nodata;
 
-  /* TODO: this is a perf optmization for a specific use-case */
+  /* TODO: how should the no data case be handled generically?
+   * uncomment the following block if this nodata state should be returned to
+   * the requester immediately, without this info being stored to the cache. 
+   * Leaving this uncommented will cause a no-data tile to be (maybe, depending
+   * on the cache's actual configuration) written to the cache
+   */
+  /*
   if(tile->nodata) {
     goto cleanup;
   }
-  
+  */
+
   if(!tile->nodata && !tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
     GC_CHECK_ERROR(ctx);
