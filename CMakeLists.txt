@@ -95,7 +95,6 @@ option(WITH_PCRE "Use PCRE for regex tests" OFF)
 option(WITH_MAPSERVER "Enable (experimental) support for the mapserver library" OFF)
 option(WITH_RIAK "Use Riak as a cache backend" OFF)
 option(WITH_GDAL "Choose if GDAL raster support should be built in" ON)
-option(WITH_GOOGLEPERF "Choose if profiling support should be built in" OFF)
 
 find_package(PNG)
 if(PNG_FOUND)
@@ -153,17 +152,6 @@ if(WITH_MEMCACHE)
   endif(tmp_APU_MEMCACHE_DIR)
   
 endif(WITH_MEMCACHE)
-
-if(WITH_GOOGLEPERF)
-  find_package(GooglePerf)
-  if(GOOGLEPERF_FOUND)
-    include_directories(${GOOGLEPERF_INCLUDE_DIR})
-    target_link_libraries(mapcache ${GOOGLEPERF_LIBRARY})
-    set (USE_GOOGLEPERF 1)
-  else(GOOGLEPERF_FOUND)
-    report_optional_not_found(GOOGLEPERF)
-  endif(GOOGLEPERF_FOUND)
-endif (WITH_GOOGLEPERF)
 
 if(WITH_PIXMAN)
   find_package(Pixman)
@@ -326,7 +314,6 @@ status_optional_component("PCRE" "${USE_PCRE}" "${PCRE_LIBRARY}")
 status_optional_component("Experimental mapserver support" "${USE_MAPSERVER}" "${MAPSERVER_LIBRARY}")
 status_optional_component("RIAK" "${USE_RIAK}" "${RIAK_LIBRARY}")
 status_optional_component("GDAL" "${USE_GDAL}" "${GDAL_LIBRARY}")
-status_optional_component("Google perf tools" "${USE_GOOGLEPERF}" "${USE_GOOGLEPERF}")
 
 INSTALL(TARGETS mapcache DESTINATION ${CMAKE_INSTALL_LIBDIR})
 

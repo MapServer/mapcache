@@ -460,18 +460,11 @@ void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *
     ctx->set_error(ctx,500,"tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
-#ifdef USE_GOOGLEPERF
-    ProfilerStart("/tmp/gdal-source.gperf");
-    ProfilerRegisterThread();
-#endif
   mapcache_source_render_map(ctx, tileset->source, &mt->map);
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
   mapcache_cache_tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
-#ifdef USE_GOOGLEPERF
-    ProfilerStop();
-#endif
 }
 
 
