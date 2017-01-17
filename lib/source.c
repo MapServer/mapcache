@@ -62,7 +62,32 @@ void mapcache_source_render_map(mapcache_context *ctx, mapcache_source *source, 
         apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
       }
     }
-    source->_render_map(ctx,map);
+    source->_render_map(ctx, source, map);
+    if(!GC_HAS_ERROR(ctx))
+      break;
+  }
+}
+
+void mapcache_source_query_info(mapcache_context *ctx, mapcache_source *source, mapcache_feature_info *fi) {
+  int i;
+#ifdef DEBUG
+  ctx->log(ctx, MAPCACHE_DEBUG, "calling query_info on source (%s): tileset=%s, grid=%s,",
+           source->name, fi->map.tileset->name, fi->map.grid_link->grid->name,);
+#endif
+  for(i=0;i<=source->retry_count;i++) {
+    if(i) { /* not our first try */
+      ctx->log(ctx, MAPCACHE_INFO, "source (%s) render_map retry %d of %d. previous try returned error: %s",
+               source->name, i, source->retry_count, ctx->get_error_message(ctx));
+      ctx->clear_errors(ctx);
+      if(source->retry_delay > 0) {
+        double wait = source->retry_delay;
+        int j = 0;
+        for(j=1;j<i;j++) /* sleep twice as long as before previous retry */
+          wait *= 2;
+        apr_sleep((int)(wait*1000000));  /* apr_sleep expects microseconds */
+      }
+    }
+    source->_query_info(ctx, source, fi);
     if(!GC_HAS_ERROR(ctx))
       break;
   }

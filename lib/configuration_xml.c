@@ -371,7 +371,7 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
   }
 
-  source->configuration_parse_xml(ctx,node,source);
+  source->configuration_parse_xml(ctx,node,source, config);
   GC_CHECK_ERROR(ctx);
   source->configuration_check(ctx,config,source);
   GC_CHECK_ERROR(ctx);
