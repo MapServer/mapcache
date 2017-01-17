@@ -579,7 +579,7 @@ mapcache_http_response *mapcache_core_get_featureinfo(mapcache_context *ctx,
       ctx->set_error(ctx,404, "unsupported feature info format %s",fi->format);
       return NULL;
     }
-    tileset->source->query_info(ctx,fi);
+    mapcache_source_query_info(ctx, tileset->source, fi);
     if(GC_HAS_ERROR(ctx)) return NULL;
     response = mapcache_http_response_create(ctx->pool);
     response->data = fi->data;

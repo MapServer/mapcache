@@ -342,6 +342,8 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     source = mapcache_source_gdal_create(ctx);
   } else if(!strcmp(type,"dummy")) {
     source = mapcache_source_dummy_create(ctx);
+  } else if(!strcmp(type,"fallback")) {
+    source = mapcache_source_fallback_create(ctx);
   } else {
     ctx->set_error(ctx, 400, "unknown source type %s for source \"%s\"", type, name);
     return;
@@ -371,7 +373,7 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
   }
 
-  source->configuration_parse_xml(ctx,node,source);
+  source->configuration_parse_xml(ctx,node,source, config);
   GC_CHECK_ERROR(ctx);
   source->configuration_check(ctx,config,source);
   GC_CHECK_ERROR(ctx);

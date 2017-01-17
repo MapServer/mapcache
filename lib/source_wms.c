@@ -51,9 +51,9 @@ struct mapcache_source_wms {
  * \private \memberof mapcache_source_wms
  * \sa mapcache_source::render_map()
  */
-void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
+void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *psource, mapcache_map *map)
 {
-  mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
+  mapcache_source_wms *wms = (mapcache_source_wms*)psource;
   mapcache_http *http;
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
@@ -99,11 +99,11 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_map *map)
   }
 }
 
-void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_feature_info *fi)
+void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_source *source, mapcache_feature_info *fi)
 {
   mapcache_map *map = (mapcache_map*)fi;
   mapcache_http *http;
-  mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
+  mapcache_source_wms *wms = (mapcache_source_wms*)source;
 
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_overlap(params,wms->getmap_params,0);
@@ -144,7 +144,7 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_feature_info *fi
  * \private \memberof mapcache_source_wms
  * \sa mapcache_source::configuration_parse()
  */
-void _mapcache_source_wms_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source *source)
+void _mapcache_source_wms_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source *source, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_source_wms *src = (mapcache_source_wms*)source;
@@ -230,7 +230,7 @@ mapcache_source* mapcache_source_wms_create(mapcache_context *ctx)
   source->source._render_map = _mapcache_source_wms_render_map;
   source->source.configuration_check = _mapcache_source_wms_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_wms_configuration_parse_xml;
-  source->source.query_info = _mapcache_source_wms_query;
+  source->source._query_info = _mapcache_source_wms_query;
   source->wms_default_params = apr_table_make(ctx->pool,4);;
   source->getmap_params = apr_table_make(ctx->pool,4);
   source->getfeatureinfo_params = apr_table_make(ctx->pool,4);
