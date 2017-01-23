@@ -472,7 +472,7 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
  */
 void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_source *psource, mapcache_map *map)
 {
-  mapcache_source_gdal *gdal = (mapcache_source_gdal*)map->tileset->source;
+  mapcache_source_gdal *gdal = (mapcache_source_gdal*)psource;
   gdal_connection *gdal_conn;
   GDALDatasetH  hDstDS;
   GDALDatasetH hTmpDS = NULL;

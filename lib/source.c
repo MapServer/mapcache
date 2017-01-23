@@ -72,7 +72,7 @@ void mapcache_source_query_info(mapcache_context *ctx, mapcache_source *source, 
   int i;
 #ifdef DEBUG
   ctx->log(ctx, MAPCACHE_DEBUG, "calling query_info on source (%s): tileset=%s, grid=%s,",
-           source->name, fi->map.tileset->name, fi->map.grid_link->grid->name,);
+           source->name, fi->map.tileset->name, fi->map.grid_link->grid->name);
 #endif
   for(i=0;i<=source->retry_count;i++) {
     if(i) { /* not our first try */

@@ -53,7 +53,7 @@ struct mapcache_source_wms {
  */
 void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *psource, mapcache_map *map)
 {
-  mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
+  mapcache_source_wms *wms = (mapcache_source_wms*)psource;
   mapcache_http *http;
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
@@ -103,7 +103,7 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_source *source, 
 {
   mapcache_map *map = (mapcache_map*)fi;
   mapcache_http *http;
-  mapcache_source_wms *wms = (mapcache_source_wms*)map->tileset->source;
+  mapcache_source_wms *wms = (mapcache_source_wms*)source;
 
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
   apr_table_overlap(params,wms->getmap_params,0);
