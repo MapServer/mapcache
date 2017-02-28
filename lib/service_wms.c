@@ -158,7 +158,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
               "</Exception>\n"
   */
 
-  tmpxml = ezxml_add_child(capxml,"Exceptions",0);
+  tmpxml = ezxml_add_child(capxml,"Exception",0);
   ezxml_set_txt(ezxml_add_child(tmpxml,"Format",0),"text/plain");
 
   vendorxml = ezxml_add_child(capxml,"VendorSpecificCapabilities",0);
