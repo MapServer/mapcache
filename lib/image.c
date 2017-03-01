@@ -295,6 +295,12 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
       ctx->set_error(ctx, 500, "failed to load image data from metatile");
       return;
     }
+    if(metatile->w != mt->map.width ||
+       metatile->h != mt->map.height) {
+      ctx->set_error(ctx, 500, "image size does not correspond to metatile size");
+      return;
+    }
+
     for(i=0; i<mt->metasize_x; i++) {
       for(j=0; j<mt->metasize_y; j++) {
         tileimg = mapcache_image_create(ctx);

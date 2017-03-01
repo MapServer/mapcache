@@ -1178,6 +1178,9 @@ int mapcache_grid_get_cell(mapcache_context *ctx, mapcache_grid *grid, mapcache_
  * @return
  */
 void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile);
+void mapcache_tileset_tile_validate_z(mapcache_context *ctx, mapcache_tile *tile);
+void mapcache_tileset_tile_validate_x(mapcache_context *ctx, mapcache_tile *tile);
+void mapcache_tileset_tile_validate_y(mapcache_context *ctx, mapcache_tile *tile);
 
 /**
  * compute level for a given resolution

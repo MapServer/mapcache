@@ -154,6 +154,30 @@ void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *til
   tileset->watermark = mapcache_imageio_decode(ctx,watermarkdata);
 }
 
+void mapcache_tileset_tile_validate_z(mapcache_context *ctx, mapcache_tile *tile) {
+  if(tile->z < tile->grid_link->minz || tile->z >= tile->grid_link->maxz) {
+    ctx->set_error(ctx,404,"invalid tile z level");
+  }
+}
+
+void mapcache_tileset_tile_validate_x(mapcache_context *ctx, mapcache_tile *tile) {
+  mapcache_extent_i limits;
+  limits = tile->grid_link->grid_limits[tile->z];
+  if(tile->x<limits.minx || tile->x>=limits.maxx) {
+    ctx->set_error(ctx, 404, "tile x=%d not in [%d,%d[",
+                   tile->x,limits.minx,limits.maxx);
+  }
+}
+
+void mapcache_tileset_tile_validate_y(mapcache_context *ctx, mapcache_tile *tile) {
+  mapcache_extent_i limits;
+  limits = tile->grid_link->grid_limits[tile->z];
+  if(tile->y<limits.miny || tile->y>=limits.maxy) {
+    ctx->set_error(ctx, 404, "tile y=%d not in [%d,%d[",
+                   tile->y,limits.miny,limits.maxy);
+  }
+}
+
 void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_extent_i limits;
