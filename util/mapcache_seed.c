@@ -878,10 +878,18 @@ int usage(const char *progname, char *msg, ...)
     printf("usage: %s options\n",progname);
 
   while(seed_options[i].name) {
-    if(seed_options[i].has_arg==TRUE) {
-      printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+    if(seed_options[i].optch<256) {
+      if(seed_options[i].has_arg==TRUE) {
+        printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      }
     } else {
-      printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      if(seed_options[i].has_arg==TRUE) {
+        printf("   --%s [value]: %s\n",seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("   --%s: %s\n",seed_options[i].name, seed_options[i].description);
+      }
     }
     i++;
   }
