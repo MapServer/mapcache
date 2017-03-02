@@ -32,6 +32,12 @@
 #include <math.h>
 #include "mapcache_services.h"
 
+static int sort_strings(const void* pa, const void* pb)
+{
+    char** ppszA = (char**)pa;
+    char** ppszB = (char**)pb;
+    return strcmp(*ppszA, *ppszB);
+}
 
 /** \addtogroup services */
 /** @{ */
@@ -174,16 +180,28 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
    *
    * TODO: check for duplicates in gris srs
    */
-  grid_index = apr_hash_first(ctx->pool,cfg->grids);
-  while(grid_index) {
-    const void *key;
-    apr_ssize_t keylen;
-    mapcache_grid *grid = NULL;
-    apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
-    ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),grid->srs);
-    grid_index = apr_hash_next(grid_index);
-  }
+  {
+    int srs_count = (int)apr_hash_count(cfg->grids);
+    char** srs_list = (char**)malloc(srs_count * sizeof(char*));
+    int srs_iter = 0;
+    int i;
 
+    grid_index = apr_hash_first(ctx->pool,cfg->grids);
+    while(grid_index) {
+      const void *key;
+      apr_ssize_t keylen;
+      mapcache_grid *grid = NULL;
+      apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
+      srs_list[srs_iter++] = grid->srs;
+      grid_index = apr_hash_next(grid_index);
+    }
+    qsort(srs_list, srs_count, sizeof(char*), sort_strings);
+    for(i = 0; i < srs_count; i ++)
+    {
+      ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),srs_list[i]);
+    }
+    free(srs_list);
+  }
 
   tileindex_index = apr_hash_first(ctx->pool,cfg->tilesets);
 
