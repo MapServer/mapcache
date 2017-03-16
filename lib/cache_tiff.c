@@ -3,10 +3,13 @@
  *
  * Project:  MapServer
  * Purpose:  MapCache tile caching: tiled tiff filesytem cache backend.
- * Author:   Thomas Bonfort, Frank Warmerdam and the MapServer team.
+ * Author:   Thomas Bonfort
+ *           Frank Warmerdam
+ *           Even Rouault
+ *           MapServer team.
  *
  ******************************************************************************
- * Copyright (c) 2011 Regents of the University of Minnesota.
+ * Copyright (c) 2011-2017 Regents of the University of Minnesota.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -38,6 +41,12 @@
 #include <stdlib.h>
 #include <tiffio.h>
 
+#ifdef USE_GDAL
+#include "cpl_vsi.h"
+#include "cpl_conv.h"
+#define CPL_SERV_H_INCLUDED
+#endif
+
 #ifdef USE_GEOTIFF
 #include "xtiffio.h"
 #include "geovalues.h"
@@ -52,6 +61,14 @@
 #define MyTIFFClose TIFFClose
 #endif
 
+typedef enum
+{
+    MAPCACHE_TIFF_STORAGE_FILE,
+    MAPCACHE_TIFF_STORAGE_REST,
+    MAPCACHE_TIFF_STORAGE_GOOGLE
+} mapcache_cache_tiff_storage_type;
+
+
 typedef struct mapcache_cache_tiff mapcache_cache_tiff;
 
 struct mapcache_cache_tiff {
@@ -62,7 +79,260 @@ struct mapcache_cache_tiff {
   int count_y;
   mapcache_image_format_jpeg *format;
   mapcache_locker *locker;
+  struct {
+    mapcache_cache_tiff_storage_type type;
+    int connection_timeout;
+    int timeout;
+    char *header_file;
+    union
+    {
+        struct
+        {
+            char* access;
+            char* secret;
+        } google;
+    } u;
+  } storage;
 };
+
+#ifdef USE_GDAL
+
+static tsize_t
+_tiffReadProc( thandle_t th, tdata_t buf, tsize_t size )
+{
+    VSILFILE* fp = (VSILFILE*)th;
+    return VSIFReadL( buf, 1, size, fp );
+}
+
+static tsize_t
+_tiffWriteProc( thandle_t th, tdata_t buf, tsize_t size )
+{
+    VSILFILE* fp = (VSILFILE*)th;
+    return VSIFWriteL( buf, 1, size, fp );
+}
+
+static toff_t
+_tiffSeekProc( thandle_t th, toff_t off, int whence )
+{
+    VSILFILE* fp = (VSILFILE*)th;
+    if( VSIFSeekL( fp, off, whence ) != 0 )
+    {
+        TIFFErrorExt( th, "_tiffSeekProc", "%s", VSIStrerror( errno ) );
+        return (toff_t)( -1 );
+    }
+    return VSIFTellL( fp );
+}
+
+static int
+_tiffCloseProc( thandle_t th )
+{
+    VSILFILE* fp = (VSILFILE*)th;
+    VSIFCloseL(fp);
+    return 0;
+}
+
+static toff_t
+_tiffSizeProc( thandle_t th )
+{
+    vsi_l_offset old_off;
+    toff_t file_size;
+    VSILFILE* fp = (VSILFILE*)th;
+
+    old_off = VSIFTellL( fp );
+    (void)VSIFSeekL( fp, 0, SEEK_END );
+
+    file_size = (toff_t) VSIFTellL( fp );
+    (void)VSIFSeekL( fp, old_off, SEEK_SET );
+
+    return file_size;
+}
+
+static int
+_tiffMapProc( thandle_t th, tdata_t* pbase, toff_t* psize )
+{
+    (void)th;
+    (void)pbase;
+    (void)psize;
+    /* Unimplemented */
+    return 0;
+}
+
+static void
+_tiffUnmapProc( thandle_t th, tdata_t base, toff_t size )
+{
+    (void)th;
+    (void)base;
+    (void)size;
+    /* Unimplemented */
+}
+
+static char* set_conf_value(const char* key, const char* value)
+{
+    const char* old_val_const;
+    char* old_val = NULL;
+    old_val_const = CPLGetConfigOption(key, NULL);
+    if( old_val_const != NULL )
+        old_val = strdup(old_val_const);
+    /* Prevent a directory listing to be done */
+    CPLSetConfigOption(key, value);
+    return old_val;
+}
+
+static void restore_conf_value(const char* key, char* old_val)
+{
+    CPLSetConfigOption(key, old_val);
+    free(old_val);
+}
+
+typedef struct
+{
+    char* old_val_disable_readdir;
+    char* old_val_headerfile;
+    char* old_val_secret;
+    char* old_val_access;
+} mapache_gdal_env_context;
+
+static void set_gdal_context(mapcache_cache_tiff *cache,
+                             mapache_gdal_env_context* pcontext)
+{
+    memset(pcontext, 0, sizeof(mapache_gdal_env_context));
+    /* Prevent a directory listing to be done */
+    pcontext->old_val_disable_readdir =
+        set_conf_value("GDAL_DISABLE_READDIR_ON_OPEN", "YES");
+
+    if( cache->storage.header_file ) {
+        pcontext->old_val_headerfile = set_conf_value("GDAL_HTTP_HEADER_FILE",
+                                            cache->storage.header_file);
+    }
+    if( cache->storage.type == MAPCACHE_TIFF_STORAGE_GOOGLE ) {
+        pcontext->old_val_secret = set_conf_value("GS_SECRET_ACCESS_KEY",
+                                        cache->storage.u.google.secret);
+        pcontext->old_val_access = set_conf_value("GS_ACCESS_KEY_ID",
+                                        cache->storage.u.google.access);
+    }
+}
+
+static void restore_gdal_context(mapcache_cache_tiff *cache,
+                                 mapache_gdal_env_context* pcontext)
+{
+
+    restore_conf_value("GDAL_DISABLE_READDIR_ON_OPEN",
+                       pcontext->old_val_disable_readdir);
+    if( cache->storage.header_file ) {
+        restore_conf_value("GDAL_HTTP_HEADER_FILE",
+                           pcontext->old_val_headerfile);
+    }
+    if( cache->storage.type == MAPCACHE_TIFF_STORAGE_GOOGLE ) {
+        restore_conf_value("GS_SECRET_ACCESS_KEY",
+                           pcontext->old_val_secret);
+        restore_conf_value("GS_ACCESS_KEY_ID",
+                           pcontext->old_val_access);
+    }
+}
+
+static int mapcache_cache_tiff_vsi_stat(
+                                      mapcache_cache_tiff *cache,
+                                      const char* name,
+                                      VSIStatBufL* pstat)
+{
+    mapache_gdal_env_context context;
+    int ret;
+
+    set_gdal_context(cache, &context);
+    ret = VSIStatL(name, pstat);
+    restore_gdal_context(cache, &context);
+
+    return ret;
+}
+
+static VSILFILE* mapcache_cache_tiff_vsi_open(
+                                      mapcache_cache_tiff *cache,
+                                      const char* name, const char* mode )
+{
+    mapache_gdal_env_context context;
+    VSILFILE* fp;
+
+    set_gdal_context(cache, &context);
+    fp = VSIFOpenL(name, mode);
+    restore_gdal_context(cache, &context);
+
+    return fp;
+}
+
+static TIFF* mapcache_cache_tiff_open(mapcache_context *ctx,
+                                      mapcache_cache_tiff *cache,
+                                      const char* name, const char* mode )
+{
+    char chDummy;
+    VSILFILE* fp;
+
+    /* If writing or using a regular filename, then use standard */
+    /* libtiff/libgeotiff I/O layer */
+    if( strcmp(mode, "r") != 0 || strncmp(name, "/vsi", 4) != 0 )
+    {
+        return MyTIFFOpen(name, mode);
+    }
+
+    fp = mapcache_cache_tiff_vsi_open(cache, name, mode);
+    if( fp == NULL )
+        return NULL;
+
+    if( strcmp(mode, "r") == 0 )
+    {
+        /* But then the file descriptor may point to an invalid resource */
+        /* so try reading a byte from it */
+        if(VSIFReadL(&chDummy, 1, 1, fp) != 1)
+        {
+            VSIFCloseL(fp);
+            return NULL;
+        }
+        VSIFSeekL(fp, 0, SEEK_SET);
+    }
+
+    return
+#ifdef USE_GEOTIFF
+        XTIFFClientOpen
+#else
+        TIFFClientOpen
+#endif
+                        ( name, mode,
+                         (thandle_t) fp,
+                         _tiffReadProc, _tiffWriteProc,
+                         _tiffSeekProc, _tiffCloseProc, _tiffSizeProc,
+                         _tiffMapProc, _tiffUnmapProc );
+}
+
+static void mapcache_cache_tiff_gdal_error_handler(CPLErr eErr,
+                                                   int error_num,
+                                                   const char* pszMsg)
+{
+#ifdef DEBUG
+    mapcache_context *ctx = (mapcache_context *) CPLGetErrorHandlerUserData();
+    ctx->log(ctx,MAPCACHE_DEBUG,"GDAL %s, %d: %s",
+             (eErr == CE_Failure) ? "Failure":
+             (eErr == CE_Warning) ? "Warning":
+                                    "Debug",
+             error_num,
+             pszMsg);
+#endif
+}
+
+
+#else
+
+static TIFF* mapcache_cache_tiff_open(mapcache_context *ctx,
+                                      mapcache_cache_tiff *cache,
+                                      const char* name, const char* mode )
+{
+    (void)ctx;
+    (void)cache;
+    return MyTIFFOpen(name, mode);
+
+}
+
+#endif /* USE_GDAL */
+
+#undef MyTIFFOpen
 
 /**
  * \brief return filename for given tile
@@ -74,7 +344,20 @@ struct mapcache_cache_tiff {
  */
 static void _mapcache_cache_tiff_tile_key(mapcache_context *ctx, mapcache_cache_tiff *cache, mapcache_tile *tile, char **path)
 {
-  *path = cache->filename_template;
+  if( cache->storage.type == MAPCACHE_TIFF_STORAGE_REST ) {
+    *path = apr_pstrcat(ctx->pool, "/vsicurl/", cache->filename_template, NULL);
+  }
+  else if( cache->storage.type == MAPCACHE_TIFF_STORAGE_GOOGLE &&
+           strncmp(cache->filename_template,
+                   "https://storage.googleapis.com/",
+                   strlen("https://storage.googleapis.com/")) == 0) {
+    *path = apr_pstrcat(ctx->pool, "/vsigs/",
+        cache->filename_template +
+            strlen("https://storage.googleapis.com/"), NULL);
+  }
+  else {
+    *path = apr_pstrdup(ctx->pool, cache->filename_template);
+  }
 
   /*
    * generic template substitutions
@@ -233,7 +516,12 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FALSE;
   }
-  hTIFF = MyTIFFOpen(filename,"r");
+
+#ifdef USE_GDAL
+  CPLPushErrorHandlerEx(mapcache_cache_tiff_gdal_error_handler, ctx);
+#endif
+
+  hTIFF = mapcache_cache_tiff_open(ctx,cache,filename,"r");
 
   if(hTIFF) {
     do {
@@ -259,6 +547,9 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *
       check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FALSE;
       }
 #endif
@@ -278,22 +569,37 @@ static int _mapcache_cache_tiff_has_tile(mapcache_context *ctx, mapcache_cache *
 
       if(1 != TIFFGetField( hTIFF, TIFFTAG_TILEOFFSETS, &offsets )) {
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FALSE;
       }
       if(1 != TIFFGetField( hTIFF, TIFFTAG_TILEBYTECOUNTS, &sizes )) {
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FALSE;
       }
       MyTIFFClose(hTIFF);
       if( offsets[tiff_off] > 0 && sizes[tiff_off] > 0 ) {
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_TRUE;
       } else {
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FALSE;
       }
     } while( TIFFReadDirectory( hTIFF ) );
-    return MAPCACHE_FALSE; /* TIFF only contains overviews ? */
-  } else
-    return MAPCACHE_FALSE;
+     /* TIFF only contains overviews ? */
+  }
+#ifdef USE_GDAL
+  CPLPopErrorHandler();
+#endif
+  return MAPCACHE_FALSE;
 }
 
 static void _mapcache_cache_tiff_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
@@ -324,7 +630,11 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
            tile->x,tile->y,tile->z,filename);
 #endif
 
-  hTIFF = MyTIFFOpen(filename,"r");
+#ifdef USE_GDAL
+  CPLPushErrorHandlerEx(mapcache_cache_tiff_gdal_error_handler, ctx);
+#endif
+
+  hTIFF = mapcache_cache_tiff_open(ctx,cache,filename,"r");
 
   /*
    * we currrently have no way of knowing if the opening failed because the tif
@@ -359,6 +669,9 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
       check_tiff_format(ctx,cache,tile,hTIFF,filename);
       if(GC_HAS_ERROR(ctx)) {
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FAILURE;
       }
 #endif
@@ -387,6 +700,9 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
         ctx->set_error(ctx,500,"Failed to read TIFF file \"%s\" tile offsets",
                        filename);
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FAILURE;
       }
 
@@ -396,6 +712,9 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
         ctx->set_error(ctx,500,"Failed to read TIFF file \"%s\" tile sizes",
                        filename);
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_FAILURE;
       }
 
@@ -404,7 +723,7 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
        * are not zero for that index.
        * if not, the tiff file is sparse and is missing the requested tile
        */
-      if( offsets[tiff_off] > 0 && sizes[tiff_off] > 0 ) {
+      if( offsets[tiff_off] > 0 && sizes[tiff_off] >= 2 ) {
         apr_file_t *f;
         apr_finfo_t finfo;
         apr_status_t ret;
@@ -413,11 +732,14 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
         uint32 jpegtable_size = 0;
         unsigned char* jpegtable_ptr;
         rv = TIFFGetField( hTIFF, TIFFTAG_JPEGTABLES, &jpegtable_size, &jpegtable_ptr );
-        if( rv != 1 || !jpegtable_ptr || !jpegtable_size) {
+        if( rv != 1 || !jpegtable_ptr || jpegtable_size < 2) {
           /* there is no common jpeg header in the tiff tags */
           ctx->set_error(ctx,500,"Failed to read TIFF file \"%s\" jpeg table",
                          filename);
           MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+          CPLPopErrorHandler();
+#endif
           return MAPCACHE_FAILURE;
         }
 
@@ -425,6 +747,90 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
          * open the tiff file directly to access the jpeg image data with the given
          * offset
          */
+#ifdef USE_GDAL
+        if( cache->storage.type != MAPCACHE_TIFF_STORAGE_FILE )
+        {
+          char *bufptr;
+          apr_off_t off;
+          apr_size_t bytes_to_read;
+          size_t bytes_read;
+          VSIStatBufL sStat;
+          VSILFILE* fp;
+
+          fp = mapcache_cache_tiff_vsi_open(cache, filename, "r");
+          if( fp == NULL )
+          {
+            /*
+             * shouldn't usually happen. we managed to open the file before,
+             * nothing much to do except bail out.
+             */
+            ctx->set_error(ctx,500,
+                           "VSIFOpenL() failed on already open tiff "
+                           "file \"%s\", giving up .... ",
+                           filename);
+            MyTIFFClose(hTIFF);
+            CPLPopErrorHandler();
+            return MAPCACHE_FAILURE;
+          }
+
+          if( mapcache_cache_tiff_vsi_stat(cache, filename, &sStat) == 0 )  {
+            /*
+             * extract the file modification time. this isn't guaranteed to be the
+             * modification time of the actual tile, but it's the best we can do
+             */
+            tile->mtime = sStat.st_mtime;
+          }
+
+#ifdef DEBUG
+          ctx->log(ctx,MAPCACHE_DEBUG,"tile (%d,%d,%d) => mtime = %d)",
+                   tile->x,tile->y,tile->z,tile->mtime);
+#endif
+
+
+          /* create a memory buffer to contain the jpeg data */
+          tile->encoded_data = mapcache_buffer_create(
+              (jpegtable_size+sizes[tiff_off]-4),ctx->pool);
+
+          /*
+           * copy the jpeg header to the beginning of the memory buffer,
+           * omitting the last 2 bytes
+           */
+          memcpy(tile->encoded_data->buf,jpegtable_ptr,(jpegtable_size-2));
+
+          /* advance the data pointer to after the header data */
+          bufptr = ((char *)tile->encoded_data->buf) + (jpegtable_size-2);
+
+
+          /* go to the specified offset in the tiff file, plus 2 bytes */
+          off = offsets[tiff_off]+2;
+          VSIFSeekL(fp, (vsi_l_offset)off, SEEK_SET);
+
+          /*
+           * copy the jpeg body at the end of the memory buffer, accounting
+           * for the two bytes we omitted in the previous step
+           */
+          bytes_to_read = sizes[tiff_off]-2;
+          bytes_read = VSIFReadL(bufptr, 1, bytes_to_read, fp);
+
+          /* check we have correctly read the requested number of bytes */
+          if(bytes_to_read != bytes_read) {
+            ctx->set_error(ctx,500,"failed to read jpeg body in \"%s\".\
+                        (read %d of %d bytes)",
+                        filename,(int)bytes_read,(int)sizes[tiff_off]-2);
+            VSIFCloseL(fp);
+            MyTIFFClose(hTIFF);
+            CPLPopErrorHandler();
+            return MAPCACHE_FAILURE;
+          }
+
+          tile->encoded_data->size = (jpegtable_size+sizes[tiff_off]-4);
+
+          VSIFCloseL(fp);
+          CPLPopErrorHandler();
+          return MAPCACHE_SUCCESS;
+        }
+        else
+#endif
         if((ret=apr_file_open(&f, filename,
                               APR_FOPEN_READ|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,APR_OS_DEFAULT,
                               ctx->pool)) == APR_SUCCESS) {
@@ -468,7 +874,11 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
           if(bytes !=  sizes[tiff_off]-2) {
             ctx->set_error(ctx,500,"failed to read jpeg body in \"%s\".\
                         (read %d of %d bytes)", filename,bytes,sizes[tiff_off]-2);
+            apr_file_close(f);
             MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+            CPLPopErrorHandler();
+#endif
             return MAPCACHE_FAILURE;
           }
 
@@ -477,6 +887,9 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
           /* finalize and cleanup */
           apr_file_close(f);
           MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+          CPLPopErrorHandler();
+#endif
           return MAPCACHE_SUCCESS;
         } else {
           /* shouldn't usually happen. we managed to open the file with TIFFOpen,
@@ -486,11 +899,17 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
           ctx->set_error(ctx,500,"apr_file_open failed on already open tiff file \"%s\", giving up .... ",
                          filename);
           MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+          CPLPopErrorHandler();
+#endif
           return MAPCACHE_FAILURE;
         }
       } else {
         /* sparse tiff file without the requested tile */
         MyTIFFClose(hTIFF);
+#ifdef USE_GDAL
+        CPLPopErrorHandler();
+#endif
         return MAPCACHE_CACHE_MISS;
       }
     } /* loop through the tiff directories if there are multiple ones */
@@ -502,8 +921,10 @@ static int _mapcache_cache_tiff_get(mapcache_context *ctx, mapcache_cache *pcach
      * does the file only contain overviews?
      */
     MyTIFFClose(hTIFF);
-    return MAPCACHE_CACHE_MISS;
   }
+#ifdef USE_GDAL
+  CPLPopErrorHandler();
+#endif
   /* failed to open tiff file */
   return MAPCACHE_CACHE_MISS;
 }
@@ -539,6 +960,11 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   int tiff_off; /* the index of the tile inside the list of tiles of the tiff image */
 
   cache = (mapcache_cache_tiff*)pcache;
+  if( cache->storage.type != MAPCACHE_TIFF_STORAGE_FILE )
+  {
+    ctx->set_error(ctx,500,"tiff cache %s is read-only\n",pcache->name);
+    return;
+  }
   _mapcache_cache_tiff_tile_key(ctx, cache, tile, &filename);
   format = (mapcache_image_format_jpeg*) cache->format;
   if(GC_HAS_ERROR(ctx)) {
@@ -586,10 +1012,10 @@ static void _mapcache_cache_tiff_set(mapcache_context *ctx, mapcache_cache *pcac
   /* check if the tiff file exists already */
   rv = apr_stat(&finfo,filename,0,ctx->pool);
   if(!APR_STATUS_IS_ENOENT(rv)) {
-    hTIFF = MyTIFFOpen(filename,"r+");
+    hTIFF = mapcache_cache_tiff_open(ctx,cache,filename,"r+");
     create = 0;
   } else {
-    hTIFF = MyTIFFOpen(filename,"w+");
+    hTIFF = mapcache_cache_tiff_open(ctx,cache,filename,"w+");
     create = 1;
   }
   if(!hTIFF) {
@@ -826,6 +1252,86 @@ static void _mapcache_cache_tiff_configuration_parse_xml(mapcache_context *ctx, 
     mapcache_config_parse_locker(ctx, cur_node, &cache->locker);
   }
 
+  cache->storage.type = MAPCACHE_TIFF_STORAGE_FILE;
+  cur_node = ezxml_child(node,"storage");
+  if (cur_node) {
+    ezxml_t child_node;
+    const char *type = ezxml_attr(cur_node,"type");
+    if( !type ) {
+      ctx->set_error(ctx,400,
+                     "<storage> with no \"type\" attribute in cache (%s)",
+                     pcache->name);
+      return;
+    }
+
+    if( strcmp(type, "rest") == 0 ) {
+      cache->storage.type = MAPCACHE_TIFF_STORAGE_REST;
+    }
+    else if( strcmp(type, "google") == 0 ) {
+      cache->storage.type = MAPCACHE_TIFF_STORAGE_GOOGLE;
+      if ((child_node = ezxml_child(cur_node,"access")) != NULL) {
+        cache->storage.u.google.access =
+            apr_pstrdup(ctx->pool, child_node->txt);
+      } else if ( getenv("GS_ACCESS_KEY_ID")) {
+        cache->storage.u.google.access =
+            apr_pstrdup(ctx->pool,getenv("GS_ACCESS_KEY_ID"));
+      } else {
+        ctx->set_error(ctx,400,
+                       "google storage in cache (%s) is missing "
+                       "required <access> child", pcache->name);
+        return;
+      }
+      if ((child_node = ezxml_child(cur_node,"secret")) != NULL) {
+        cache->storage.u.google.secret =
+            apr_pstrdup(ctx->pool, child_node->txt);
+      } else if ( getenv("GS_SECRET_ACCESS_KEY")) {
+        cache->storage.u.google.access =
+            apr_pstrdup(ctx->pool,getenv("GS_SECRET_ACCESS_KEY"));
+      } else {
+        ctx->set_error(ctx,400,
+                       "google storage in cache (%s) is missing "
+                       "required <secret> child", pcache->name);
+        return;
+      }
+    }
+    else {
+      ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"",
+                     type, pcache->name);
+      return;
+    }
+
+    if ((child_node = ezxml_child(cur_node,"connection_timeout")) != NULL) {
+      char *endptr;
+      cache->storage.connection_timeout = (int)strtol(child_node->txt,&endptr,10);
+      if(*endptr != 0 || cache->storage.connection_timeout<1) {
+        ctx->set_error(ctx,400,"invalid rest cache <connection_timeout> "
+                       "\"%s\" (positive integer expected)",
+                       child_node->txt);
+        return;
+      }
+    } else {
+      cache->storage.connection_timeout = 30;
+    }
+
+    if ((child_node = ezxml_child(cur_node,"timeout")) != NULL) {
+      char *endptr;
+      cache->storage.timeout = (int)strtol(child_node->txt,&endptr,10);
+      if(*endptr != 0 || cache->storage.timeout<1) {
+        ctx->set_error(ctx,400,"invalid rest cache <timeout> \"%s\" "
+                       "(positive integer expected)",
+                       child_node->txt);
+        return;
+      }
+    } else {
+      cache->storage.timeout = 120;
+    }
+
+    if ((child_node = ezxml_child(cur_node,"header_file")) != NULL) {
+      cache->storage.header_file = apr_pstrdup(ctx->pool, child_node->txt);
+    }
+
+  }
+
 }
 
 /**
@@ -844,6 +1350,33 @@ static void _mapcache_cache_tiff_configuration_post_config(mapcache_context *ctx
     ctx->set_error(ctx, 400, "tiff cache %s has invalid count (%d,%d)",cache->count_x,cache->count_y);
     return;
   }
+
+#ifdef USE_GDAL
+  if(cache->storage.type == MAPCACHE_TIFF_STORAGE_REST &&
+     strncmp(cache->filename_template, "http://", 6) != 0 &&
+     strncmp(cache->filename_template, "https://", 7) != 0 ) {
+    ctx->set_error(ctx, 400, "tiff cache %s template pattern should begin with http:// or https://",cache->cache.name);
+    return;
+  }
+
+  if(cache->storage.type == MAPCACHE_TIFF_STORAGE_GOOGLE &&
+     strncmp(cache->filename_template, "https://storage.googleapis.com/",
+             strlen("https://storage.googleapis.com/")) != 0 &&
+     strncmp(cache->filename_template, "/vsigs/",
+             strlen("/vsigs/")) != 0 ) {
+    ctx->set_error(ctx, 400, "tiff cache %s template pattern should begin "
+                   "with https://storage.googleapis.com/ or /vsigs/",cache->cache.name);
+    return;
+  }
+#else
+  if(cache->storage.type != MAPCACHE_TIFF_STORAGE_FILE )
+  {
+    ctx->set_error(ctx, 400, "tiff cache %s cannot use a network based "
+                   "storage due to mising GDAL dependency",
+                   cache->cache.name);
+    return;
+  }
+#endif
 }
 
 /**

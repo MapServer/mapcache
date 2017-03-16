@@ -523,6 +523,31 @@
      </operation>
    </cache>
 
+   <!-- TIFF cache on local disk (read/write) -->
+   <cache name="my_tiff_cache" type="tiff">
+       <template>cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+    </cache>
+
+   <!-- TIFF cache in URL (read-only) -->
+   <cache name="my_tiff_cache_rest_storage" type="tiff">
+       <template>https://example.com/cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+       <storage type="rest">
+            <header_file>/dev/shm/google-mapcache.header</header_file> <!-- optional -->
+            <timeout>10</timeout> <!-- optional -->
+            <connection_timeout>3</connection_timeout> <!-- optional -->
+       </storage>
+    </cache>
+
+   <!-- TIFF cache in Google Cloud Storage (read-only) -->
+   <cache name="my_tiff_cache_google_storage" type="tiff">
+       <template>https://storage.googleapis.com/cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+       <storage type="google">
+            <access>GOOGPGDWFDG345SDFGSD</access>
+            <secret>sdfgsdSDFwedfwefr2345324dfsGdsfgs</secret>
+            <timeout>10</timeout> <!-- optional -->
+            <connection_timeout>3</connection_timeout> <!-- optional -->
+       </storage>
+   </cache>
 
    <!-- format
 
