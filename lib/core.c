@@ -77,13 +77,13 @@ mapcache_http_response *mapcache_http_response_create(apr_pool_t *pool)
 
 void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int ntiles)
 {
-
   apr_thread_t **threads;
   apr_threadattr_t *thread_attrs;
   int nthreads;
 #if !APR_HAS_THREADS
   int i;
   for(i=0; i<ntiles; i++) {
+    ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(1)...");
     mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
@@ -93,12 +93,12 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
   if(ntiles==1 || ctx->config->threaded_fetching == 0) {
     /* if threads disabled, or only fetching a single tile, don't launch a thread for the operation */
     for(i=0; i<ntiles; i++) {
+      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(2)...");
       mapcache_tileset_tile_get(ctx, tiles[i]);
       GC_CHECK_ERROR(ctx);
     }
     return;
   }
-
 
   /* allocate a thread struct for each tile. Not all will be used */
   thread_tiles = (_thread_tile*)apr_pcalloc(ctx->pool,ntiles*sizeof(_thread_tile));
@@ -159,6 +159,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
   for(i=0; i<ntiles; i++) {
     /* fetch the tiles that did not get a thread launched for them */
     if(thread_tiles[i].launch) continue;
+      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(3)...");
     mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
@@ -205,7 +206,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   format = NULL;
 
 #ifdef DEBUG
-  if(req_tile->ntiles ==0) {
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: In mapcache_core_get_tile(), ntiles=%d...", req_tile->ntiles);
+  if(req_tile->ntiles == 0) {
     ctx->set_error(ctx,500,"BUG: get_tile called with 0 tiles");
     return NULL;
   }
@@ -215,7 +217,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   if(ctx->supports_redirects && req_tile->ntiles == 1) {
     req_tile->tiles[0]->allow_redirect = 1;
   }
-
 
   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles);
   if(GC_HAS_ERROR(ctx))
@@ -272,6 +273,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       /* we have an existing tile, so we know we need to merge the current one into it */
       if(!base) {
         /* the existing tile has not been decoded yet, but we need the access to the raw pixels*/
+	ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mapcache_imageio_decode(1)...");
         base = mapcache_imageio_decode(ctx, response->data);
         if(!base) return NULL;
       }
@@ -279,6 +281,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 
       /* we need to access the current tile's pixel data */
       if(!tile->raw_image) {
+	ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mapcache_imageio_decode(2)...");
         tile->raw_image = mapcache_imageio_decode(ctx,tile->encoded_data);
         if(!tile->raw_image) return NULL;
       }
@@ -323,11 +326,15 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 
   /* compute the content-type */
-  t = mapcache_imageio_header_sniff(ctx,response->data);
-  if(t == GC_PNG)
-    apr_table_set(response->headers,"Content-Type","image/png");
-  else if(t == GC_JPEG)
-    apr_table_set(response->headers,"Content-Type","image/jpeg");
+  if(format && format->type == GC_BLOB) {
+    apr_table_set(response->headers,"Content-Type",format->mime_type);
+  } else {
+    t = mapcache_imageio_header_sniff(ctx,response->data);
+    if(t == GC_PNG)
+      apr_table_set(response->headers,"Content-Type","image/png");
+    else if(t == GC_JPEG)
+      apr_table_set(response->headers,"Content-Type","image/jpeg");
+  }
 
   /* compute expiry headers */
   if(expires) {
@@ -428,13 +435,14 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   mapcache_http_response *response;
   mapcache_map *basemap = NULL;
   char *timestr;
+
 #ifdef DEBUG
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: In mapcache_core_get_map()...");
   if(req_map->nmaps ==0) {
     ctx->set_error(ctx,500,"BUG: get_map called with 0 maps");
     return NULL;
   }
 #endif
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ERROR) {
     ctx->set_error(ctx, 404, "full wms support disabled");
@@ -443,7 +451,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   format = NULL;
   response = mapcache_http_response_create(ctx->pool);
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
     basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);

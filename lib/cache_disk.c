@@ -492,6 +492,8 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
   const int creation_retry = cache->creation_retry;
   int retry_count_create_file = 0;
 
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_cache_disk_set(): format=%d...", tile->tileset->format->type);
+
 #ifdef DEBUG
   /* all this should be checked at a higher level */
   if(!tile->encoded_data && !tile->raw_image) {
@@ -515,14 +517,16 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
     ctx->set_error(ctx, 500,  "failed to remove file %s: %s",filename, apr_strerror(ret,errmsg,120));
   }
 
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: filename=%s...", filename);
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: tile size=%d bytes...", tile->encoded_data->size);
 
 #ifdef HAVE_SYMLINK
   if(cache->symlink_blank) {
-    if(!tile->raw_image) {
+    if(tile->tileset->format->type != GC_BLOB && !tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
     }
-    if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+    if(tile->tileset->format->type != GC_BLOB && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       char *blankname;
       int retry_count_create_symlink = 0;
       char *blankname_rel = NULL;
@@ -603,9 +607,11 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       return;
     }
   }
-#endif /*HAVE_SYMLINK*/
+#endif /* HAVE_SYMLINK */
 
   /* go the normal way: either we haven't configured blank tile detection, or the tile was not blank */
+
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: normal way");
 
   if(!tile->encoded_data) {
     tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);

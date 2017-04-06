@@ -58,8 +58,6 @@ mapcache_image_format_type mapcache_imageio_header_sniff(mapcache_context *ctx, 
   }
 }
 
-
-
 mapcache_image* mapcache_imageio_decode(mapcache_context *ctx, mapcache_buffer *buffer)
 {
   mapcache_image_format_type type = mapcache_imageio_header_sniff(ctx,buffer);
@@ -72,7 +70,6 @@ mapcache_image* mapcache_imageio_decode(mapcache_context *ctx, mapcache_buffer *
     return NULL;
   }
 }
-
 
 void mapcache_image_create_empty(mapcache_context *ctx, mapcache_cfg *cfg)
 {

@@ -370,6 +370,9 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   mapcache_grid *grid = tile->grid_link->grid;
   double res = grid->levels[tile->z]->resolution;
   double gbuffer,gwidth,gheight,fullgwidth,fullgheight;
+
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_tileset_metatile_get()...");
+
   mt->map.tileset = tileset;
   mt->map.grid_link = tile->grid_link;
   mt->z = tile->z;
@@ -456,12 +459,18 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
   mapcache_tileset *tileset = mt->map.tileset;
+
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mapcache_tileset_render_metatile()");
+
   if(!tileset->source || tileset->read_only) {
     ctx->set_error(ctx,500,"tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
   mapcache_source_render_map(ctx, tileset->source, &mt->map);
   GC_CHECK_ERROR(ctx);
+
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: passed mapcache_source_render_map()");
+
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
   mapcache_cache_tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
@@ -935,6 +944,9 @@ cleanup:
 
 void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
   int i,ret;
+
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_tileset_tile_get_with_subdimensions()...");
+
   assert(tile->dimensions);
   if(tile->tileset->store_dimension_assemblies) {
     for(i=0;i<tile->dimensions->nelts;i++) {
@@ -988,6 +1000,8 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
   ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_tileset_tile_get_without_subdimensions() - ret=%d...", ret);
+
   if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
     /* the cache is in auto-expire mode, and can return the tile modification date,
      * and there is a source configured so we can possibly update it,
@@ -1019,10 +1033,11 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
     }
   }
 
-
   if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
     int isLocked = MAPCACHE_FALSE;
     void *lock;
+
+    ctx->log(ctx, MAPCACHE_DEBUG, "SDL: MAPCACHE_CACHE_MISS...");
 
     /* If the tile does not exist or stale, we must take action before re-asking for it */
     if( !read_only && !ctx->config->non_blocking) {
@@ -1039,6 +1054,8 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
       isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
       GC_CHECK_ERROR(ctx);
 
+      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: metatile get succeeded - just sets parameters");
+      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mt->metasize_x=%d, mt->metasize_y=%d", mt->metasize_x, mt->metasize_y);
 
       if(isLocked == MAPCACHE_TRUE) {
          /* no other thread is doing the rendering, do it ourselves */
@@ -1094,6 +1111,8 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
 }
 
 void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
+  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_tileset_tile_get()...");
+
   if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
           tile->z > tile->grid_link->max_cached_zoom) {
     mapcache_tileset_outofzoom_get(ctx, tile);
