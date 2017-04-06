@@ -280,7 +280,6 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
 
 void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
 {
-  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: in mapcache_image_metatile_split(): format=%d", mt->map.tileset->format->type);
 
   if(mt->map.tileset->format) {
     /* the tileset has a format defined, we will use it to encode the data */
@@ -293,7 +292,6 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
     ** No metatile support for blobs...
     */
     if(mt->map.tileset->format->type == GC_BLOB) {
-      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: got a blob");
       mt->tiles[0].encoded_data = mt->map.encoded_data;
       return;
     }

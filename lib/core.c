@@ -83,7 +83,6 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
 #if !APR_HAS_THREADS
   int i;
   for(i=0; i<ntiles; i++) {
-    ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(1)...");
     mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
@@ -93,7 +92,6 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
   if(ntiles==1 || ctx->config->threaded_fetching == 0) {
     /* if threads disabled, or only fetching a single tile, don't launch a thread for the operation */
     for(i=0; i<ntiles; i++) {
-      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(2)...");
       mapcache_tileset_tile_get(ctx, tiles[i]);
       GC_CHECK_ERROR(ctx);
     }
@@ -159,7 +157,6 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
   for(i=0; i<ntiles; i++) {
     /* fetch the tiles that did not get a thread launched for them */
     if(thread_tiles[i].launch) continue;
-      ctx->log(ctx, MAPCACHE_DEBUG, "SDL: calling mapcache_tileset_tile_get(3)...");
     mapcache_tileset_tile_get(ctx, tiles[i]);
     GC_CHECK_ERROR(ctx);
   }
@@ -206,7 +203,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   format = NULL;
 
 #ifdef DEBUG
-  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: In mapcache_core_get_tile(), ntiles=%d...", req_tile->ntiles);
   if(req_tile->ntiles == 0) {
     ctx->set_error(ctx,500,"BUG: get_tile called with 0 tiles");
     return NULL;
@@ -273,7 +269,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       /* we have an existing tile, so we know we need to merge the current one into it */
       if(!base) {
         /* the existing tile has not been decoded yet, but we need the access to the raw pixels*/
-	ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mapcache_imageio_decode(1)...");
         base = mapcache_imageio_decode(ctx, response->data);
         if(!base) return NULL;
       }
@@ -281,7 +276,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 
       /* we need to access the current tile's pixel data */
       if(!tile->raw_image) {
-	ctx->log(ctx, MAPCACHE_DEBUG, "SDL: mapcache_imageio_decode(2)...");
         tile->raw_image = mapcache_imageio_decode(ctx,tile->encoded_data);
         if(!tile->raw_image) return NULL;
       }
@@ -437,7 +431,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   char *timestr;
 
 #ifdef DEBUG
-  ctx->log(ctx, MAPCACHE_DEBUG, "SDL: In mapcache_core_get_map()...");
   if(req_map->nmaps ==0) {
     ctx->set_error(ctx,500,"BUG: get_map called with 0 maps");
     return NULL;
