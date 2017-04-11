@@ -292,7 +292,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 
   if(!response->data) {
-    /* we need to encode the raw image data*/
+    /* we need to encode the raw image data */
     if(base) {
       if(req_tile->image_request.format) {
         format = req_tile->image_request.format;
@@ -316,6 +316,16 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 #endif
       response->data = mapcache_empty_png_decode(ctx,req_tile->tiles[0]->grid_link->grid->tile_sx, req_tile->tiles[0]->grid_link->grid->tile_sy, empty,&is_empty); /* is_empty is unchanged and left to 1 */
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
+    }
+  } else {
+    /* set format, not an image type (e.g. GC_BLOB) */
+    if(req_tile->image_request.format) {
+      format = req_tile->image_request.format;
+    } else {
+      format = req_tile->tiles[0]->tileset->format;
+      if(!format) {
+        format = ctx->config->default_image_format; /* this one is always defined */
+      }
     }
   }
 
@@ -502,6 +512,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   }
 
   /* compute the content-type */
+  ctx->log(ctx,MAPCACHE_DEBUG,"SDL: setting content type (2)");
   if(format && format->mime_type) {
     apr_table_set(response->headers,"Content-Type",format->mime_type);
   } else {
