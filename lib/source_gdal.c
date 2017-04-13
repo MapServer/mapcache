@@ -571,7 +571,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
 #endif
 
   if( eErr != CE_None ) {
-    ctx->set_error(ctx, 500,"GDAL I/O error occured");
+    ctx->set_error(ctx, 500,"GDAL I/O error occurred");
     GDALClose(hDstDS); /* close first this one, as it references hTmpDS or hSrcDS */
     if( hTmpDS )
       GDALClose(hTmpDS); /* references hSrcDS, so close before */
