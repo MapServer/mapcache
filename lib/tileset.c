@@ -72,7 +72,6 @@ char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_met
 
 void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tileset *tileset)
 {
-
   /* check we have all we want */
   if(tileset->_cache == NULL) {
     /* TODO: we should allow tilesets with no caches */
@@ -119,6 +118,12 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
       ctx->set_error(ctx,400,"tileset \"%s\" has no <format> configured, but it is needed for metatiling",
                      tileset->name);
       return;
+    }
+  }
+
+  if(tileset->format && tileset->format->type == GC_BLOB) {
+    if(tileset->metasize_x != 1 || tileset->metasize_y != 1) {
+      ctx->set_error(ctx, 400, "tileset \"%s\" references a BLOB format type, metatiling is not supported for the \"%s\" format", tileset->name, tileset->format->name);
     }
   }
 }
