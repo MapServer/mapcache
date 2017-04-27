@@ -289,9 +289,9 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
     int sx,sy;
 
     /*
-    ** No metatile support for blobs...
+    ** No metatile support for raw format types...
     */
-    if(mt->map.tileset->format->type == GC_BLOB) {
+    if(mt->map.tileset->format->type == GC_RAW) {
       mt->tiles[0].encoded_data = mt->map.encoded_data;
       return;
     }

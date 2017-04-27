@@ -78,7 +78,7 @@ typedef struct mapcache_image_format_mixed mapcache_image_format_mixed;
 typedef struct mapcache_image_format_png mapcache_image_format_png;
 typedef struct mapcache_image_format_png_q mapcache_image_format_png_q;
 typedef struct mapcache_image_format_jpeg mapcache_image_format_jpeg;
-typedef struct mapcache_image_format_blob mapcache_image_format_blob;
+typedef struct mapcache_image_format_raw mapcache_image_format_raw;
 typedef struct mapcache_cfg mapcache_cfg;
 typedef struct mapcache_tileset mapcache_tileset;
 typedef struct mapcache_cache mapcache_cache;
@@ -663,7 +663,7 @@ MS_DLL_EXPORT int mapcache_config_services_enabled(mapcache_context *ctx, mapcac
 /** @{ */
 
 typedef enum {
-  GC_UNKNOWN, GC_PNG, GC_JPEG, GC_BLOB
+  GC_UNKNOWN, GC_PNG, GC_JPEG, GC_RAW
 } mapcache_image_format_type;
 
 typedef enum {
@@ -1404,11 +1404,11 @@ mapcache_buffer* mapcache_empty_png_decode(mapcache_context *ctx, int width, int
 mapcache_image_format* mapcache_imageio_create_mixed_format(apr_pool_t *pool,
     char *name, mapcache_image_format *transparent, mapcache_image_format *opaque, unsigned int alpha_cutoff);
 
-struct mapcache_image_format_blob {
+struct mapcache_image_format_raw {
   mapcache_image_format format;
 };
 
-mapcache_image_format* mapcache_imageio_create_blob_format(apr_pool_t *pool, char *name, char *extension, char *mime_type); 
+mapcache_image_format* mapcache_imageio_create_raw_format(apr_pool_t *pool, char *name, char *extension, char *mime_type); 
 
 /**\class mapcache_image_format_png_q
  * \brief Quantized PNG format

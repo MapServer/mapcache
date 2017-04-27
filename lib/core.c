@@ -318,7 +318,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
   } else {
-    /* set format, not an image type (e.g. GC_BLOB) */
+    /* set format, not an image type (e.g. GC_RAW) */
     if(req_tile->image_request.format) {
       format = req_tile->image_request.format;
     } else {
@@ -330,7 +330,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 
   /* compute the content-type */
-  if(format && format->type == GC_BLOB) {
+  if(format && format->type == GC_RAW) {
     apr_table_set(response->headers,"Content-Type",format->mime_type);
   } else {
     t = mapcache_imageio_header_sniff(ctx,response->data);

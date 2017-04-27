@@ -121,9 +121,9 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
     }
   }
 
-  if(tileset->format && tileset->format->type == GC_BLOB) {
+  if(tileset->format && tileset->format->type == GC_RAW) {
     if(tileset->metasize_x != 1 || tileset->metasize_y != 1 || tileset->metabuffer != 0) {
-      ctx->set_error(ctx, 400, "tileset \"%s\" references a BLOB format type, metatiling is not supported for the \"%s\" format", tileset->name, tileset->format->name);
+      ctx->set_error(ctx, 400, "tileset \"%s\" references a RAW format type, metatiling is not supported for the \"%s\" format", tileset->name, tileset->format->name);
     }
   }
 }

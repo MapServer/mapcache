@@ -480,12 +480,12 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       alpha_cutoff = atoi(cur_node->txt);
     }
     format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque, alpha_cutoff);
-  } else if(!strcasecmp(type,"BLOB")) {
+  } else if(!strcasecmp(type,"RAW")) {
     char *extension=NULL;
     char *mime_type=NULL;
     if ((cur_node = ezxml_child(node,"extension")) != NULL) extension = apr_pstrdup(ctx->pool, cur_node->txt);
     if ((cur_node = ezxml_child(node,"mime_type")) != NULL) mime_type = apr_pstrdup(ctx->pool, cur_node->txt);
-    format = mapcache_imageio_create_blob_format(ctx->pool,name,extension,mime_type);
+    format = mapcache_imageio_create_raw_format(ctx->pool,name,extension,mime_type);
   } else {
     ctx->set_error(ctx, 400, "unknown format type %s for format \"%s\"", type, name);
     return;
