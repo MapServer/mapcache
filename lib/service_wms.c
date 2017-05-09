@@ -198,6 +198,11 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     int i;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
+    if(tileset->format->type == GC_RAW) {
+      tileindex_index = apr_hash_next(tileindex_index);
+      continue; // WMS is not supported for raw layers
+    }
+
     layerxml = ezxml_add_child(toplayer,"Layer",0);
     ezxml_set_attr(layerxml, "cascaded", "1");
     ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0");
