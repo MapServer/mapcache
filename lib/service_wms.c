@@ -931,6 +931,7 @@ proxies:
         const char *value = apr_table_get(params,match_param->name);
         if(!value || match_param->_get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
+          ctx->clear_errors(ctx);
           got_a_match = 0;
           break;
         }
