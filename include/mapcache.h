@@ -1747,6 +1747,14 @@ char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char
  */
 char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to);
 
+typedef enum {
+  MAPCACHE_UTIL_XML_SECTION_TEXT,
+  MAPCACHE_UTIL_XML_SECTION_ATTRIBUTE,
+  MAPCACHE_UTIL_XML_SECTION_COMMENT
+} mapcache_util_xml_section_type;
+
+char* mapcache_util_str_xml_escape(apr_pool_t *pool, const char *str, mapcache_util_xml_section_type xml_section_type);
+
 char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
 
 char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *stemplate,

@@ -1071,7 +1071,9 @@ void _error_report_wmts(mapcache_context *ctx, mapcache_service *service, char *
                              "<Exception exceptionCode=\"%s\" locator=\"%s\"/>",elts[i].key,elts[i].val),NULL);
   }
 
-  *err_body = apr_psprintf(ctx->pool,template,msg,exceptions);
+  *err_body = apr_psprintf(ctx->pool,template,
+                           mapcache_util_str_xml_escape(ctx->pool, msg, MAPCACHE_UTIL_XML_SECTION_COMMENT),
+                           exceptions);
   apr_table_set(headers, "Content-Type", "application/xml");
 
 

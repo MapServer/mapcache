@@ -185,6 +185,53 @@ char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* 
   return pstr;
 }
 
+char* mapcache_util_str_xml_escape(apr_pool_t *pool, const char *str,
+                                   mapcache_util_xml_section_type xml_section_type)
+{
+  int outpos = 0;
+  char* outstr = apr_pcalloc(pool, 6 * strlen(str) + 1);
+  for( ; *str != '\0'; str ++ ) {
+    if( xml_section_type == MAPCACHE_UTIL_XML_SECTION_COMMENT ) {
+      if( *str == '-' ) {
+        memcpy(outstr + outpos, "&#45;", 5);
+        outpos += 5;
+      }
+      else {
+        outstr[outpos] = *str;
+        outpos ++;
+      }
+    }
+    else {
+      if( *str == '&' ) {
+        memcpy(outstr + outpos, "&amp;", 5);
+        outpos += 5;
+      }
+      else if( *str == '<' ) {
+        memcpy(outstr + outpos, "&lt;", 4);
+        outpos += 4;
+      }
+      else if( *str == '>' ) {
+        memcpy(outstr + outpos, "&gt;", 4);
+        outpos += 4;
+      }
+      else if( *str == '"' ) {
+        memcpy(outstr + outpos, "&quot;", 6);
+        outpos += 6;
+      }
+      else if( *str == '\'' ) {
+        /* See https://github.com/mapserver/mapserver/issues/1040 */
+        memcpy(outstr + outpos, "&#39;", 5);
+        outpos += 5;
+      }
+      else {
+        outstr[outpos] = *str;
+        outpos ++;
+      }
+    }
+  }
+  return outstr;
+}
+
 #if APR_MAJOR_VERSION < 1 || (APR_MAJOR_VERSION < 2 && APR_MINOR_VERSION < 3)
 APR_DECLARE(apr_table_t *) apr_table_clone(apr_pool_t *p, const apr_table_t *t)
 {
