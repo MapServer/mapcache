@@ -1033,9 +1033,7 @@ void _format_error_wms(mapcache_context *ctx, mapcache_service *service, char *m
 \"http://schemas.opengis.net/wms/1.1.1/exception_1_1_1.dtd\">\n\
 <ServiceExceptionReport version=\"1.1.1\">\n\
 <ServiceException>\n\
-<![CDATA[\n\
 %s\n\
-]]>\n\
 </ServiceException>\n\
 %s\
 </ServiceExceptionReport>";
@@ -1052,7 +1050,9 @@ void _format_error_wms(mapcache_context *ctx, mapcache_service *service, char *m
     }
   }
 
-  *err_body = apr_psprintf(ctx->pool,template,msg,exceptions);
+  *err_body = apr_psprintf(ctx->pool,template,
+                           mapcache_util_str_xml_escape(ctx->pool, msg, MAPCACHE_UTIL_XML_SECTION_TEXT),
+                           exceptions);
   apr_table_set(headers, "Content-Type", "application/vnd.ogc.se_xml");
 }
 
