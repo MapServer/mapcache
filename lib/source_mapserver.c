@@ -190,7 +190,7 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
 
 }
 
-void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_feature_info *fi)
+void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_source *psource, mapcache_feature_info *fi)
 {
   ctx->set_error(ctx,500,"mapserver source does not support queries");
 }

@@ -470,9 +470,9 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
  * \private \memberof mapcache_source_gdal
  * \sa mapcache_source::render_metatile()
  */
-void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *map)
+void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_source *psource, mapcache_map *map)
 {
-  mapcache_source_gdal *gdal = (mapcache_source_gdal*)map->tileset->source;
+  mapcache_source_gdal *gdal = (mapcache_source_gdal*)psource;
   gdal_connection *gdal_conn;
   GDALDatasetH  hDstDS;
   GDALDatasetH hTmpDS = NULL;
@@ -571,7 +571,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
 #endif
 
   if( eErr != CE_None ) {
-    ctx->set_error(ctx, 500,"GDAL I/O error occured");
+    ctx->set_error(ctx, 500,"GDAL I/O error occurred");
     GDALClose(hDstDS); /* close first this one, as it references hTmpDS or hSrcDS */
     if( hTmpDS )
       GDALClose(hTmpDS); /* references hSrcDS, so close before */
@@ -604,7 +604,7 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_map *
  * \private \memberof mapcache_source_gdal
  * \sa mapcache_source::configuration_parse()
  */
-void _mapcache_source_gdal_configuration_parse(mapcache_context *ctx, ezxml_t node, mapcache_source *source)
+void _mapcache_source_gdal_configuration_parse(mapcache_context *ctx, ezxml_t node, mapcache_source *source, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_source_gdal *src = (mapcache_source_gdal*)source;

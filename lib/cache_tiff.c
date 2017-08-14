@@ -302,7 +302,7 @@ static TIFF* mapcache_cache_tiff_open(mapcache_context *ctx,
                          _tiffMapProc, _tiffUnmapProc );
 }
 
-static void mapcache_cache_tiff_gdal_error_handler(CPLErr eErr,
+static void CPL_STDCALL mapcache_cache_tiff_gdal_error_handler(CPLErr eErr,
                                                    int error_num,
                                                    const char* pszMsg)
 {
