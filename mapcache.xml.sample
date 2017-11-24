@@ -834,7 +834,12 @@
                file. i.e. their are as many different caches created as their are values in the
                <values> tag.
          -->
-         <dimension type="values" name="DIM1" default="foobar">foobar,foobarbaz,foo,bar</dimension>
+	 <dimension type="values" name="DIM1" default="foobar">
+		 <value>foobar</value>
+		 <value>foobarbaz</value>
+		 <value>foo</value>
+		 <value>bar</value>
+	 </dimension>
          
          <!-- regex dimension
             the following creates a MAPFILE dimension, for using the same mod-mapcache tileset with different
@@ -845,18 +850,12 @@
             spearated by slashes (/) and finishing with ".map" ( [a-zA-Z0-9\./]*\.map$ ) , but will faill if there
             are two consecutive dots (..) in the path, to prevent filesystem traversal  ( (?!.*\.\.) ).
          -->
-         <dimension type="regex" name="MAPFILE" default="/path/to/mapfile.map">^(?!.*\.\.)[a-zA-Z0-9\./]*\.map$</dimension>
+	 <dimension type="regex" name="MAPFILE" default="/path/to/mapfile.map">
+		 <regex>^(?!.*\.\.)[a-zA-Z0-9\./]*\.map$</regex>
+	 </dimension>
 
-         <!-- intervals dimension
-            the syntax is the same as common-ows, i.e. a comma separated list of "min/max/resolution" entries.
-            eg: 
-               * 0/5000/1000 allows the values 0,1000,2000,3000,4000 and 5000
-               * 0/100/0 allows any values between 0 and 100
-               * both values can be combined: 0/5000/1000,0/100/0
-         -->
-         <dimension name="ELEVATION" type="intervals" default="0">0/5000/1000</dimension>
 
-         <!-- coming in a future version: support for ISO8601 date/time dimensions -->
+         <!-- todo: example support for ISO8601 date/time and sqlite dimensions -->
 
       </dimensions>
    </tileset>
