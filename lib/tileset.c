@@ -812,7 +812,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
 
   for(i=0;i<tile->dimensions->nelts; i++) {
     mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-    apr_array_header_t *single_subdimension = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+    apr_array_header_t *single_subdimension = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
                                                                                      tile->tileset, &extent, tile->grid_link->grid);
     if(GC_HAS_ERROR(ctx)) /* invalid dimension given */
       goto cleanup;
@@ -1135,7 +1135,7 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
       for(i=0; i<tile->dimensions->nelts; i++) {
         apr_array_header_t *rdim_vals;
         rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-        rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+        rdim_vals = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
         GC_CHECK_ERROR(ctx);
         if(rdim_vals->nelts > 1) {
           ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number (%d) of subdimensions (1 expected)",

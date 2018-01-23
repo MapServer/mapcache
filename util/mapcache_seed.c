@@ -371,7 +371,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         for(i=0; i<tile->dimensions->nelts; i++) {
           apr_array_header_t *rdim_vals;
           mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-          rdim_vals = rdim->dimension->get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          rdim_vals = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
           if(GC_HAS_ERROR(ctx)) {
             return MAPCACHE_CMD_SKIP;
           }
@@ -679,7 +679,7 @@ void seed_worker()
         for(i=0; i<tile->dimensions->nelts; i++) {
           apr_array_header_t *rdim_vals;
           mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-          rdim_vals = rdim->dimension->get_entries_for_value(&seed_ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          rdim_vals = mapcache_dimension_get_entries_for_value(&seed_ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
           GC_CHECK_ERROR(&seed_ctx);
           if(rdim_vals->nelts > 1) {
             seed_ctx.set_error(&seed_ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
