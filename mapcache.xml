@@ -25,7 +25,7 @@
       </http>
    </source>
    
-   <tileset name="test">
+   <tileset name="t1">
       <source>vmap0</source>
       <cache>sqlite</cache>
       <grid>WGS84</grid>
@@ -34,7 +34,34 @@
       <metatile>5 5</metatile>
       <metabuffer>10</metabuffer>
       <expires>3600</expires>
+	  <dimensions>
+		  <dimension name="dim1" type="postgresql" default="d1">
+			  <connection>host=localhost user=mapcache password=mapcache dbname=mapcache port=5433</connection>
+			  <validate_query>select dim from dims where tileset=:tileset and dim=:dim</validate_query>
+			  <list_query>select dim from dims where tileset=:tileset and tileset=:tileset</list_query>
+		  </dimension>
+	  </dimensions>
    </tileset>
+   <tileset name="t2">
+      <source>vmap0</source>
+      <cache>sqlite</cache>
+      <grid>WGS84</grid>
+      <grid>GoogleMapsCompatible</grid>
+      <format>PNG</format>
+      <metatile>5 5</metatile>
+      <metabuffer>10</metabuffer>
+      <expires>3600</expires>
+	  <dimensions>
+		  <store_assemblies>false</store_assemblies>
+		  <assembly_type>stack</assembly_type>
+		  <dimension name="dim1" type="postgresql" default="d1" time="true">
+			  <connection>host=localhost user=mapcache password=mapcache dbname=mapcache port=5433</connection>
+			  <validate_query>select to_char(ts,'YYYY-MM-DD"T"HH24:MI:SS"Z"') from timedims where tileset=:tileset and ts&gt;=to_timestamp(:start_timestamp) and ts&lt;=to_timestamp(:end_timestamp) order by ts desc</validate_query>
+			  <list_query>select ts from timedims where tileset=:tileset</list_query>
+		  </dimension>
+	  </dimensions>
+   </tileset>
+
 
    <default_format>JPEG</default_format>
 
@@ -57,5 +84,6 @@
      <directory>/tmp</directory>
      <timeout>300</timeout>
     </locker>
+	<log_level>debug</log_level>
 
 </mapcache>

@@ -115,8 +115,7 @@ typedef struct mapcache_locker mapcache_locker;
 typedef enum {
   MAPCACHE_DIMENSION_VALUES,
   MAPCACHE_DIMENSION_REGEX,
-  MAPCACHE_DIMENSION_INTERVALS,
-  MAPCACHE_DIMENSION_TIME,
+  MAPCACHE_DIMENSION_POSTGRESQL,
   MAPCACHE_DIMENSION_SQLITE
 } mapcache_dimension_type;
 
@@ -1601,6 +1600,7 @@ struct mapcache_dimension {
 
 mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_postgresql_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
 

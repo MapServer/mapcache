@@ -70,6 +70,8 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_values_create(ctx,ctx->pool);
       } else if(!strcmp(type,"regex")) {
         dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"postgresql")) {
+        dimension = mapcache_dimension_postgresql_create(ctx,ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
         dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {

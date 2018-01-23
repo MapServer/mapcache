@@ -116,7 +116,7 @@ apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_conte
   mapcache_time_interval_t tis,tie;
   char *valueptr = apr_pstrdup(ctx->pool,value);
   char *last,*key;
-  int count=0;
+  int count=1;
   
   /*count how many time entries were supplied*/
   for(; *value; value++) if(*value == ',') count++;
@@ -133,7 +133,7 @@ apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_conte
       ctx->set_error(ctx,400,"failed to parse time %s",value);
       return NULL;
     }
-  
+
     if(*valueptr == '/' || (*valueptr == '-' && *(valueptr+1) == '-')) {
       /* we have a second (end) time */
       if (*valueptr == '/') {
