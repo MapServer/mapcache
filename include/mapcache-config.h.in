@@ -4,6 +4,7 @@
 #cmakedefine USE_PIXMAN 1
 #cmakedefine USE_FASTCGI 1
 #cmakedefine USE_SQLITE 1
+#cmakedefine USE_POSTGRESQL 1
 #cmakedefine USE_BDB 1
 #cmakedefine USE_MEMCACHE 1
 #cmakedefine USE_TIFF 1
