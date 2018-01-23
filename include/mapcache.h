@@ -1562,6 +1562,7 @@ MS_DLL_EXPORT apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t
 
 struct mapcache_dimension {
   mapcache_dimension_type type;
+  int isTime;
   char *name;
   char *unit;
   apr_table_t *metadata;
@@ -1570,7 +1571,14 @@ struct mapcache_dimension {
   /**
    * \brief return the list of dimension values that match the requested entry
    */
-  apr_array_header_t* (*get_entries_for_value)(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+  apr_array_header_t* (*_get_entries_for_value)(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
+
+  /**
+   * \brief return the list of dimension values that match the requested time range
+   */
+  apr_array_header_t* (*_get_entries_for_time_range)(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                       time_t start, time_t end,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
   /**
@@ -1595,6 +1603,11 @@ mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_
 mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
+
+apr_array_header_t* mapcache_dimension_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
+apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
 int mapcache_is_axis_inverted(const char *srs);
 

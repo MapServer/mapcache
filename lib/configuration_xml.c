@@ -55,6 +55,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *name = (char*)ezxml_attr(dimension_node,"name");
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
+    char *time = (char*)ezxml_attr(dimension_node,"time");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
 
     mapcache_dimension *dimension = NULL;
@@ -72,7 +73,9 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       } else if(!strcmp(type,"sqlite")) {
         dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
-        dimension = mapcache_dimension_time_create(ctx,ctx->pool);
+        //backwards compatibility
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+        dimension->isTime = 1;
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -87,6 +90,10 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 
     if(unit && *unit) {
       dimension->unit = apr_pstrdup(ctx->pool,unit);
+    }
+
+    if(time && *time && !strcasecmp(time,"true")) {
+      dimension->isTime = 1;
     }
     
     if(default_value && *default_value) {
