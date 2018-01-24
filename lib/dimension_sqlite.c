@@ -394,7 +394,6 @@ mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_
 #ifdef USE_SQLITE
   mapcache_dimension_sqlite *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_sqlite));
   dimension->dimension.type = MAPCACHE_DIMENSION_SQLITE;
-  dimension->dimension.isTime = 0;
   dimension->dbfile = NULL;
   dimension->dimension._get_entries_for_value = _mapcache_dimension_sqlite_get_entries_for_value;
   dimension->dimension._get_entries_for_time_range = _mapcache_dimension_sqlite_get_entries_for_time_range;

@@ -254,20 +254,26 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         ezxml_t dimxml = ezxml_add_child(layerxml,"Dimension",0);
         ezxml_set_attr(dimxml,"name",dimension->name);
         ezxml_set_attr(dimxml,"default",dimension->default_value);
+          printf("dim %s\n",dimension->name);
 
         if(dimension->unit) {
           ezxml_set_attr(dimxml,"units",dimension->unit);
         }
         values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
+        printf("query error: %s\n",ctx->_errmsg);
+        GC_CHECK_ERROR(ctx);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
+          printf("%s\n",idval);
           if(dimval) {
             dimval = apr_pstrcat(ctx->pool,dimval,",",idval,NULL);
           } else {
             dimval = apr_pstrdup(ctx->pool,idval);
           }
         }
-        ezxml_set_txt(dimxml,dimval);
+        if(dimval) {
+          ezxml_set_txt(dimxml,dimval);
+        }
       }
     }
 
