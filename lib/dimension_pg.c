@@ -48,18 +48,26 @@ struct postgresql_dimension_conn {
   PGconn      *pgconn;     /* Connection to database */
 };
 
-/* lookup "param" in qstring, and replace it with $idx if found. return true if param was found
-replacement is done in place because the replacement string is known to be shorter than the original*/
+/* lookup occurences of "param" in qstring, and replace them with $idx if found. returns the number of times
+ * param was found. replacement is done in place because the replacement string is known to be shorter than the original*/
 static int qparam(mapcache_context *ctx, char *qstring, const char *param, int idx) {
-  char *didx;
-  char *sidx = strstr(qstring,param);
-  if(sidx==NULL) {
-    return 0;
+  int nFound = 0;
+  char *didx=NULL;
+  while(1) {
+    char *sidx = strstr(qstring,param);
+    char *endstring;
+    //printf("lookup %s iter %d: string %s\n",param,nFound,qstring);
+    if(!sidx) {
+      return nFound;
+    }
+    nFound++;
+    if(!didx) {
+      didx = apr_psprintf(ctx->pool,"$%d", idx);
+    }
+    strcpy(sidx,didx);
+    endstring = apr_pstrdup(ctx->pool,sidx+strlen(param));
+    strcpy(sidx+strlen(didx),endstring);
   }
-  didx = apr_psprintf(ctx->pool,"$%d", idx);
-  strcpy(sidx,didx);
-  strcpy(sidx+strlen(didx),sidx+strlen(param));
-  return 1;
 }
 #define INT2VOIDP(i) (void*)(uintptr_t)(i)
 
@@ -103,7 +111,7 @@ static void _mapcache_dimension_postgresql_bind_parameters(mapcache_context *ctx
   paramidx = VOIDP2INT(apr_hash_get(param_indexes,":tileset",APR_HASH_KEY_STRING));
   if (paramidx) {
     paramidx-=1;
-    printf("set tileset at %d to %s\n",paramidx,tileset->name);
+    //printf("set tileset at %d to %s\n",paramidx,tileset->name);
     (*paramValues)[paramidx] = tileset->name;
     (*paramLengths)[paramidx] = strlen(tileset->name);
     (*paramFormats)[paramidx] = 0;
@@ -310,7 +318,7 @@ static apr_array_header_t* _mapcache_dimension_postgresql_get_all_entries(mapcac
     return NULL;
   }
 
-  printf("got %d results\n",PQntuples(res));
+  //printf("got %d results\n",PQntuples(res));
   time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
   for(i=0;i<PQntuples(res);i++) {
     APR_ARRAY_PUSH(time_ids, char *) = apr_pstrdup(ctx->pool, PQgetvalue(res,i,0));
@@ -351,8 +359,8 @@ static void _mapcache_dimension_postgresql_parse_xml(mapcache_context *ctx, mapc
     return;
   }
   parse_queries(ctx,dimension);
-  printf("q1: %s\n",dimension->get_all_values_query);
-  printf("q2: %s\n",dimension->get_values_for_entry_query);
+  //printf("q1: %s\n",dimension->get_all_values_query);
+  //printf("q2: %s\n",dimension->get_values_for_entry_query);
 }
 #endif
 
