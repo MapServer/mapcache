@@ -6,6 +6,7 @@
    <cache name="disk" type="disk">
       <base>/tmp</base>
       <symlink_blank/>
+      <skip_blank/>
    </cache>
    <cache name="sqlite" type="sqlite3">
      <dbfile>/tmp/{tileset}-{z}-{grid}.db</dbfile>
