@@ -49,7 +49,7 @@ struct mapcache_cache_disk {
   char *base_directory;
   char *filename_template;
   int symlink_blank;
-  int skip_blank;
+  int detect_blank;
   int creation_retry;
 
   /**
@@ -507,7 +507,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
 
   cache->tile_key(ctx, cache, tile, &filename);
   GC_CHECK_ERROR(ctx);
-  if ( cache->skip_blank ) {
+  if ( cache->detect_blank ) {
     if(!tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
@@ -721,8 +721,8 @@ static void _mapcache_cache_disk_configuration_parse_xml(mapcache_context *ctx, 
   if ((cur_node = ezxml_child(node,"creation_retry")) != NULL) {
     dcache->creation_retry = atoi(cur_node->txt);
   }
-  if ((cur_node = ezxml_child(node,"skip_blank")) != NULL) {
-    dcache->skip_blank=1;
+  if ((cur_node = ezxml_child(node,"detect_blank")) != NULL) {
+    dcache->detect_blank=1;
   }
 
 }
@@ -753,7 +753,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
     return NULL;
   }
   cache->symlink_blank = 0;
-  cache->skip_blank = 0;
+  cache->detect_blank = 0;
   cache->creation_retry = 0;
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_DISK;

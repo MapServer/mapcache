@@ -357,11 +357,11 @@
            preserve disk space.
       -->
       <symlink_blank/>
-      <!-- skip_blank
+      <!-- detect_blank
           Similar to symlink_blank, except completely skip writing a file
-          if a blank tile is detected.
+          if a blank, fully transparent tile is detected.
       -->
-      <skip_blank/>
+      <detect_blank/>
    </cache>
 
    <cache name="tmpl" type="disk">
@@ -389,11 +389,11 @@
       -->
       <template>/tmp/template-test/{tileset}#{grid}#{dim}/{z}/{x}/{y}.{ext}</template>
 
-      <!-- skip_blank
+      <!-- detect_blank
           Similar to symlink_blank, except completely skip writing a file
-          if a blank tile is detected.
+          if a blank, fully transparent tile is detected.
       -->
-      <skip_blank/>
+      <detect_blank/>
    </cache>
 
    <!-- memcache cache
