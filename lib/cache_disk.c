@@ -513,12 +513,14 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       GC_CHECK_ERROR(ctx);
     }
     if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+      if(tile->raw_image->data[3] == 0) {
+        /* We have a blank (uniform) image who's first pixel is fully transparent, thus the whole image is transparent */
 #ifdef DEBUG
-      ctx->log(ctx, MAPCACHE_DEBUG, "skipped blank tile %s",filename);
+        ctx->log(ctx, MAPCACHE_DEBUG, "skipped blank tile %s",filename);
 #endif
-      // not sure if this is correct?
-      tile->nodata = 1;
-      return;
+        tile->nodata = 1;
+        return;
+      }
     }
   }
 
