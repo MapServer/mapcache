@@ -360,6 +360,9 @@
       <!-- detect_blank
           Similar to symlink_blank, except completely skip writing a file
           if a blank, fully transparent tile is detected.
+          Note: This setting should only be used when using the seeder.  If used
+          on demand, mapcache will will query the WMS source on each subsequent 
+          tile request.
       -->
       <detect_blank/>
    </cache>
@@ -392,6 +395,9 @@
       <!-- detect_blank
           Similar to symlink_blank, except completely skip writing a file
           if a blank, fully transparent tile is detected.
+          Note: This setting should only be used when using the seeder.  If used
+          on demand, mapcache will will query the WMS source on each subsequent 
+          tile request.
       -->
       <detect_blank/>
    </cache>
