@@ -49,6 +49,7 @@ struct mapcache_cache_disk {
   char *base_directory;
   char *filename_template;
   int symlink_blank;
+  int detect_blank;
   int creation_retry;
 
   /**
@@ -506,6 +507,22 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
 
   cache->tile_key(ctx, cache, tile, &filename);
   GC_CHECK_ERROR(ctx);
+  if ( cache->detect_blank ) {
+    if(!tile->raw_image) {
+      tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
+      GC_CHECK_ERROR(ctx);
+    }
+    if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+      if(tile->raw_image->data[3] == 0) {
+        /* We have a blank (uniform) image who's first pixel is fully transparent, thus the whole image is transparent */
+#ifdef DEBUG
+        ctx->log(ctx, MAPCACHE_DEBUG, "skipped blank tile %s",filename);
+#endif
+        tile->nodata = 1;
+        return;
+      }
+    }
+  }
 
   mapcache_make_parent_dirs(ctx,filename);
   GC_CHECK_ERROR(ctx);
@@ -704,6 +721,10 @@ static void _mapcache_cache_disk_configuration_parse_xml(mapcache_context *ctx, 
   if ((cur_node = ezxml_child(node,"creation_retry")) != NULL) {
     dcache->creation_retry = atoi(cur_node->txt);
   }
+  if ((cur_node = ezxml_child(node,"detect_blank")) != NULL) {
+    dcache->detect_blank=1;
+  }
+
 }
 
 /**
@@ -732,6 +753,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
     return NULL;
   }
   cache->symlink_blank = 0;
+  cache->detect_blank = 0;
   cache->creation_retry = 0;
   cache->cache.metadata = apr_table_make(ctx->pool,3);
   cache->cache.type = MAPCACHE_CACHE_DISK;
