@@ -33,6 +33,7 @@
 #include <apr_tables.h>
 #include <curl/curl.h>
 #include <math.h>
+#include <float.h>
 #include <apr_file_io.h>
 
 #ifndef _WIN32
@@ -169,6 +170,11 @@ char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char
   memcpy( newstr + (tok - string) + strlen( replacement ), tok + strlen( substr ), strlen( string ) - strlen( substr ) - ( tok - string ) );
   memset( newstr + strlen( string ) - strlen( substr ) + strlen( replacement ), 0, 1 );
   return newstr;
+}
+
+char *mapcache_util_dbl_replace(apr_pool_t *pool, const char *string, const char *substr, double replacement)
+{
+  return mapcache_util_str_replace(pool,string,substr,apr_psprintf(pool,"%.*e",DBL_DIG,replacement));
 }
 
 char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to)
