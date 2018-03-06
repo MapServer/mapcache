@@ -71,27 +71,21 @@ static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, m
 }
 
 
-static char * _replace_double(apr_pool_t*pool,const char*a,const char*b,double c)
-{
-  return mapcache_util_str_replace(pool,a,b,apr_psprintf(pool,"%.*e",DBL_DIG,c));
-}
-
-
 static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context *ctx, const char * req, const char * value,
   mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   char * res;
 
-  res = mapcache_util_str_replace(ctx->pool,req,"$dim",value);
+  res = mapcache_util_str_replace_all(ctx->pool,req,"$dim",value);
 
-  if (tileset) res = mapcache_util_str_replace(ctx->pool,res,"$tileset",tileset->name);
+  if (tileset) res = mapcache_util_str_replace_all(ctx->pool,res,"$tileset",tileset->name);
 
-  if (grid) res = mapcache_util_str_replace(ctx->pool,res,"$gridsrs",grid->srs);
+  if (grid) res = mapcache_util_str_replace_all(ctx->pool,res,"$gridsrs",grid->srs);
 
-  res = _replace_double(ctx->pool,res,"$minx",extent?extent->minx:-DBL_MAX);
-  res = _replace_double(ctx->pool,res,"$miny",extent?extent->miny:-DBL_MAX);
-  res = _replace_double(ctx->pool,res,"$maxx",extent?extent->maxx:DBL_MAX);
-  res = _replace_double(ctx->pool,res,"$maxy",extent?extent->maxy:DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$minx",extent?extent->minx:-DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$miny",extent?extent->miny:-DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxx",extent?extent->maxx:DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxy",extent?extent->maxy:DBL_MAX);
 
   return res;
 }
