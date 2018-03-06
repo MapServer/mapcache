@@ -63,6 +63,7 @@ time_t timegm(struct tm *tm)
 char *mapcache_ogc_strptime(const char *value, struct tm *ts, mapcache_time_interval_t *ti) {
   char *valueptr;
   memset (ts, '\0', sizeof (*ts));
+  ts->tm_mday = 1;
   valueptr = strptime(value,"%Y-%m-%dT%H:%M:%SZ",ts);
   *ti = MAPCACHE_TINTERVAL_SECOND;
   if(valueptr) return valueptr;
@@ -117,15 +118,16 @@ apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_conte
   char *valueptr = apr_pstrdup(ctx->pool,value);
   char *last,*key;
   int count=1;
+  char * value_scan = (char *)value;
   
   /*count how many time entries were supplied*/
-  for(; *value; value++) if(*value == ',') count++;
+  for(; *value_scan; value_scan++) if(*value_scan == ',') count++;
   
   intervals = apr_pcalloc(ctx->pool,2*count*sizeof(time_t));
   count = 0;
   
   
-  /* Split the input on '&' */
+  /* Split the input on ',' */
   for (key = apr_strtok(valueptr, ",", &last); key != NULL;
        key = apr_strtok(NULL, ",", &last)) {
     valueptr = mapcache_ogc_strptime(key,&tm_start,&tis);
@@ -154,31 +156,28 @@ apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_conte
       ctx->set_error(ctx,400,"failed (2) to parse time %s",value);
       return NULL;
     }
-    intervals[count*2+1] = timegm(&tm_end);
-    intervals[count*2] = timegm(&tm_start);
-    if(difftime(intervals[count*2],intervals[count*2+1]) == 0) {
-      switch(tie) {
-      case MAPCACHE_TINTERVAL_SECOND:
-        tm_end.tm_sec += 1;
-        break;
-      case MAPCACHE_TINTERVAL_MINUTE:
-        tm_end.tm_min += 1;
-        break;
-      case MAPCACHE_TINTERVAL_HOUR:
-        tm_end.tm_hour += 1;
-        break;
-      case MAPCACHE_TINTERVAL_DAY:
-        tm_end.tm_mday += 1;
-        break;
-      case MAPCACHE_TINTERVAL_MONTH:
-        tm_end.tm_mon += 1;
-        break;
-      case MAPCACHE_TINTERVAL_YEAR:
-        tm_end.tm_year += 1;
-        break;
-      }
-      intervals[count*2+1] = timegm(&tm_end);
+    switch(tie) {
+    case MAPCACHE_TINTERVAL_SECOND:
+      tm_end.tm_sec += 1;
+      break;
+    case MAPCACHE_TINTERVAL_MINUTE:
+      tm_end.tm_min += 1;
+      break;
+    case MAPCACHE_TINTERVAL_HOUR:
+      tm_end.tm_hour += 1;
+      break;
+    case MAPCACHE_TINTERVAL_DAY:
+      tm_end.tm_mday += 1;
+      break;
+    case MAPCACHE_TINTERVAL_MONTH:
+      tm_end.tm_mon += 1;
+      break;
+    case MAPCACHE_TINTERVAL_YEAR:
+      tm_end.tm_year += 1;
+      break;
     }
+    intervals[count*2] = timegm(&tm_start);
+    intervals[count*2+1] = timegm(&tm_end);
     count++;
   }
   return mapcache_dimension_time_get_entries(ctx,dimension,value,tileset,extent,grid,intervals,count); 

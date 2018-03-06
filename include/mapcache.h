@@ -116,7 +116,8 @@ typedef enum {
   MAPCACHE_DIMENSION_VALUES,
   MAPCACHE_DIMENSION_REGEX,
   MAPCACHE_DIMENSION_POSTGRESQL,
-  MAPCACHE_DIMENSION_SQLITE
+  MAPCACHE_DIMENSION_SQLITE,
+  MAPCACHE_DIMENSION_ELASTICSEARCH
 } mapcache_dimension_type;
 
 typedef enum {
@@ -1326,6 +1327,12 @@ MS_DLL_EXPORT int mapcache_util_extract_double_list(mapcache_context *ctx, const
                                       int *numbers_count);
 char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 const char *replacement );
+char *mapcache_util_dbl_replace(apr_pool_t *pool, const char *string, const char *substr,
+                                double replacement );
+char *mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr,
+                                    const char *replacement );
+char *mapcache_util_dbl_replace_all(apr_pool_t *pool, const char *string, const char *substr,
+                                    double replacement );
 void mapcache_util_quadkey_decode(mapcache_context *ctx, const char *quadkey, int *x, int *y, int *z);
 
 char* mapcache_util_quadkey_encode(mapcache_context *ctx, int x, int y, int z);
@@ -1603,8 +1610,9 @@ mapcache_dimension* mapcache_dimension_sqlite_create(mapcache_context *ctx, apr_
 mapcache_dimension* mapcache_dimension_postgresql_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
+mapcache_dimension* mapcache_dimension_elasticsearch_create(mapcache_context *ctx, apr_pool_t *pool);
 
-apr_array_header_t* mapcache_dimension_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+MS_DLL_EXPORT apr_array_header_t* mapcache_dimension_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
