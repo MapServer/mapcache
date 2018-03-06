@@ -42,8 +42,21 @@
 void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 {
   ezxml_t cur_node;
-  for(cur_node = node->child; cur_node; cur_node = cur_node->sibling) {
-    apr_table_add(metadata,cur_node->name, cur_node->txt);
+  for(cur_node = node->child; cur_node; cur_node = cur_node->ordered) {
+    if (!cur_node->child) {
+      // Parse simple text
+      apr_table_add(metadata, cur_node->name, cur_node->txt);
+    } else {
+      // Parse tags:
+      //   `>` suffix in name indicates that value is a table and not a string
+      char * name = apr_pstrcat(ctx->pool,cur_node->name,">",NULL);
+      apr_table_t * contents = apr_table_make(ctx->pool,3);
+      ezxml_t sub_node;
+      for(sub_node = cur_node->child; sub_node; sub_node = sub_node->ordered) {
+        apr_table_add(contents, sub_node->name, sub_node->txt);
+      }
+      apr_table_addn(metadata, name, (const char *)contents);
+    }
   }
 }
 

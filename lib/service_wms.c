@@ -32,6 +32,13 @@
 #include <math.h>
 #include "mapcache_services.h"
 
+static int metadata_xml_add_child(void * rec, const char * key, const char * value)
+{
+  ezxml_t node = (ezxml_t)rec;
+  ezxml_set_txt(ezxml_add_child(node,key,0),value);
+  return 1;
+}
+
 static int sort_strings(const void* pa, const void* pb)
 {
     char** ppszA = (char**)pa;
@@ -253,6 +260,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     apr_ssize_t keylen;
     const char *title;
     const char *abstract;
+    const char *keywords;
     int i;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
@@ -275,6 +283,19 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     abstract = apr_table_get(tileset->metadata,"abstract");
     if(abstract) {
       ezxml_set_txt(ezxml_add_child(layerxml,"Abstract",0),abstract);
+    }
+
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
+    if (keywords) {
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_add_child(layerxml,"KeywordList",0);
+        apr_table_do(metadata_xml_add_child, nodeKeywords, contents, "keyword", NULL);
+      }
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
