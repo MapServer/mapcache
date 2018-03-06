@@ -42,7 +42,7 @@
 void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 {
   ezxml_t cur_node;
-  for(cur_node = node->child; cur_node; cur_node = cur_node->sibling) {
+  for(cur_node = node->child; cur_node; cur_node = cur_node->ordered) {
     apr_table_add(metadata,cur_node->name, cur_node->txt);
   }
 }

@@ -32,6 +32,50 @@
 #include <math.h>
 #include "mapcache_services.h"
 
+struct pool_and_xml_node {
+  apr_pool_t * pool;
+  ezxml_t  node;
+};
+
+static int metadata_xml_add_child(void * rec, const char * key, const char * value)
+{
+  apr_pool_t * pool = ((struct pool_and_xml_node*)rec)->pool;
+  ezxml_t node = ((struct pool_and_xml_node*)rec)->node;
+  ezxml_t kw_node;
+  if (key && value) {
+    if (!strcasecmp(key,"Keywords")) {
+      // Build a valid <KeywordList> from a flat list of keywords
+      // separated by whitespaces, commas or semicolons
+      char * str = apr_pstrdup(pool,value);
+      char * pch;
+      char * last;
+      pch = apr_strtok(str, " ,;\n\t", &last);
+      if (pch) {
+        kw_node = ezxml_child(node,"KeywordList");
+        if (!kw_node) {
+          kw_node = ezxml_add_child(node,"KeywordList",0);
+        }
+      }
+      while (pch) {
+        pch = apr_pstrdup(pool,pch);
+        ezxml_set_txt(ezxml_add_child(kw_node,"Keyword",0),pch);
+        pch = apr_strtok(NULL, " ,;\n\t", &last);
+      }
+    } else if (!strcasecmp(key,"Keyword")) {
+      // Append current <Keyword> to <KeywordList>
+      kw_node = ezxml_child(node,"KeywordList");
+      if (!kw_node) {
+        kw_node = ezxml_add_child(node,"KeywordList",0);
+      }
+      ezxml_set_txt(ezxml_add_child(kw_node,key,0),value);
+    } else {
+      ezxml_set_txt(ezxml_add_child(node,key,0),value);
+    }
+    return 1;
+  }
+  return 0;
+}
+
 static int sort_strings(const void* pa, const void* pb)
 {
     char** ppszA = (char**)pa;
@@ -235,6 +279,26 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     abstract = apr_table_get(tileset->metadata,"abstract");
     if(abstract) {
       ezxml_set_txt(ezxml_add_child(layerxml,"Abstract",0),abstract);
+    }
+
+    /*other optional layer metadata*/
+    {
+      struct pool_and_xml_node pool_node = { ctx->pool , layerxml };
+///      if (tileset->strict_metadata) {
+///        apr_table_do(metadata_xml_add_child, &pool_node, tileset->metadata,
+///          // Already handled: "Name", "Title", "Abstract", "BoundingBox", "Dimension",
+///          "Keywords", // Flat list of keywords separated by whitespaces, commas or semicolons
+///          "Keyword",  // Single keyword; multiple occurrences are allowed. It must NOT belong
+///                      // to a <KeywordList> parent
+///          "CRS", "EX_GeographicBoundingBox", "Attribution",
+///          "AuthorityURL", "Identifier", "MetadataURL", "DataURL", "FeatureListURL",
+///          "Style", "MinScaleDenominator", "MaxScaleDenominator", "Layer", NULL);
+///      } else {
+        apr_table_t * metadata = apr_table_clone(ctx->pool,tileset->metadata);
+        apr_table_unset(metadata, "Title");
+        apr_table_unset(metadata, "Abstract");
+        apr_table_do(metadata_xml_add_child, &pool_node, metadata, NULL);
+///      }
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
