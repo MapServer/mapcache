@@ -193,24 +193,28 @@ char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* 
 
 char * mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr, const char *replacement)
 {
-  int lenstring = strlen(string);
-  int lensubstr = strlen(substr);
-  int lenreplacement = strlen(replacement);
-  // Provision is made for worst case scenario, i.e., maximum possible number of substring occurrences in string
-  int lennewstr = (lenreplacement>lensubstr) ? lenreplacement*(1+lenstring/lensubstr) : lenstring;
-  char * newstr = apr_pcalloc(pool, lennewstr+1);
-  const char * xin = string;
-  char * xout = newstr;
-  char * match;
-  while ((match = strstr(xin,substr))) {
-    memcpy(xout, xin, match - xin);
-    xout += match - xin;
-    memcpy(xout, replacement, lenreplacement);
-    xout += lenreplacement;
-    xin = match + lensubstr;
+  if (!replacement) {
+    return apr_pstrdup(pool,string);
+  } else {
+    int lenstring = strlen(string);
+    int lensubstr = strlen(substr);
+    int lenreplacement = strlen(replacement);
+    // Provision is made for worst case scenario, i.e., maximum possible number of substring occurrences in string
+    int lennewstr = (lenreplacement>lensubstr) ? lenreplacement*(1+lenstring/lensubstr) : lenstring;
+    char * newstr = apr_pcalloc(pool, lennewstr+1);
+    const char * xin = string;
+    char * xout = newstr;
+    char * match;
+    while ((match = strstr(xin,substr))) {
+      memcpy(xout, xin, match - xin);
+      xout += match - xin;
+      memcpy(xout, replacement, lenreplacement);
+      xout += lenreplacement;
+      xin = match + lensubstr;
+    }
+    strcpy(xout,xin);
+    return newstr;
   }
-  strcpy(xout,xin);
-  return newstr;
 }
 
 char * mapcache_util_dbl_replace_all(apr_pool_t *pool, const char *string, const char *substr, double replacement)

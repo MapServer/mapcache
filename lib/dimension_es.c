@@ -72,7 +72,7 @@ static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, m
 
 
 static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context *ctx, const char * req, const char * value,
-  mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
+  time_t start, time_t end, mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   char * res;
 
@@ -86,6 +86,9 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
   res = mapcache_util_dbl_replace_all(ctx->pool,res,"$miny",extent?extent->miny:-DBL_MAX);
   res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxx",extent?extent->maxx:DBL_MAX);
   res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxy",extent?extent->maxy:DBL_MAX);
+
+  res = mapcache_util_str_replace_all(ctx->pool,res,"$start_timestamp",apr_psprintf(ctx->pool,"%ld",start));
+  res = mapcache_util_str_replace_all(ctx->pool,res,"$end_timestamp",apr_psprintf(ctx->pool,"%ld",end));
 
   return res;
 }
@@ -138,7 +141,20 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_get_all_entries(ma
 {
   mapcache_dimension_elasticsearch *dimension = (mapcache_dimension_elasticsearch*)dim;
   char * req = dimension->get_all_values_query;
-  char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,NULL,tileset,extent,grid);
+  char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,NULL,0,0,tileset,extent,grid);
+  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res);
+
+  return table;
+}
+
+
+static apr_array_header_t* _mapcache_dimension_elasticsearch_get_entries_for_time_range(mapcache_context *ctx,
+  mapcache_dimension *dim, const char *dim_value, time_t start, time_t end,
+  mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
+{
+  mapcache_dimension_elasticsearch *dimension = (mapcache_dimension_elasticsearch*)dim;
+  char * req = dimension->get_values_for_entry_query;
+  char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,dim_value,start,end,tileset,extent,grid);
   apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res);
 
   return table;
@@ -148,12 +164,7 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_get_all_entries(ma
 static apr_array_header_t* _mapcache_dimension_elasticsearch_get_entries_for_value(mapcache_context *ctx,
   mapcache_dimension *dim, const char *value, mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
-  mapcache_dimension_elasticsearch *dimension = (mapcache_dimension_elasticsearch*)dim;
-  char * req = dimension->get_values_for_entry_query;
-  char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,value,tileset,extent,grid);
-  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res);
-
-  return table;
+  return _mapcache_dimension_elasticsearch_get_entries_for_time_range(ctx,dim,value,0,0,tileset,extent,grid);
 }
 
 
@@ -163,6 +174,7 @@ mapcache_dimension* mapcache_dimension_elasticsearch_create(mapcache_context *ct
   dimension->dimension.type = MAPCACHE_DIMENSION_ELASTICSEARCH;
   dimension->http = NULL;
   dimension->dimension._get_entries_for_value = _mapcache_dimension_elasticsearch_get_entries_for_value;
+  dimension->dimension._get_entries_for_time_range = _mapcache_dimension_elasticsearch_get_entries_for_time_range;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_elasticsearch_parse_xml;
   dimension->dimension.get_all_entries = _mapcache_dimension_elasticsearch_get_all_entries;
   dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_elasticsearch_get_all_entries;
