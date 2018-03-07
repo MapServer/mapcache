@@ -329,6 +329,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     ezxml_t layer;
     const char *title;
     const char *abstract;
+    const char *keyword;
     ezxml_t style;
     char *dimensionstemplate="";
     ezxml_t resourceurl;
@@ -345,6 +346,12 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     abstract = apr_table_get(tileset->metadata,"abstract");
     if(abstract) {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Abstract",0),abstract);
+    }
+    keyword = apr_table_get(tileset->metadata,"keyword");
+    if (keyword) {
+      ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+      apr_table_do(_wmts_service_identification_keywords, nodeKeywords, tileset->metadata, "keyword", NULL);
+      ezxml_insert(nodeKeywords, layer, 0);
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
