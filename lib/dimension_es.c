@@ -37,7 +37,17 @@ struct mapcache_dimension_elasticsearch {
   mapcache_http *http;
   char *get_values_for_entry_query;
   char *get_all_values_query;
+  char *response_format_to_validate_query;
+  char *response_format_to_list_query;
 };
+
+
+// Hook cJSON memory allocation on APR pool mechanism
+static apr_pool_t * _pool_for_cJSON_malloc_hook;
+static void * _malloc_for_cJSON(size_t size) {
+  return apr_palloc(_pool_for_cJSON_malloc_hook,size);
+}
+static void _free_for_cJSON(void *ptr) { }
 
 
 static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, mapcache_dimension *dim, ezxml_t node)
@@ -68,6 +78,20 @@ static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, m
     ctx->set_error(ctx,400,"elasticsearch dimension \"%s\" has no <list_query> node", dim->name);
     return;
   }
+  child = ezxml_child(node,"validate_response");
+  if(child) {
+    dimension->response_format_to_validate_query = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    ctx->set_error(ctx,400,"elasticsearch dimension \"%s\" has no <validate_response> node", dim->name);
+    return;
+  }
+  child = ezxml_child(node,"list_response");
+  if(child) {
+    dimension->response_format_to_list_query = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    ctx->set_error(ctx,400,"elasticsearch dimension \"%s\" has no <list_response> node", dim->name);
+    return;
+  }
 }
 
 
@@ -94,44 +118,95 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
 }
 
 
-static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_context * ctx, mapcache_http * http, const char * query)
+static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_context * ctx, mapcache_http * http, const char * query, const char * response_format)
 {
-  int i,nelts;
   char * resp;
   cJSON * json_resp;
-  cJSON * json_sub;
-  cJSON * json_item;
+  cJSON * json_fmt;
+  cJSON * index;
+  cJSON * extract;
+  cJSON * item;
+  cJSON * sub;
+  cJSON_Hooks hooks = { _malloc_for_cJSON, _free_for_cJSON };
 
   apr_array_header_t *table = apr_array_make(ctx->pool,0,sizeof(char*));
+
+  // Build and execute HTTP request
   mapcache_buffer * buffer = mapcache_buffer_create(1,ctx->pool);
   mapcache_http * req = mapcache_http_clone(ctx,http);
   req->post_body = apr_pstrdup(ctx->pool,query);
   req->post_len = strlen(req->post_body);
-
   mapcache_http_do_request(ctx,req,buffer,NULL,NULL);
   if (GC_HAS_ERROR(ctx)) {
     return table;
   }
-
   mapcache_buffer_append(buffer,1,"");
   resp = (char*)buffer->buf;
 
+  // Prepare subpool for cJSON memory allocations
+  apr_pool_create(&_pool_for_cJSON_malloc_hook,ctx->pool);
+  cJSON_InitHooks(&hooks);
+
+  // Parse response format: this should be a list of keys or integers
+  json_fmt = cJSON_Parse(response_format);
+  if (!json_fmt) {
+    ctx->set_error(ctx,500,"elasticsearch dimension backend failed on response format: %s",response_format);
+    goto cleanup;
+  }
+
+  // Parse response
   json_resp = cJSON_Parse(resp);
-  json_sub = cJSON_GetObjectItem(json_resp,"aggregations");
-  json_sub = cJSON_GetArrayItem(json_sub,0);
-  json_sub = cJSON_GetObjectItem(json_sub,"buckets");
-  if (!json_sub) {
+  if (!json_resp) {
     ctx->set_error(ctx,500,"elasticsearch dimension backend failed on query response: %s",resp);
-  } else {
-    nelts = cJSON_GetArraySize(json_sub);
-    for (i=0 ; i<nelts ; i++)
-    {
-      json_item = cJSON_GetArrayItem(json_sub,i);
-      json_item = cJSON_GetObjectItem(json_item,"key");
-      APR_ARRAY_PUSH(table,char*) = apr_pstrdup(ctx->pool, cJSON_GetStringValue(json_item));
+    goto cleanup;
+  }
+
+  // Analyze response according to response format
+  extract = json_resp;
+  cJSON_ArrayForEach(index,json_fmt) {
+    char * key = index->valuestring;
+    int    pos = index->valueint;
+
+    // Key on Dict => return Dict[Key]
+    if (cJSON_IsString(index) && cJSON_IsObject(extract)) {
+      extract = cJSON_GetObjectItem(extract,key);
+
+    // Index on List => return List[Index]
+    } else if (cJSON_IsNumber(index) && cJSON_IsArray(extract)) {
+      extract = cJSON_GetArrayItem(extract,pos);
+
+    // Key on List => return [ Dict[Key] for Dict in List ]
+    } else if (cJSON_IsString(index) && cJSON_IsArray(extract)) {
+      sub = cJSON_CreateArray();
+      cJSON_ArrayForEach(item,extract) {
+        cJSON * value = cJSON_GetObjectItem(item,key);
+        if (value) cJSON_AddItemToArray(sub,cJSON_Duplicate(value,1));
+      }
+      extract = sub;
+
+    } else {
+        ctx->set_error(ctx,500,"elasticsearch dimension backend failed on query response: %s",resp);
+        goto cleanup;
+    }
+
+    if (!extract) {
+      ctx->set_error(ctx,500,"elasticsearch dimension backend failed on query response: %s",resp);
+      goto cleanup;
     }
   }
-  cJSON_Delete(json_resp);
+
+  if (!cJSON_IsArray(extract)) {
+    item = extract;
+    extract = cJSON_CreateArray();
+    cJSON_AddItemToArray(extract,item);
+  }
+  cJSON_ArrayForEach(item,extract) {
+    APR_ARRAY_PUSH(table,char*) = apr_pstrdup(ctx->pool, cJSON_GetStringValue(item));
+  }
+
+cleanup:
+  // Subpool is no longer needed
+  apr_pool_destroy(_pool_for_cJSON_malloc_hook);
   return table;
 }
 
@@ -141,8 +216,9 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_get_all_entries(ma
 {
   mapcache_dimension_elasticsearch *dimension = (mapcache_dimension_elasticsearch*)dim;
   char * req = dimension->get_all_values_query;
+  char * resp_fmt = dimension->response_format_to_list_query;
   char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,NULL,0,0,tileset,extent,grid);
-  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res);
+  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res,resp_fmt);
 
   return table;
 }
@@ -154,8 +230,9 @@ static apr_array_header_t* _mapcache_dimension_elasticsearch_get_entries_for_tim
 {
   mapcache_dimension_elasticsearch *dimension = (mapcache_dimension_elasticsearch*)dim;
   char * req = dimension->get_values_for_entry_query;
+  char * resp_fmt = dimension->response_format_to_validate_query;
   char * res = _mapcache_dimension_elasticsearch_bind_parameters(ctx,req,dim_value,start,end,tileset,extent,grid);
-  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res);
+  apr_array_header_t *table = _mapcache_dimension_elasticsearch_do_query(ctx,dimension->http,res,resp_fmt);
 
   return table;
 }
