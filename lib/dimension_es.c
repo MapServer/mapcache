@@ -99,8 +99,10 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
   time_t start, time_t end, mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid)
 {
   char * res;
+  char * val = NULL;
 
-  res = mapcache_util_str_replace_all(ctx->pool,req,"$dim",value);
+  if (value) val = mapcache_util_str_sanitize(ctx->pool,value,"\"\\%{}[]",'#');
+  res = mapcache_util_str_replace_all(ctx->pool,req,"$dim",val);
 
   if (tileset) res = mapcache_util_str_replace_all(ctx->pool,res,"$tileset",tileset->name);
 
