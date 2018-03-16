@@ -29,6 +29,7 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <float.h>
+#include "cJSON.h"
 
 typedef struct mapcache_dimension_elasticsearch mapcache_dimension_elasticsearch;
 
@@ -48,6 +49,14 @@ static void * _malloc_for_cJSON(size_t size) {
   return apr_palloc(_pool_for_cJSON_malloc_hook,size);
 }
 static void _free_for_cJSON(void *ptr) { }
+static void _create_json_pool(apr_pool_t * parent_pool) {
+  cJSON_Hooks hooks = { _malloc_for_cJSON, _free_for_cJSON };
+  apr_pool_create(&_pool_for_cJSON_malloc_hook,parent_pool);
+  cJSON_InitHooks(&hooks);
+}
+static void _destroy_json_pool() {
+  apr_pool_destroy(_pool_for_cJSON_malloc_hook);
+}
 
 
 static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, mapcache_dimension *dim, ezxml_t node)
@@ -101,20 +110,31 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
   char * res;
   char * val = NULL;
 
-  if (value) val = mapcache_util_str_sanitize(ctx->pool,value,"\"\\%{}[]",'#');
-  res = mapcache_util_str_replace_all(ctx->pool,req,"$dim",val);
+  if (value) {
+    // Sanitize dimension value for safe insertion in JSON request
+    cJSON * json_str;
+    _create_json_pool(ctx->pool);
+    json_str = cJSON_CreateString(value);
+    val = cJSON_Print(json_str);
+    if (val) {
+      // Discard double quotes while copying
+      val = apr_pstrndup(ctx->pool,val+1,strlen(val)-2);
+    }
+    _destroy_json_pool();
+  }
+  res = mapcache_util_str_replace_all(ctx->pool,req,":dim",val);
 
-  if (tileset) res = mapcache_util_str_replace_all(ctx->pool,res,"$tileset",tileset->name);
+  if (tileset) res = mapcache_util_str_replace_all(ctx->pool,res,":tileset",tileset->name);
 
-  if (grid) res = mapcache_util_str_replace_all(ctx->pool,res,"$gridsrs",grid->srs);
+  if (grid) res = mapcache_util_str_replace_all(ctx->pool,res,":gridsrs",grid->srs);
 
-  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$minx",extent?extent->minx:-DBL_MAX);
-  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$miny",extent?extent->miny:-DBL_MAX);
-  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxx",extent?extent->maxx:DBL_MAX);
-  res = mapcache_util_dbl_replace_all(ctx->pool,res,"$maxy",extent?extent->maxy:DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,":minx",extent?extent->minx:-DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,":miny",extent?extent->miny:-DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,":maxx",extent?extent->maxx:DBL_MAX);
+  res = mapcache_util_dbl_replace_all(ctx->pool,res,":maxy",extent?extent->maxy:DBL_MAX);
 
-  res = mapcache_util_str_replace_all(ctx->pool,res,"$start_timestamp",apr_psprintf(ctx->pool,"%ld",start));
-  res = mapcache_util_str_replace_all(ctx->pool,res,"$end_timestamp",apr_psprintf(ctx->pool,"%ld",end));
+  res = mapcache_util_str_replace_all(ctx->pool,res,":start_timestamp",apr_psprintf(ctx->pool,"%ld",start));
+  res = mapcache_util_str_replace_all(ctx->pool,res,":end_timestamp",apr_psprintf(ctx->pool,"%ld",end));
 
   return res;
 }
@@ -129,7 +149,6 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
   cJSON * extract;
   cJSON * item;
   cJSON * sub;
-  cJSON_Hooks hooks = { _malloc_for_cJSON, _free_for_cJSON };
 
   apr_array_header_t *table = apr_array_make(ctx->pool,0,sizeof(char*));
 
@@ -145,9 +164,7 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
   mapcache_buffer_append(buffer,1,"");
   resp = (char*)buffer->buf;
 
-  // Prepare subpool for cJSON memory allocations
-  apr_pool_create(&_pool_for_cJSON_malloc_hook,ctx->pool);
-  cJSON_InitHooks(&hooks);
+  _create_json_pool(ctx->pool);
 
   // Parse response format: this should be a list of keys or integers
   json_fmt = cJSON_Parse(response_format);
@@ -207,8 +224,7 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
   }
 
 cleanup:
-  // Subpool is no longer needed
-  apr_pool_destroy(_pool_for_cJSON_malloc_hook);
+  _destroy_json_pool();
   return table;
 }
 
