@@ -329,7 +329,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     ezxml_t layer;
     const char *title;
     const char *abstract;
-    const char *keyword;
+    const char *keywords;
     ezxml_t style;
     char *dimensionstemplate="";
     ezxml_t resourceurl;
@@ -352,24 +352,17 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
       ezxml_set_txt(ezxml_add_child(layer,"ows:Abstract",0),abstract);
     }
 
-    /* optional layer keywords */
-    keyword = apr_table_get(tileset->metadata,"keyword");
-    if (keyword) {
-      ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
-      apr_table_do(_wmts_service_identification_keywords, nodeKeywords, tileset->metadata, "keyword", NULL);
-      ezxml_insert(nodeKeywords, layer, 0);
-    }
-
-    /* other optional metadata */
-    {
-      apr_table_t *other_metadata = apr_table_clone(ctx->pool,tileset->metadata);
-      apr_table_unset(other_metadata,"title");
-      apr_table_unset(other_metadata,"abstract");
-      apr_table_unset(other_metadata,"keyword");
-      if (!apr_is_empty_table(other_metadata)) {
-        ezxml_t nodeMetadata = ezxml_new("ows:Metadata");
-        apr_table_do(_wmts_service_identification_keywords, nodeMetadata, other_metadata, NULL, NULL);
-        ezxml_insert(nodeMetadata, layer, 0);
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
+    if (keywords) {
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+        apr_table_do(_wmts_service_identification_keywords, nodeKeywords, contents, "keyword", NULL);
+        ezxml_insert(nodeKeywords, layer, 0);
       }
     }
 

@@ -245,11 +245,17 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_set_txt(ezxml_add_child(layerxml,"Abstract",0),abstract);
     }
 
-    /* optional layer keywords */
-    keywords = apr_table_get(tileset->metadata,"keyword");
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
     if (keywords) {
-      ezxml_t nodeKeywords = ezxml_add_child(layerxml,"KeywordList",0);
-      apr_table_do(metadata_xml_add_child, nodeKeywords, tileset->metadata, "keyword", NULL);
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_add_child(layerxml,"KeywordList",0);
+        apr_table_do(metadata_xml_add_child, nodeKeywords, contents, "keyword", NULL);
+      }
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
