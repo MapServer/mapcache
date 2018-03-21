@@ -22,10 +22,9 @@ environment:
 shallow_clone: true
 
 install:
-    git clone https://github.com/Microsoft/vcpkg.git
-    git clone -n --depth=1 --branch=master https://github.com/Microsoft/vcpkg.git
-    ./bootstrap-vcpkg.bat
-    ./vcpkg.exe install apr-util:x64-windows 
+  - git clone https://github.com/Microsoft/vcpkg.git
+  - ./bootstrap-vcpkg.bat
+  - ./vcpkg.exe install apr-util:x64-windows
 
 #    choco install swig --version 1.3.40 --yes --limit-output
 
