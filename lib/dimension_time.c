@@ -127,7 +127,7 @@ apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_conte
   count = 0;
   
   
-  /* Split the input on '&' */
+  /* Split the input on ',' */
   for (key = apr_strtok(valueptr, ",", &last); key != NULL;
        key = apr_strtok(NULL, ",", &last)) {
     valueptr = mapcache_ogc_strptime(key,&tm_start,&tis);

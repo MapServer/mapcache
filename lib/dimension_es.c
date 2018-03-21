@@ -133,8 +133,8 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
   res = mapcache_util_dbl_replace_all(ctx->pool,res,":maxx",extent?extent->maxx:DBL_MAX);
   res = mapcache_util_dbl_replace_all(ctx->pool,res,":maxy",extent?extent->maxy:DBL_MAX);
 
-  res = mapcache_util_str_replace_all(ctx->pool,res,":start_timestamp",apr_psprintf(ctx->pool,"%ld",start));
-  res = mapcache_util_str_replace_all(ctx->pool,res,":end_timestamp",apr_psprintf(ctx->pool,"%ld",end));
+  res = mapcache_util_str_replace_all(ctx->pool,res,":start_timestamp",apr_psprintf(ctx->pool,"%ld",start*1000));
+  res = mapcache_util_str_replace_all(ctx->pool,res,":end_timestamp",apr_psprintf(ctx->pool,"%ld",end*1000));
 
   return res;
 }
@@ -190,6 +190,16 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
     if (cJSON_IsString(index) && cJSON_IsObject(extract)) {
       extract = cJSON_GetObjectItem(extract,key);
 
+    // Index on List of lists => return [ list[Index] for list in List ]
+    } else if (cJSON_IsNumber(index) && cJSON_IsArray(extract)
+               && cJSON_IsArray(cJSON_GetArrayItem(extract,0))) {
+      sub = cJSON_CreateArray();
+      cJSON_ArrayForEach(item,extract) {
+        cJSON * value = cJSON_GetArrayItem(item,pos);
+        if (value) cJSON_AddItemToArray(sub,cJSON_Duplicate(value,1));
+      }
+      extract = sub;
+
     // Index on List => return List[Index]
     } else if (cJSON_IsNumber(index) && cJSON_IsArray(extract)) {
       extract = cJSON_GetArrayItem(extract,pos);
@@ -208,10 +218,6 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
         goto cleanup;
     }
 
-    if (!extract) {
-      ctx->set_error(ctx,500,"elasticsearch dimension backend failed on query response: %s",resp);
-      goto cleanup;
-    }
   }
 
   if (!cJSON_IsArray(extract)) {
