@@ -112,6 +112,7 @@ build_script:
         -DWITH_FCGI=ON 
         -DWITH_PCRE=ON 
         -DWITH_TIFF=OFF 
+        -DWITH_PIXMAN=OFF 
         -DCMAKE_PREFIX_PATH=%SDK_PREFIX% ..
   - cmake --build . --config Release
 
