@@ -135,6 +135,6 @@ test_script:
 deploy: off
 
 artifacts:
-  - path: %SDK_PREFIX%
+  - path: "%SDK_PREFIX%\\bin"
     name: mapcache
     type: zip
