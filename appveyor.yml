@@ -17,8 +17,8 @@ build_script:
   - if "%platform%" == "x86" SET SDK=release-1800
   - if "%platform%" == "x64" SET SDK=release-1800-x64
   - echo "%VS_FULL%"
-  - if "%platform%" == "x64" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars64.bat"
-  - if "%platform%" == "x86" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars32.bat"
+  - if "%platform%" == "x64" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
+  - if "%platform%" == "x86" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars32.bat"
   - set SDK_ZIP=%SDK%-dev.zip
   - set SDK_URL=http://download.gisinternals.com/sdk/downloads/%SDK_ZIP%
   - echo "%SDK_ZIP%"
