@@ -69,9 +69,7 @@ build_script:
         -DAPU_HAVE_ODBC=OFF 
         -DAPR_HAS_LDAP=OFF 
         -DAPR_BUILD_TESTAPR=OFF 
-        -DINSTALL_PDB=OFF 
-  - cd ..\..\apr-util-1.6.1
-  - echo %CD%
+        -DINSTALL_PDB=OFF ..\..\apr-util-1.6.1
   - nmake
   - nmake install
 
@@ -94,8 +92,7 @@ build_script:
         -DPCRE_SUPPORT_UTF=ON 
         -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON 
         -DPCRE_NEWLINE=CRLF 
-        -DINSTALL_MSVC_PDB=OFF 
-  - cd ..\..\%PCRE%
+        -DINSTALL_MSVC_PDB=OFF ..\..\%PCRE%
   - nmake
   - nmake install
 
