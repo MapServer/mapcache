@@ -127,7 +127,7 @@ build_script:
 
 after_build:
   - cd %SDK_PREFIX%\bin
-  - 7z a mapcache.zip libapr*.dll apr*.dll pcre.dll pcreposix.dll mapcache.dll 
+  - 7z a %APPVEYOR_BUILD_FOLDER%\mapcache.zip libapr*.dll apr*.dll pcre.dll pcreposix.dll mapcache.dll 
         mapcache.fcgi.exe mapcache_seed.exe %APPVEYOR_BUILD_FOLDER%\mapcache.xml
 
 test_script:
@@ -142,6 +142,6 @@ test_script:
 deploy: off
 
 artifacts:
-  - path: '%APPVEYOR_BUILD_FOLDER%\mapcache.zip'
+  - path: mapcache.zip
     name: mapcache
     type: zip
