@@ -142,6 +142,6 @@ test_script:
 deploy: off
 
 artifacts:
-  - path: mapcache-%APPVEYOR_REPO_BRANCH%.zip
+  - path: mapcache.zip
     name: mapcache
     type: zip
