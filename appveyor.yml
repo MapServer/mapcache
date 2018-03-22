@@ -125,14 +125,23 @@ build_script:
   - copy cgi\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
   - copy util\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
 
+after_build:
+  - cd %SDK_PREFIX%\bin
+  - 7z a mapcache.zip libapr*.dll apr*.dll pcre.dll pcreposix.dll mapcache.dll 
+        mapcache.fcgi.exe mapcache_seed.exe %APPVEYOR_BUILD_FOLDER%\mapcache.xml
+
 test_script:
   - cd %SDK_PREFIX%\bin
+  - set MAPCACHE_CONFIG_FILE=mapcache.xml
+  - set PATH_INFO="/"
+  - set REQUEST_METHOD=GET
+  - set QUERY_STRING="SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
   - mapcache.fcgi.exe
   - mapcache_seed.exe
 
 deploy: off
 
 artifacts:
-  - path: "%SDK_PREFIX%\\bin"
+  - path: mapcache.zip
     name: mapcache
     type: zip
