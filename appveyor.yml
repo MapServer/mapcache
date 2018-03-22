@@ -136,7 +136,7 @@ test_script:
   - set PATH_INFO="/"
   - set REQUEST_METHOD=GET
   - set QUERY_STRING="SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
-  - mapcache.fcgi.exe > nul
+  - rem mapcache.fcgi.exe > nul
   - mapcache_seed.exe > nul
 
 deploy: off
