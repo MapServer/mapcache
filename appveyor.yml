@@ -30,7 +30,7 @@ build_script:
   - cd %SDK%
   - cd lib
   - copy libpng.lib libpng.lib.lib
-  - cd {APPVEYOR_BUILD_FOLDER}
+  - cd %APPVEYOR_BUILD_FOLDER%
   - set SDK_PREFIX=%CD%\sdk\%SDK%
   - set SDK_INC=%CD%\sdk\%SDK%\include
   - set SDK_LIB=%CD%\sdk\%SDK%\lib
@@ -55,7 +55,7 @@ build_script:
   - nmake
   - nmake install
 
-  - cd {APPVEYOR_BUILD_FOLDER}
+  - cd %APPVEYOR_BUILD_FOLDER%
 
   - if not exist apr-util-1.6.1-win32-src.zip appveyor DownloadFile http://apache.mindstudios.com/apr/apr-util-1.6.1-win32-src.zip
   - 7z x apr-util-1.6.1-win32-src.zip
@@ -74,7 +74,7 @@ build_script:
   - nmake
   - nmake install
 
-  - cd {APPVEYOR_BUILD_FOLDER}
+  - cd %APPVEYOR_BUILD_FOLDER%
 
   - set PCRE_VERSION=8.38
   - set PCRE=pcre-%PCRE_VERSION%
@@ -105,7 +105,7 @@ build_script:
   - copy %SDK_PREFIX%\lib\libaprutil-1.lib %SDK_PREFIX%\lib\aprutil-1.lib /Y > nul
   - xcopy %REGEX_DIR%\*.h %SDK_PREFIX%\include\ /O /X /E /H /K /Y > nul
 
-  - cd {APPVEYOR_BUILD_FOLDER}
+  - cd %APPVEYOR_BUILD_FOLDER%
 
   - mkdir build
   - cd build
