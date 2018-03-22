@@ -2,31 +2,13 @@ image: Visual Studio 2017
 
 platform:
 - x64
-- x86
 
 environment:
   matrix:
-#
-# VS 2010
-#  - VS_VERSION: Visual Studio 10
-#
-# VS 2012
-#  - VS_VERSION: Visual Studio 11
-#
-# VS 2013
-#  - VS_VERSION: Visual Studio 12
-#
 # VS 2017
   - VS_VERSION: Visual Studio 15 2017
 
 shallow_clone: true
-
-install:
-  - git clone https://github.com/Microsoft/vcpkg.git
-  - ./bootstrap-vcpkg.bat
-  - ./vcpkg.exe install apr-util:x64-windows
-
-#    choco install swig --version 1.3.40 --yes --limit-output
 
 build_script:
   - echo build_script
@@ -35,6 +17,8 @@ build_script:
   - if "%platform%" == "x86" SET SDK=release-1800
   - if "%platform%" == "x64" SET SDK=release-1800-x64
   - echo "%VS_FULL%"
+  - if "%platform%" == "x64" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars64.bat"
+  - if "%platform%" == "x86" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars32.bat"
   - set SDK_ZIP=%SDK%-dev.zip
   - set SDK_URL=http://download.gisinternals.com/sdk/downloads/%SDK_ZIP%
   - echo "%SDK_ZIP%"
@@ -46,21 +30,111 @@ build_script:
   - cd %SDK%
   - cd lib
   - copy libpng.lib libpng.lib.lib
-  - cd ..
-  - cd ..
-  - cd ..
+  - cd {APPVEYOR_BUILD_FOLDER}
   - set SDK_PREFIX=%CD%\sdk\%SDK%
   - set SDK_INC=%CD%\sdk\%SDK%\include
   - set SDK_LIB=%CD%\sdk\%SDK%\lib
   - set SDK_BIN=%CD%\sdk\%SDK%\bin
-  # - set SWIG_EXECUTABLE=%CD%\sdk\SWIG-1.3.39\swig.exe
-  - set SWIG_EXECUTABLE=C:\ProgramData\chocolatey\bin\swig.exe
   - set REGEX_DIR=%CD%\sdk\regex-0.12
-  - if "%platform%" == "x86" SET PYTHON_EXECUTABLE=c:\python27\python.exe
-  - if "%platform%" == "x64" SET PYTHON_EXECUTABLE=c:\python27-x64\python.exe
+
+  - if not exist apr-1.6.3-win32-src.zip appveyor DownloadFile http://apache.mindstudios.com/apr/apr-1.6.3-win32-src.zip
+  - 7z x apr-1.6.3-win32-src.zip
+  - mkdir build-cmake
+  - cd build-cmake
+  - mkdir apr
+  - cd apr
+  - cmake -G "NMake Makefiles" ^
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% ^
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+        -DMIN_WINDOWS_VER=0x0600 ^
+        -DAPR_HAVE_IPV6=ON ^
+        -DAPR_INSTALL_PRIVATE_H=ON ^
+        -DAPR_BUILD_TESTAPR=OFF ^
+        -DAPU_HAVE_ODBC=OFF ^
+        -DINSTALL_PDB=OFF ..\..\apr-1.6.3
+  - nmake
+  - nmake install
+
+  - cd {APPVEYOR_BUILD_FOLDER}
+
+  - if not exist apr-util-1.6.1-win32-src.zip appveyor DownloadFile http://apache.mindstudios.com/apr/apr-util-1.6.1-win32-src.zip
+  - 7z x apr-util-1.6.1-win32-src.zip
+  - mkdir build-cmake\apr-util
+  - cd build-cmake\apr-util
+  - cmake -G "NMake Makefiles" ^
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% ^
+        -DOPENSSL_ROOT_DIR=%SDK_PREFIX% ^
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+        -DAPU_HAVE_CRYPTO=ON ^
+        -DAPU_HAVE_ODBC=OFF ^
+        -DAPR_HAS_LDAP=OFF ^
+        -DAPR_BUILD_TESTAPR=OFF ^
+        -DINSTALL_PDB=OFF ^
+  - ..\..\apr-util-1.6.1
+  - nmake
+  - nmake install
+
+  - cd {APPVEYOR_BUILD_FOLDER}
+
+  - set PCRE_VERSION=8.38
+  - set PCRE=pcre-%PCRE_VERSION%
+  - if not exist %PCRE%.zip appveyor DownloadFile "http://zoo-project.org/dl/%PCRE%.zip"
+  - 7z x %PCRE%.zip > nul
+  - mkdir build-cmake\pcre
+  - cd build-cmake\pcre
+  - cmake -G "NMake Makefiles" ^
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% ^
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+        -DBUILD_SHARED_LIBS=ON ^
+        -DPCRE_BUILD_TESTS=OFF ^
+        -DPCRE_BUILD_PCRECPP=OFF ^
+        -DPCRE_BUILD_PCREGREP=OFF ^
+        -DPCRE_SUPPORT_PCREGREP_JIT=OFF ^
+        -DPCRE_SUPPORT_UTF=ON ^
+        -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON ^
+        -DPCRE_NEWLINE=CRLF ^
+        -DINSTALL_MSVC_PDB=OFF ^
+  - ..\..\%PCRE%
+  - nmake
+  - nmake install
+
+  - copy %SDK_PREFIX%\lib\libfcgi.lib %SDK_PREFIX%\lib\fcgi.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\apr-1.lib %SDK_PREFIX%\lib\apr-1-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\libapr-1.lib %SDK_PREFIX%\lib\apr-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\aprutil-1.lib %SDK_PREFIX%\lib\aprutil-1-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\libaprutil-1.lib %SDK_PREFIX%\lib\aprutil-1.lib /Y > nul
+  - xcopy %REGEX_DIR%\*.h %SDK_PREFIX%\include\ /O /X /E /H /K /Y > nul
+
+  - cd {APPVEYOR_BUILD_FOLDER}
+
   - mkdir build
   - cd build
-  - cmake -G "%VS_FULL%" .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=%SDK_PREFIX% -DFREETYPE_INCLUDE_DIR_freetype2=%SDK_INC%\freetype -DFREETYPE_INCLUDE_DIR_ft2build=%SDK_INC%\freetype -DFREETYPE_LIBRARY=%SDK_LIB%\freetype2411.lib -DZLIB_INCLUDE_DIR=%SDK_INC% -DZLIB_LIBRARY=%SDK_LIB%\zlib.lib -DPNG_PNG_INCLUDE_DIR=%SDK_INC% -DPNG_LIBRARY=%SDK_LIB%\libpng.lib -DPNG_LIBRARIES=%SDK_LIB%\libpng.lib -DJPEG_INCLUDE_DIR=%SDK_INC% -DJPEG_LIBRARY=%SDK_LIB%\libjpeg.lib -DWITH_PROJ=1 -DPROJ_INCLUDE_DIR=%SDK_INC% -DPROJ_LIBRARY=%SDK_LIB%\proj_i.lib -DFRIBIDI_INCLUDE_DIR=%SDK_INC% -DFRIBIDI_LIBRARY=%SDK_LIB%\fribidi.lib -DHARFBUZZ_INCLUDE_DIR=%SDK_INC%\harfbuzz -DHARFBUZZ_LIBRARY=%SDK_LIB%\harfbuzz.lib -DICONV_INCLUDE_DIR=%SDK_INC% -DICONV_LIBRARY=%SDK_LIB%\iconv.lib -DICONV_DLL=%SDK_BIN%\iconv.dll -DCAIRO_INCLUDE_DIR=%SDK_INC% -DCAIRO_LIBRARY=%SDK_LIB%\cairo.lib -DFCGI_INCLUDE_DIR=%SDK_INC% -DFCGI_LIBRARY=%SDK_LIB%\libfcgi.lib -DGEOS_INCLUDE_DIR=%SDK_INC% -DGEOS_LIBRARY=%SDK_LIB%\geos_c.lib -DPOSTGRESQL_INCLUDE_DIR=%SDK_INC% -DPOSTGRESQL_LIBRARY=%SDK_LIB%\libpqdll.lib -DGDAL_INCLUDE_DIR=%SDK_INC% -DGDAL_LIBRARY=%SDK_LIB%\gdal_i.lib -DLIBXML2_INCLUDE_DIR=%SDK_INC%\libxml -DLIBXML2_LIBRARIES=%SDK_LIB%\libxml2.lib -DGIF_INCLUDE_DIR=%SDK_INC% -DGIF_LIBRARY=%SDK_LIB%\giflib.lib -DWITH_CURL=1 -DCURL_INCLUDE_DIR=%SDK_INC% -DCURL_LIBRARY=%SDK_LIB%\libcurl_imp.lib -DMS_EXTERNAL_LIBS=wsock32.lib -DWITH_SOS=1 -DWITH_CLIENT_WFS=1 -DWITH_CLIENT_WMS=1 -DSVG_INCLUDE_DIR=%SDK_INC% -DSVG_LIBRARY=%SDK_LIB%\libsvg.lib -DSVGCAIRO_INCLUDE_DIR=%SDK_INC% -DSVGCAIRO_LIBRARY=%SDK_LIB%\libsvg-cairo.lib -DWITH_SVGCAIRO=1 -DREGEX_DIR=%REGEX_DIR% -DWITH_POINT_Z_M=1 -DWITH_KML=1 -DWITH_THREAD_SAFETY=1 -DSWIG_EXECUTABLE=%SWIG_EXECUTABLE% -DWITH_PYTHON=1 -DPYTHON_EXECUTABLE=%PYTHON_EXECUTABLE% -DWITH_CSHARP=1
+  - cmake -G "%VS_FULL%" ^
+        -DWITH_APACHE=OFF ^
+        -DWITH_FCGI=ON ^
+        -DWITH_PCRE=ON ^
+        -DWITH_TIFF=OFF ^
+        -DCMAKE_PREFIX_PATH=%SDK_PREFIX% ..
   - cmake --build . --config Release
 
+  - copy %SDK_PREFIX%\lib\apr-1-1.lib %SDK_PREFIX%\lib\apr-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\aprutil-1-1.lib %SDK_PREFIX%\lib\aprutil-1.lib /Y > nul
+  - copy %SDK_PREFIX%\bin\libapr-1.dll %SDK_PREFIX%\bin\apr-1.dll /Y > nul
+  - copy %SDK_PREFIX%\bin\libaprutil-1.dll %SDK_PREFIX%\bin\aprutil-1.dll /Y > nul
+  - copy %SDK_PREFIX%\bin\libfcgi.dll %SDK_PREFIX%\bin\fcgi.dll /Y > nul
+  - copy Release\*dll %SDK_PREFIX%\bin\ /Y > nul
+  - copy Release\*lib %SDK_PREFIX%\lib\ /Y > nul
+  - copy cgi\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
+  - copy util\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
+
+test_script:
+  - cd %SDK_PREFIX%\bin
+  - mapcache.fcgi.exe
+  - mapcache_seed.exe
+
 deploy: off
+
+artifacts:
+  - path: %SDK_PREFIX%
+    name: mapcache
+    type: zip
