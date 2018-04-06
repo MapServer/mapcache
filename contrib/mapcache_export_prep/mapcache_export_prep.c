@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <apr_general.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
@@ -9,19 +10,18 @@
 
 
 const apr_getopt_option_t optlist[] = {
-  { "verbose", 'v', FALSE, "Display non essential data" },
-  { "config",  'c', TRUE,  "Set MapCache configuration file" },
-  { "tileset", 't', TRUE,  "Set tileset associated to cache" },
-  { "grid",    'g', TRUE,  "Set grid associated to cache" },
-  { "dim",     'd', TRUE,  "Set values for dimensions, e.g.:"
-                           " \"channel=IR:sensor=spot\"" },
-  { "query",   'q', TRUE,  "Set query for counting tiles in a rectangle" },
-  { "minx",    'x', TRUE,  "Set lower left X coordinate in grid's SRS" },
-  { "miny",    'y', TRUE,  "Set lower left Y coordinate in grid's SRS" },
-  { "maxx",    'X', TRUE,  "Set upper right X coordinate in grid's SRS" },
-  { "maxy",    'Y', TRUE,  "Set upper right Y coordinate in grid's SRS" },
-  { "zoom",    'z', TRUE,  "Set zoom level" },
-  { "endofopt", 0,  FALSE, "End of options" }
+  { "verbose",   'v', FALSE, "Display full report as a YAML document" },
+  { "config",    'c', TRUE,  "configuration file (/path/to/mapcache.xml)" },
+  { "dimension", 'D', TRUE,  "set the value of a dimension: format"
+                               " DIMENSIONNAME=VALUE. Can be used multiple"
+                               " times for multiple dimensions" },
+  { "tileset",   't', TRUE,  "tileset to analyze" },
+  { "grid",      'g', TRUE,  "grid to analyze" },
+  { "extent",    'e', TRUE,  "extent to analyze: format minx,miny,maxx,maxy" },
+  { "zoom",      'z', TRUE,  "Set min and max zoom levels to analyze,"
+                               " separated by a comma, eg: 12,15" },
+  { "query",     'q', TRUE,  "Set query for counting tiles in a rectangle" },
+  { "endofopt",   0,  FALSE, "End of options" }
 };
 
 
@@ -124,7 +124,7 @@ char * dbfilename(apr_pool_t * pool, char * template,
 
 
 int count_tiles(mapcache_context * ctx, const char * dbfile,
-                const char * count_query, int x, int y, int X, int Y, int z,
+                const char * count_query, mapcache_extent til, int z,
                 mapcache_grid * grid, mapcache_tileset * tileset,
                 apr_array_header_t * dimensions)
 {
@@ -148,13 +148,13 @@ int count_tiles(mapcache_context * ctx, const char * dbfile,
   }
 
   idx = sqlite3_bind_parameter_index(res, ":minx");
-  if (idx) sqlite3_bind_int(res, idx, x);
+  if (idx) sqlite3_bind_int(res, idx, til.minx);
   idx = sqlite3_bind_parameter_index(res, ":miny");
-  if (idx) sqlite3_bind_int(res, idx, y);
+  if (idx) sqlite3_bind_int(res, idx, til.miny);
   idx = sqlite3_bind_parameter_index(res, ":maxx");
-  if (idx) sqlite3_bind_int(res, idx, X);
+  if (idx) sqlite3_bind_int(res, idx, til.maxx);
   idx = sqlite3_bind_parameter_index(res, ":maxy");
-  if (idx) sqlite3_bind_int(res, idx, Y);
+  if (idx) sqlite3_bind_int(res, idx, til.maxy);
   idx = sqlite3_bind_parameter_index(res, ":z");
   if (idx) sqlite3_bind_int(res, idx, z);
   idx = sqlite3_bind_parameter_index(res, ":grid");
@@ -212,19 +212,20 @@ int main(int argc, char * argv[])
   apr_array_header_t * dimensions = NULL;
   char * cache_dbfile = NULL;
   apr_hash_t * xyz_fmt;
-  int i, ix, iy;
+  int i, ix, iy, iz;
   ezxml_t doc, node;
   ezxml_t cache_node = NULL;
   ezxml_t dbfile_node = NULL;
   char * text;
   apr_hash_index_t * hi;
   int cache_xcount, cache_ycount;
-  double minx=0, miny=0, maxx=0, maxy=0;
-  int z=0;
-  int pix_minx, pix_miny, pix_maxx, pix_maxy;
-  int til_minx, til_miny, til_maxx, til_maxy;
-  int db_minx, db_miny, db_maxx, db_maxy;
+  mapcache_extent bbox = { 0, 0, 0, 0 };
+  double * list = NULL;
+  int nelts;
+  int minzoom = 0, maxzoom = 0;
+  mapcache_extent pix, til, db;
   double total_tile_nb, present_tile_nb;
+  double resolution;
   apr_array_header_t * dbfiles_for_bbox;
 
 
@@ -253,46 +254,34 @@ int main(int argc, char * argv[])
       case 'g': // --grid <grid_name>
         grid_name = optv;
         break;
-      case 'd': // --dim <dim_spec>
-        dim_spec = optv;
+      case 'D': // --dimension <dim_spec>
+        if (!dim_spec) {
+          dim_spec = optv;
+        } else {
+          dim_spec = apr_pstrcat(ctx.pool, dim_spec, ":", optv, NULL);
+        }
         break;
       case 'q': // --query <count_query>
         count_query = optv;
         break;
-      case 'x': // --minx <minx>
-        minx = strtod(optv, &text);
-        if (*text != '\0') {
-          ctx.set_error(&ctx, 500, "bad double format for --minx option: %s",
-                        optv);
-          goto failure;
+      case 'e': // --extent <minx>,<miny>,<maxx>,<maxy>
+        if (mapcache_util_extract_double_list(&ctx, optv, ",", &list, &nelts)
+            != MAPCACHE_SUCCESS || nelts != 4)
+        {
+          ctx.set_error(&ctx, 500, "failed to parse extent, expected four"
+                        " real numbers separated by comma, got: \"%s\"", optv);
         }
-        break;
-      case 'y': // --miny <miny>
-        miny = strtod(optv, &text);
-        if (*text != '\0') {
-          ctx.set_error(&ctx, 500, "bad double format for --miny option: %s",
-                        optv);
-          goto failure;
-        }
-        break;
-      case 'X': // --maxx <maxx>
-        maxx = strtod(optv, &text);
-        if (*text != '\0') {
-          ctx.set_error(&ctx, 500, "bad double format for --maxx option: %s",
-                        optv);
-          goto failure;
-        }
-        break;
-      case 'Y': // --maxy <maxy>
-        maxy = strtod(optv, &text);
-        if (*text != '\0') {
-          ctx.set_error(&ctx, 500, "bad double format for --maxy option: %s",
-                        optv);
-          goto failure;
-        }
+        bbox.minx = list[0];
+        bbox.miny = list[1];
+        bbox.maxx = list[2];
+        bbox.maxy = list[3];
         break;
       case 'z': // --zoom <z>
-        z = strtol(optv, &text, 10);
+        minzoom = strtol(optv, &text, 10);
+        maxzoom = minzoom;
+        if (*text == ',') {
+          maxzoom = strtol(text+1, &text, 10);
+        }
         if (*text != '\0') {
           ctx.set_error(&ctx, 500, "bad int format for -z option: %s", optv);
           goto failure;
@@ -393,9 +382,10 @@ int main(int argc, char * argv[])
   apr_hash_set(xyz_fmt, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
   apr_hash_set(xyz_fmt, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
   for (hi = apr_hash_first(ctx.pool, xyz_fmt) ; hi ; hi = apr_hash_next(hi)) {
-    const char *key, *val;
+    const char *key, *val, *attr;
     apr_hash_this(hi, (const void**)&key, NULL, (void**)&val);
-    val = ezxml_attr(dbfile_node, key);
+    attr = apr_pstrcat(ctx.pool, key, "_fmt", NULL);
+    val = ezxml_attr(dbfile_node, attr);
     if (!val) val = "%d";
     apr_hash_set(xyz_fmt, key, APR_HASH_KEY_STRING, val);
   }
@@ -470,110 +460,151 @@ int main(int argc, char * argv[])
 
 
   // Check requested bounding box and zoom level with respect to grid extent
-  if (minx < grid->extent.minx || minx > grid->extent.maxx) {
+  if (bbox.minx < grid->extent.minx || bbox.minx > grid->extent.maxx) {
     ctx.set_error(&ctx, 500, "Lower left X coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", minx,
+                             "interval [ %.18g, %.18g ]", bbox.minx,
                              grid->extent.minx, grid->extent.maxx);
     goto failure;
   }
-  if (miny < grid->extent.miny || miny > grid->extent.maxy) {
+  if (bbox.miny < grid->extent.miny || bbox.miny > grid->extent.maxy) {
     ctx.set_error(&ctx, 500, "Lower left Y coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", miny,
+                             "interval [ %.18g, %.18g ]", bbox.miny,
                              grid->extent.miny, grid->extent.maxy);
     goto failure;
   }
-  if (maxx < grid->extent.minx || maxx > grid->extent.maxx) {
+  if (bbox.maxx < grid->extent.minx || bbox.maxx > grid->extent.maxx) {
     ctx.set_error(&ctx, 500, "Upper right X coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", maxx,
+                             "interval [ %.18g, %.18g ]", bbox.maxx,
                              grid->extent.minx, grid->extent.maxx);
     goto failure;
   }
-  if (maxy < grid->extent.miny || maxy > grid->extent.maxy) {
+  if (bbox.maxy < grid->extent.miny || bbox.maxy > grid->extent.maxy) {
     ctx.set_error(&ctx, 500, "Upper right Y coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", maxy,
+                             "interval [ %.18g, %.18g ]", bbox.maxy,
                              grid->extent.miny, grid->extent.maxy);
     goto failure;
   }
-  if (z < 0 || z >= grid->nlevels) {
+  if (minzoom < 0 || minzoom >= grid->nlevels) {
     ctx.set_error(&ctx, 500, "Zoom level %d not in valid interval [ %d, %d ]",
-                  z, 0, grid->nlevels-1);
+                  minzoom, 0, grid->nlevels-1);
     goto failure;
   }
-  // Swap bounds if inverted
-  if (minx > maxx) {
-    double swap = minx;
-    minx = maxx;
-    maxx = swap;
+  if (maxzoom < 0 || maxzoom >= grid->nlevels) {
+    ctx.set_error(&ctx, 500, "Zoom level %d not in valid interval [ %d, %d ]",
+                  maxzoom, 0, grid->nlevels-1);
+    goto failure;
   }
-  if (miny > maxy) {
-    double swap = miny;
-    miny = maxy;
-    maxy = swap;
+  // Swap bounds and zoom levels if inverted
+  if (bbox.minx > bbox.maxx) {
+    double swap = bbox.minx;
+    bbox.minx = bbox.maxx;
+    bbox.maxx = swap;
   }
-  // Convert bounding box coordinates in pixels, tiles and DB files
-  pix_minx = (minx - grid->extent.minx) / grid->levels[z]->resolution;
-  pix_miny = (miny - grid->extent.miny) / grid->levels[z]->resolution;
-  pix_maxx = (maxx - grid->extent.minx) / grid->levels[z]->resolution;
-  pix_maxy = (maxy - grid->extent.miny) / grid->levels[z]->resolution;
-  til_minx = pix_minx / grid->tile_sx;
-  til_miny = pix_miny / grid->tile_sy;
-  til_maxx = pix_maxx / grid->tile_sx;
-  til_maxy = pix_maxy / grid->tile_sy;
-  db_minx = til_minx / cache_xcount;
-  db_miny = til_miny / cache_ycount;
-  db_maxx = til_maxx / cache_xcount;
-  db_maxy = til_maxy / cache_ycount;
-  // Count total number of tiles in bounding box
-  total_tile_nb = (double)(til_maxx-til_minx+1)*(double)(til_maxy-til_miny+1);
+  if (bbox.miny > bbox.maxy) {
+    double swap = bbox.miny;
+    bbox.miny = bbox.maxy;
+    bbox.maxy = swap;
+  }
+  if (minzoom > maxzoom) {
+    int swap = minzoom;
+    minzoom = maxzoom;
+    maxzoom = swap;
+  }
 
+  if (verbose) {
+    printf("Grid_bounding_box: [ %.18g, %.18g, %.18g, %.18g ]\n",
+        bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
+    printf("Coverage_by_zoom_level:\n");
+  }
 
-  // List DB files containing portions of bounding box
-  // and count cached tiles belonging to bounding box
+  // Loop on all requested zoom levels
+  total_tile_nb = 0;
   present_tile_nb = 0;
   dbfiles_for_bbox = apr_array_make(ctx.pool, 1, sizeof(char*));
-  for (ix = db_minx ; ix <= db_maxx ; ix++) {
-    for (iy = db_miny ; iy <= db_maxy ; iy++) {
-      int x;
-      int y;
-      char * dbfile;
-      int cov;
-      x = ix * cache_xcount;
-      y = iy * cache_ycount;
-      dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
-                          xyz_fmt, z, x, y, cache_xcount, cache_ycount);
-      APR_ARRAY_PUSH(dbfiles_for_bbox, char*) = dbfile;
-      cov = count_tiles(&ctx, dbfile, count_query, til_minx, til_miny,
-                        til_maxx, til_maxy, z, grid, tileset, dimensions);
-      present_tile_nb += cov;
+  for (iz = minzoom ; iz <=maxzoom ; iz ++) {
+    double z_total_tile_nb = 0, z_present_tile_nb = 0;
+    apr_array_header_t * z_dbfiles_for_bbox;
+
+    // Convert bounding box coordinates in pixels, tiles and DB files
+    resolution = grid->levels[iz]->resolution;
+    pix.minx = floor((bbox.minx-grid->extent.minx)/resolution);
+    pix.miny = floor((bbox.miny-grid->extent.miny)/resolution);
+    pix.maxx = floor((bbox.maxx-grid->extent.minx)/resolution);
+    pix.maxy = floor((bbox.maxy-grid->extent.miny)/resolution);
+    til.minx = floor(pix.minx/grid->tile_sx);
+    til.miny = floor(pix.miny/grid->tile_sy);
+    til.maxx = floor(pix.maxx/grid->tile_sx);
+    til.maxy = floor(pix.maxy/grid->tile_sy);
+    db.minx  = floor(til.minx/cache_xcount);
+    db.miny  = floor(til.miny/cache_ycount);
+    db.maxx  = floor(til.maxx/cache_xcount);
+    db.maxy  = floor(til.maxy/cache_ycount);
+
+    // Count total number of tiles in bounding box
+    z_total_tile_nb = (double)(til.maxx-til.minx+1)
+                      * (double)(til.maxy-til.miny+1);
+    total_tile_nb += z_total_tile_nb;
+
+    // List DB files containing portions of bounding box
+    // and count cached tiles belonging to bounding box
+    z_dbfiles_for_bbox = apr_array_make(ctx.pool, 1, sizeof(char*));
+    for (ix = db.minx ; ix <= db.maxx ; ix++) {
+      for (iy = db.miny ; iy <= db.maxy ; iy++) {
+        int x;
+        int y;
+        char * dbfile;
+        int cov;
+        x = ix * cache_xcount;
+        y = iy * cache_ycount;
+        dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
+            xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
+        APR_ARRAY_PUSH(dbfiles_for_bbox, char*) = dbfile;
+        APR_ARRAY_PUSH(z_dbfiles_for_bbox, char*) = dbfile;
+        cov = count_tiles(&ctx, dbfile, count_query, til, iz, grid, tileset,
+            dimensions);
+        present_tile_nb += cov;
+        z_present_tile_nb += cov;
+      }
+    }
+
+
+    // Display bounding box for current zoom level
+    if (verbose) {
+      printf("  - Zoom_level: %d\n", iz);
+      printf("    Bounding_box:\n");
+      printf("      pixel_coordinates: [ %.18g, %.18g, %.18g, %.18g ]\n",
+          pix.minx, pix.miny, pix.maxx, pix.maxy);
+      printf("      tile_coordinates : [ %.18g, %.18g, %.18g, %.18g ]\n",
+          til.minx, til.miny, til.maxx, til.maxy);
+      printf("      DB_coordinates   : [ %.18g, %.18g, %.18g, %.18g ]\n",
+          db.minx, db.miny, db.maxx, db.maxy);
+    }
+
+    // Display coverage for current zoom level
+    if (verbose) {
+      printf("    Coverage:\n");
+      printf("      total_number_of_tiles   : %.18g\n", z_total_tile_nb);
+      printf("      number_of_tiles_in_cache: %.18g\n", z_present_tile_nb);
+      printf("      ratio                   : %3.5g%%\n",
+          z_present_tile_nb/z_total_tile_nb*100);
+      printf("      DB_files:\n");
+      for ( i=0 ; i < z_dbfiles_for_bbox->nelts ; i++ ) {
+        printf("      - %s\n", APR_ARRAY_IDX(z_dbfiles_for_bbox, i, char*));
+      }
     }
   }
 
 
-  // Display problem input
+  // Display full coverage for all requested zoom levels
   if (verbose) {
-    printf("Zoom_level: %d\n", z);
-    printf("Bounding_box:\n");
-    printf("  grid_coordinates : [ %.18g, %.18g, %.18g, %.18g ]\n",
-                                    minx, miny, maxx, maxy);
-    printf("  pixel_coordinates: [ %d, %d, %d, %d ]\n",
-                                    pix_minx, pix_miny, pix_maxx, pix_maxy);
-    printf("  tile_coordinates : [ %d, %d, %d, %d ]\n",
-                                    til_minx, til_miny, til_maxx, til_maxy);
-    printf("  DB_coordinates   : [ %d, %d, %d, %d ]\n",
-                                    db_minx, db_miny, db_maxx, db_maxy);
-  }
-
-
-  // Display coverage
-  if (verbose) {
-    printf("  Coverage:\n");
-    printf("    total_number_of_tiles   : %.18g\n", total_tile_nb);
-    printf("    number_of_tiles_in_cache: %.18g\n", present_tile_nb);
-    printf("    ratio                   : %3.5g%%\n",
+    printf("Full_coverage:\n");
+    printf("  total_number_of_tiles   : %.18g\n", total_tile_nb);
+    printf("  number_of_tiles_in_cache: %.18g\n", present_tile_nb);
+    printf("  ratio                   : %3.5g%%\n",
                                           present_tile_nb/total_tile_nb*100);
-    printf("    DB_files:\n");
+    printf("  DB_files:\n");
     for ( i=0 ; i < dbfiles_for_bbox->nelts ; i++ ) {
-       printf("    - %s\n", APR_ARRAY_IDX(dbfiles_for_bbox, i, char*));
+       printf("  - %s\n", APR_ARRAY_IDX(dbfiles_for_bbox, i, char*));
     }
   } else {
     printf("%3.5g%% %.18g %.18g\n", present_tile_nb/total_tile_nb*100,
