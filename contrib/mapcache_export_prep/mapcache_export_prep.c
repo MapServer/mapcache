@@ -1,16 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <float.h>
 #include <apr_general.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
+#include <apr_file_io.h>
 #include <sqlite3.h>
 #include "mapcache.h"
 #include "ezxml.h"
 
 
+// Command line options
 const apr_getopt_option_t optlist[] = {
-  { "verbose",   'v', FALSE, "Display full report as a YAML document" },
+///  { "verbose",   'v', FALSE, "Display full report as a YAML document" },
   { "config",    'c', TRUE,  "configuration file (/path/to/mapcache.xml)" },
   { "dimension", 'D', TRUE,  "set the value of a dimension: format"
                                " DIMENSIONNAME=VALUE. Can be used multiple"
@@ -25,6 +28,7 @@ const apr_getopt_option_t optlist[] = {
 };
 
 
+// Mapcache log function
 void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
 {
   va_list args;
@@ -35,6 +39,7 @@ void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
 }
 
 
+// Replace all occurrences of substr in string
 char * str_replace_all(apr_pool_t *pool, const char *string,
                        const char *substr, const char *replacement)
 {
@@ -45,6 +50,8 @@ char * str_replace_all(apr_pool_t *pool, const char *string,
   return replaced;
 }
 
+
+// Build up actual SQLite filename from dbfile template
 char * dbfilename(apr_pool_t * pool, char * template,
                   mapcache_tileset * tileset, mapcache_grid * grid,
                   apr_array_header_t * dimensions, apr_hash_t * fmt, int z,
@@ -123,6 +130,7 @@ char * dbfilename(apr_pool_t * pool, char * template,
 }
 
 
+// Query SQLite for getting tile count in specified area
 int count_tiles(mapcache_context * ctx, const char * dbfile,
                 const char * count_query, mapcache_extent til, int z,
                 mapcache_grid * grid, mapcache_tileset * tileset,
@@ -200,7 +208,8 @@ int main(int argc, char * argv[])
   int status;
   int optk;
   const char * optv;
-  int verbose = FALSE;
+///  int verbose = FALSE;
+  int json_output = TRUE;
   const char * config_file = NULL;
   const char * tileset_name = NULL;
   const char * grid_name = NULL;
@@ -224,9 +233,10 @@ int main(int argc, char * argv[])
   int nelts;
   int minzoom = 0, maxzoom = 0;
   mapcache_extent pix, til, db;
-  double total_tile_nb, present_tile_nb;
   double resolution;
-  apr_array_header_t * dbfiles_for_bbox;
+  double coverage;
+  double cache_max = 0, cache_cached = 0;
+  apr_off_t cache_size = 0;
 
 
   // Initialize Apache runtime and Mapcache context
@@ -242,9 +252,9 @@ int main(int argc, char * argv[])
   while ((status = apr_getopt_long(opt, optlist, &optk, &optv)) == APR_SUCCESS)
   {
     switch (optk) {
-      case 'v': // --verbose
-        verbose = TRUE;
-        break;
+///      case 'v': // --verbose
+///        verbose = TRUE;
+///        break;
       case 'c': // --config <config_file>
         config_file = optv;
         break;
@@ -511,19 +521,28 @@ int main(int argc, char * argv[])
     maxzoom = swap;
   }
 
-  if (verbose) {
-    printf("Grid_bounding_box: [ %.18g, %.18g, %.18g, %.18g ]\n",
+  if (json_output) {
+    printf("{\n");
+    printf("  \"layer\": \"%s\",\n", tileset->name);
+    printf("  \"grid\": \"%s\",\n", grid->name);
+    printf("  \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
         bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
-    printf("Coverage_by_zoom_level:\n");
+    printf("  \"unit\": \"%s\",\n", grid->unit==MAPCACHE_UNIT_METERS? "m":
+                                    grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
+                                                                      "ft");
+    printf("  \"zoom_levels\": [\n");
   }
 
   // Loop on all requested zoom levels
-  total_tile_nb = 0;
-  present_tile_nb = 0;
-  dbfiles_for_bbox = apr_array_make(ctx.pool, 1, sizeof(char*));
   for (iz = minzoom ; iz <=maxzoom ; iz ++) {
-    double z_total_tile_nb = 0, z_present_tile_nb = 0;
-    apr_array_header_t * z_dbfiles_for_bbox;
+    double zoom_max = 0, zoom_cached = 0;
+
+    if (json_output) {
+      if (iz > minzoom) printf(",\n");
+      printf("    {\n");
+      printf("      \"level\": %d,\n", iz);
+      printf("      \"files\": [\n");
+    }
 
     // Convert bounding box coordinates in pixels, tiles and DB files
     resolution = grid->levels[iz]->resolution;
@@ -540,75 +559,107 @@ int main(int argc, char * argv[])
     db.maxx  = floor(til.maxx/cache_xcount);
     db.maxy  = floor(til.maxy/cache_ycount);
 
-    // Count total number of tiles in bounding box
-    z_total_tile_nb = (double)(til.maxx-til.minx+1)
-                      * (double)(til.maxy-til.miny+1);
-    total_tile_nb += z_total_tile_nb;
-
     // List DB files containing portions of bounding box
     // and count cached tiles belonging to bounding box
-    z_dbfiles_for_bbox = apr_array_make(ctx.pool, 1, sizeof(char*));
     for (ix = db.minx ; ix <= db.maxx ; ix++) {
       for (iy = db.miny ; iy <= db.maxy ; iy++) {
         int x;
         int y;
         char * dbfile;
-        int cov;
+        apr_file_t * filehandle;
+        apr_finfo_t fileinfo;
+        int nbtiles_file_max, nbtiles_file_cached;
+        int nbtiles_extent_max, nbtiles_extent_cached;
+        mapcache_extent area;
+        const mapcache_extent full_extent = {
+              0, 0, (double)INT_MAX, (double)INT_MAX };
+
+        // Build up BD file name
         x = ix * cache_xcount;
         y = iy * cache_ycount;
         dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
             xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
-        APR_ARRAY_PUSH(dbfiles_for_bbox, char*) = dbfile;
-        APR_ARRAY_PUSH(z_dbfiles_for_bbox, char*) = dbfile;
-        cov = count_tiles(&ctx, dbfile, count_query, til, iz, grid, tileset,
-            dimensions);
-        present_tile_nb += cov;
-        z_present_tile_nb += cov;
+
+        fileinfo.size = 0;
+        nbtiles_file_max = cache_xcount * cache_ycount;
+        nbtiles_file_cached = 0;
+        area.minx = fmaxl(x, til.minx);
+        area.miny = fmaxl(y, til.miny);
+        area.maxx = fminl(x+cache_xcount-1, til.maxx);
+        area.maxy = fminl(y+cache_ycount-1, til.maxy);
+        nbtiles_extent_max = (area.maxx-area.minx+1)*(area.maxy-area.miny+1);
+        nbtiles_extent_cached = 0;
+
+        // If file exists, get its size and its cached tile counts both in
+        // total and in specified extent
+        if (APR_SUCCESS == apr_file_open(&filehandle, dbfile,
+                                         APR_FOPEN_READ|APR_FOPEN_BINARY,
+                                         APR_FPROT_OS_DEFAULT, ctx.pool))
+        {
+          // Get file size
+          apr_file_info_get(&fileinfo, APR_FINFO_SIZE, filehandle);
+          apr_file_close(filehandle);
+
+          // Get number of cached tiles within extent present in file
+          nbtiles_extent_cached = count_tiles(&ctx, dbfile, count_query, til,
+                                              iz, grid, tileset, dimensions);
+
+          // Get total number of cached tiles present in file
+          nbtiles_file_cached = count_tiles(&ctx, dbfile, count_query,
+                                            full_extent, iz, grid, tileset,
+                                            dimensions);
+        }
+        zoom_max += nbtiles_extent_max;
+        zoom_cached += nbtiles_extent_cached;
+        cache_max += nbtiles_extent_max;
+        cache_cached += nbtiles_extent_cached;
+        cache_size += fileinfo.size;
+
+        if (json_output) {
+          coverage = (double)nbtiles_extent_cached/(double)nbtiles_extent_max;
+          if (ix > db.minx || iy > db.miny) printf(",\n");
+          printf("        {\n");
+          printf("          \"name\": \"%s\",\n", dbfile);
+          printf("          \"size\": %jd,\n", (intmax_t)fileinfo.size);
+          printf("          \"nb_tiles\": {\n");
+          printf("            \"file_maximum\": %d,\n", nbtiles_file_max);
+          printf("            \"file_cached\": %d,\n", nbtiles_file_cached);
+          printf("            \"extent_maximum\": %d,\n", nbtiles_extent_max);
+          printf("            \"extent_cached\": %d\n", nbtiles_extent_cached);
+          printf("          },\n");
+          printf("          \"coverage\": %3.5g\n", coverage);
+          printf("        }");
+        }
       }
     }
 
-
-    // Display bounding box for current zoom level
-    if (verbose) {
-      printf("  - Zoom_level: %d\n", iz);
-      printf("    Bounding_box:\n");
-      printf("      pixel_coordinates: [ %.18g, %.18g, %.18g, %.18g ]\n",
-          pix.minx, pix.miny, pix.maxx, pix.maxy);
-      printf("      tile_coordinates : [ %.18g, %.18g, %.18g, %.18g ]\n",
-          til.minx, til.miny, til.maxx, til.maxy);
-      printf("      DB_coordinates   : [ %.18g, %.18g, %.18g, %.18g ]\n",
-          db.minx, db.miny, db.maxx, db.maxy);
-    }
-
-    // Display coverage for current zoom level
-    if (verbose) {
-      printf("    Coverage:\n");
-      printf("      total_number_of_tiles   : %.18g\n", z_total_tile_nb);
-      printf("      number_of_tiles_in_cache: %.18g\n", z_present_tile_nb);
-      printf("      ratio                   : %3.5g%%\n",
-          z_present_tile_nb/z_total_tile_nb*100);
-      printf("      DB_files:\n");
-      for ( i=0 ; i < z_dbfiles_for_bbox->nelts ; i++ ) {
-        printf("      - %s\n", APR_ARRAY_IDX(z_dbfiles_for_bbox, i, char*));
-      }
+    if (json_output) {
+      coverage = zoom_cached / zoom_max;
+      printf("\n      ],\n");
+      printf("      \"nb_tiles\": {\n");
+      printf("        \"extent_maximum\": %.18g,\n", zoom_max);
+      printf("        \"extent_cached\": %.18g\n", zoom_cached);
+      printf("      },\n");
+      printf("      \"coverage\": %3.5g\n", coverage);
+      printf("    }");
     }
   }
 
 
-  // Display full coverage for all requested zoom levels
-  if (verbose) {
-    printf("Full_coverage:\n");
-    printf("  total_number_of_tiles   : %.18g\n", total_tile_nb);
-    printf("  number_of_tiles_in_cache: %.18g\n", present_tile_nb);
-    printf("  ratio                   : %3.5g%%\n",
-                                          present_tile_nb/total_tile_nb*100);
-    printf("  DB_files:\n");
-    for ( i=0 ; i < dbfiles_for_bbox->nelts ; i++ ) {
-       printf("  - %s\n", APR_ARRAY_IDX(dbfiles_for_bbox, i, char*));
-    }
-  } else {
-    printf("%3.5g%% %.18g %.18g\n", present_tile_nb/total_tile_nb*100,
-                                    present_tile_nb, total_tile_nb);
+  if (json_output) {
+    apr_off_t tile_size = (apr_off_t)(cache_size/cache_cached);
+    apr_off_t missing_size = (apr_off_t)(cache_max-cache_cached)*tile_size;
+    coverage = cache_cached / cache_max;
+    printf("\n  ],\n");
+    printf("  \"nb_tiles\": {\n");
+    printf("    \"extent_maximum\": %.18g,\n", cache_max);
+    printf("    \"extent_cached\": %.18g\n", cache_cached);
+    printf("  },\n");
+    printf("  \"extent_cached_size\": %jd,\n", (intmax_t)cache_size);
+    printf("  \"avg_tile_size\": %jd,\n", tile_size);
+    printf("  \"estimated_missing_tile_size\": %jd,\n", missing_size);
+    printf("  \"coverage\": %3.5g\n", coverage);
+    printf("}\n");
   }
 
 
