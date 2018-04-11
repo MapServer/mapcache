@@ -11,21 +11,57 @@
 #include "ezxml.h"
 
 
-// Command line options
+// List of command line options
 const apr_getopt_option_t optlist[] = {
-///  { "verbose",   'v', FALSE, "Display full report as a YAML document" },
-  { "config",    'c', TRUE,  "configuration file (/path/to/mapcache.xml)" },
-  { "dimension", 'D', TRUE,  "set the value of a dimension: format"
+  { "help",      'h', FALSE, "Display this message and exit" },
+  { "config",    'c', TRUE,  "Configuration file (/path/to/mapcache.xml)" },
+  { "dimension", 'D', TRUE,  "Set the value of a dimension: format"
                                " DIMENSIONNAME=VALUE. Can be used multiple"
                                " times for multiple dimensions" },
-  { "tileset",   't', TRUE,  "tileset to analyze" },
-  { "grid",      'g', TRUE,  "grid to analyze" },
-  { "extent",    'e', TRUE,  "extent to analyze: format minx,miny,maxx,maxy" },
+  { "tileset",   't', TRUE,  "Tileset to analyze" },
+  { "grid",      'g', TRUE,  "Grid to analyze" },
+  { "extent",    'e', TRUE,  "Extent to analyze: format minx,miny,maxx,maxy" },
   { "zoom",      'z', TRUE,  "Set min and max zoom levels to analyze,"
                                " separated by a comma, eg: 12,15" },
   { "query",     'q', TRUE,  "Set query for counting tiles in a rectangle" },
   { "endofopt",   0,  FALSE, "End of options" }
 };
+
+
+// Extract basename from a path
+const char * base_name(const char * path)
+{
+  const char *subdir, *basename;
+  for (subdir=path ; (subdir=strchr(subdir, '/')) ; basename=++subdir);
+  return basename;
+}
+
+
+// Display help message
+void usage(const char * path, char * msg, ...)
+{
+  int i;
+  const char * name = base_name(path);
+  
+  if (msg) {
+    va_list args;
+    va_start(args, msg);
+    fprintf(stderr, "Error: %s: ", name);
+    vfprintf(stderr, msg, args);
+    fprintf(stderr, "\n\n");
+    va_end(args);
+  }
+
+  fprintf(stderr, "Usage: %s options:\n", name);
+  for (i=0 ; optlist[i].optch ; i++)
+  {
+    fprintf(stderr, "    -%c | --%s%s: %s\n",
+        optlist[i].optch, optlist[i].name,
+        optlist[i].has_arg ? " <value>" : "",
+        optlist[i].description);
+
+  }
+}
 
 
 // Mapcache log function
@@ -66,7 +102,7 @@ char * dbfilename(apr_pool_t * pool, char * template,
   path = str_replace_all(pool, path, "{tileset}", tileset->name);
   path = str_replace_all(pool, path, "{grid}", grid->name);
 
-  // Dimensions, both {dim} and {dim:foo}
+  // Dimensions: both {dim} and {dim:foo}
   if (strstr(path, "{dim") && dimensions) {
     char * dimstr = "";
     int i = dimensions->nelts;
@@ -208,15 +244,15 @@ int main(int argc, char * argv[])
   int status;
   int optk;
   const char * optv;
-///  int verbose = FALSE;
   int json_output = TRUE;
   const char * config_file = NULL;
   const char * tileset_name = NULL;
   const char * grid_name = NULL;
   const char * dim_spec = NULL;
   const char * count_query = NULL;
-  mapcache_tileset * tileset;
-  mapcache_grid * grid;
+  mapcache_tileset * tileset = NULL;
+  mapcache_grid * grid = NULL;
+  mapcache_extent_i * limits;
   mapcache_cache * cache;
   apr_array_header_t * dimensions = NULL;
   char * cache_dbfile = NULL;
@@ -232,8 +268,7 @@ int main(int argc, char * argv[])
   double * list = NULL;
   int nelts;
   int minzoom = 0, maxzoom = 0;
-  mapcache_extent pix, til, db;
-  double resolution;
+  mapcache_extent til, db;
   double coverage;
   double cache_max = 0, cache_cached = 0;
   apr_off_t cache_size = 0;
@@ -252,9 +287,10 @@ int main(int argc, char * argv[])
   while ((status = apr_getopt_long(opt, optlist, &optk, &optv)) == APR_SUCCESS)
   {
     switch (optk) {
-///      case 'v': // --verbose
-///        verbose = TRUE;
-///        break;
+      case 'h': // --help
+        usage(argv[0], NULL);
+        goto success;
+        break;
       case 'c': // --config <config_file>
         config_file = optv;
         break;
@@ -293,7 +329,7 @@ int main(int argc, char * argv[])
           maxzoom = strtol(text+1, &text, 10);
         }
         if (*text != '\0') {
-          ctx.set_error(&ctx, 500, "bad int format for -z option: %s", optv);
+          usage(argv[0], "Bad int format for zoom level: %s", optv);
           goto failure;
         }
         break;
@@ -301,44 +337,37 @@ int main(int argc, char * argv[])
     }
   }
   if (status != APR_EOF) {
-    ctx.set_error(&ctx, 500, "Bad options");
+    usage(argv[0], "Bad options");
     goto failure;
   }
 
 
   // Load Mapcache configuration file in Mapcache internal data structure
   if (!config_file) {
-    ctx.set_error(&ctx, 500, "Configuration file has not been specified"
-                             " (need: --config <file>)");
+    usage(argv[0], "Configuration file has not been specified");
     goto failure;
   }
   mapcache_configuration_parse(&ctx, config_file, ctx.config, 0);
-  if (ctx.get_error(&ctx)) goto failure;
-
-
-  // Load MapCache configuration again, this time as an XML document, in order
-  // to gain access to settings that are unreacheable from Mapcache API
-  doc = ezxml_parse_file(config_file);
+  if (GC_HAS_ERROR(&ctx)) goto failure;
 
 
   // Retrieve tileset information
   if (!tileset_name) {
-    ctx.set_error(&ctx, 500, "tileset has not been specified"
-                             " (need: --tileset <name>)");
+    usage(argv[0], "Tileset has not been specified");
     goto failure;
   }
   tileset = mapcache_configuration_get_tileset(ctx.config, tileset_name);
   if (!tileset) {
-    ctx.set_error(&ctx, 500, "tileset \"%s\" has not been found"
-                             " in configuration", tileset_name);
+    ctx.set_error(&ctx, 500,
+        "Tileset \"%s\" has not been found in configuration \"%s\"",
+        tileset_name, config_file);
     goto failure;
   }
 
 
   // Retrieve grid information
   if (!grid_name) {
-    ctx.set_error(&ctx, 500, "grid has not been specified"
-                             " (need: --grid <name>)");
+    usage(argv[0], "Grid has not been specified");
     goto failure;
   }
   for (i=0 ; i<tileset->grid_links->nelts ; i++) {
@@ -350,17 +379,24 @@ int main(int argc, char * argv[])
     }
   }
   if (!grid) {
-    ctx.set_error(&ctx, 500, "grid \"%s\" has not been found in \"%s\""
-                             " tileset config.", grid_name, tileset->name);
+    ctx.set_error(&ctx, 500,
+        "Grid \"%s\" has not been found in tileset \"%s\"",
+        grid_name, tileset->name);
     goto failure;
   }
 
 
-  // Retrieve cache information
+  // Load MapCache configuration again, this time as an XML document, in order
+  // to gain access to settings that are unreacheable from Mapcache API
+  doc = ezxml_parse_file(config_file);
+
+
+  // Retrieve cache information from XML document
   cache = tileset->_cache;
   if (cache->type != MAPCACHE_CACHE_SQLITE) {
-    ctx.set_error(&ctx, 500, "cache \"%s\" of tileset \"%s\" is not of"
-                             " type SQLite", cache->name, tileset->name);
+    ctx.set_error(&ctx, 500,
+        "cache \"%s\" of tileset \"%s\" is not of type SQLite",
+        cache->name, tileset->name);
     goto failure;
   }
   for (node = ezxml_child(doc, "cache") ; node ; node = node->next) {
@@ -370,15 +406,15 @@ int main(int argc, char * argv[])
     }
   }
   if (!cache_node) {
-    ctx.set_error(&ctx, 500, "cache \"%s\" has not been not found",
-                             cache->name);
+    ctx.set_error(&ctx, 500,
+        "cache \"%s\" has not been not found", cache->name);
     goto failure;
   }
   dbfile_node = ezxml_child(cache_node, "dbfile");
   cache_dbfile = dbfile_node->txt;
   if (!cache_dbfile) {
-    ctx.set_error(&ctx, 500, "Failed to parse <dbfile> tag of cache \"%s\"",
-                             cache->name);
+    ctx.set_error(&ctx, 500,
+        "Failed to parse <dbfile> tag of cache \"%s\"", cache->name);
     goto failure;
   }
   xyz_fmt = apr_hash_make(ctx.pool);
@@ -400,10 +436,10 @@ int main(int argc, char * argv[])
     apr_hash_set(xyz_fmt, key, APR_HASH_KEY_STRING, val);
   }
   cache_xcount = cache_ycount = -1;
-  text = ezxml_child(node, "xcount")->txt;
+  text = ezxml_child(cache_node, "xcount")->txt;
   if (text) cache_xcount = (int)strtol(text, NULL, 10);
-  text = ezxml_child(node, "ycount")->txt;
-  cache_ycount = (int)strtol(text, NULL, 10);
+  text = ezxml_child(cache_node, "ycount")->txt;
+  if (text) cache_ycount = (int)strtol(text, NULL, 10);
 
 
   // Retrieve dimensions information
@@ -421,7 +457,7 @@ int main(int argc, char * argv[])
       reqdim->cached_value = dim->default_value;
       APR_ARRAY_PUSH(dimensions, mapcache_requested_dimension*) = reqdim;
     }
-    // Update dimensions with values specified with --dim command line option
+    // Update dimensions with values specified with -D command line option
     // syntax is: "dim1=value1:dim2=value2:..."
     if (dim_spec) {
       char * ds = apr_pstrdup(ctx.pool, dim_spec);
@@ -433,8 +469,7 @@ int main(int argc, char * argv[])
         key = apr_strtok(kvp, "=", &sav);
         val = apr_strtok(NULL, "=", &sav);
         if (!key || !val) {
-          ctx.set_error(&ctx, 500, "Can't parse dimension settings: %s\n",
-                                   dim_spec);
+          usage(argv[0], "Can't parse dimension settings: %s", dim_spec);
           goto failure;
         }
         mapcache_set_requested_dimension(&ctx, dimensions, key, val);
@@ -451,8 +486,9 @@ int main(int argc, char * argv[])
                 entry->dimension, entry->requested_value, tileset, NULL, grid);
       if (GC_HAS_ERROR(&ctx)) goto failure;
       if (!vals || vals->nelts == 0) {
-        ctx.set_error(&ctx, 500, "invalid value \"%s\" for dimension \"%s\"\n",
-                      entry->requested_value, entry->dimension->name);
+        ctx.set_error(&ctx, 500,
+            "invalid value \"%s\" for dimension \"%s\"\n",
+            entry->requested_value, entry->dimension->name);
         goto failure;
       }
     }
@@ -469,39 +505,41 @@ int main(int argc, char * argv[])
   }
 
 
-  // Check requested bounding box and zoom level with respect to grid extent
+  // Check requested bounding box and zoom levels with respect to grid extent
   if (bbox.minx < grid->extent.minx || bbox.minx > grid->extent.maxx) {
-    ctx.set_error(&ctx, 500, "Lower left X coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", bbox.minx,
-                             grid->extent.minx, grid->extent.maxx);
+    ctx.set_error(&ctx, 500,
+        "Lower left X coordinate %.18g not in valid interval [ %.18g, %.18g ]",
+        bbox.minx, grid->extent.minx, grid->extent.maxx);
     goto failure;
   }
   if (bbox.miny < grid->extent.miny || bbox.miny > grid->extent.maxy) {
-    ctx.set_error(&ctx, 500, "Lower left Y coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", bbox.miny,
-                             grid->extent.miny, grid->extent.maxy);
+    ctx.set_error(&ctx, 500,
+        "Lower left Y coordinate %.18g not in valid interval [ %.18g, %.18g ]",
+        bbox.miny, grid->extent.miny, grid->extent.maxy);
     goto failure;
   }
   if (bbox.maxx < grid->extent.minx || bbox.maxx > grid->extent.maxx) {
-    ctx.set_error(&ctx, 500, "Upper right X coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", bbox.maxx,
-                             grid->extent.minx, grid->extent.maxx);
+    ctx.set_error(&ctx, 500,
+        "Upper right X coordinate %.18g not in valid interval [ %.18g, %.18g ]",
+        bbox.maxx, grid->extent.minx, grid->extent.maxx);
     goto failure;
   }
   if (bbox.maxy < grid->extent.miny || bbox.maxy > grid->extent.maxy) {
-    ctx.set_error(&ctx, 500, "Upper right Y coordinate %.18g not in valid"
-                             "interval [ %.18g, %.18g ]", bbox.maxy,
-                             grid->extent.miny, grid->extent.maxy);
+    ctx.set_error(&ctx, 500,
+        "Upper right Y coordinate %.18g not in valid interval [ %.18g, %.18g ]",
+        bbox.maxy, grid->extent.miny, grid->extent.maxy);
     goto failure;
   }
   if (minzoom < 0 || minzoom >= grid->nlevels) {
-    ctx.set_error(&ctx, 500, "Zoom level %d not in valid interval [ %d, %d ]",
-                  minzoom, 0, grid->nlevels-1);
+    ctx.set_error(&ctx, 500,
+        "Zoom level %d not in valid interval [ %d, %d ]",
+        minzoom, 0, grid->nlevels-1);
     goto failure;
   }
   if (maxzoom < 0 || maxzoom >= grid->nlevels) {
-    ctx.set_error(&ctx, 500, "Zoom level %d not in valid interval [ %d, %d ]",
-                  maxzoom, 0, grid->nlevels-1);
+    ctx.set_error(&ctx, 500,
+        "Zoom level %d not in valid interval [ %d, %d ]",
+        maxzoom, 0, grid->nlevels-1);
     goto failure;
   }
   // Swap bounds and zoom levels if inverted
@@ -520,7 +558,13 @@ int main(int argc, char * argv[])
     minzoom = maxzoom;
     maxzoom = swap;
   }
+  // Compute extent limits expressed in tiles
+  limits = (mapcache_extent_i*)apr_pcalloc(ctx.pool,
+      grid->nlevels*sizeof(mapcache_extent_i));
+  mapcache_grid_compute_limits(grid, &bbox, limits, 0);
 
+
+  // Display global identification information
   if (json_output) {
     printf("{\n");
     printf("  \"layer\": \"%s\",\n", tileset->name);
@@ -533,10 +577,12 @@ int main(int argc, char * argv[])
     printf("  \"zoom_levels\": [\n");
   }
 
+
   // Loop on all requested zoom levels
   for (iz = minzoom ; iz <=maxzoom ; iz ++) {
     double zoom_max = 0, zoom_cached = 0;
 
+    // Display identification information for current zoom level
     if (json_output) {
       if (iz > minzoom) printf(",\n");
       printf("    {\n");
@@ -544,16 +590,11 @@ int main(int argc, char * argv[])
       printf("      \"files\": [\n");
     }
 
-    // Convert bounding box coordinates in pixels, tiles and DB files
-    resolution = grid->levels[iz]->resolution;
-    pix.minx = floor((bbox.minx-grid->extent.minx)/resolution);
-    pix.miny = floor((bbox.miny-grid->extent.miny)/resolution);
-    pix.maxx = floor((bbox.maxx-grid->extent.minx)/resolution);
-    pix.maxy = floor((bbox.maxy-grid->extent.miny)/resolution);
-    til.minx = floor(pix.minx/grid->tile_sx);
-    til.miny = floor(pix.miny/grid->tile_sy);
-    til.maxx = floor(pix.maxx/grid->tile_sx);
-    til.maxy = floor(pix.maxy/grid->tile_sy);
+    // Convert bounding box coordinates in tiles and DB files
+    til.minx = limits[iz].minx;
+    til.miny = limits[iz].miny;
+    til.maxx = limits[iz].maxx-1; // mapcache_grid_compute_limits() has
+    til.maxy = limits[iz].maxy-1; // too conservative upper bounds
     db.minx  = floor(til.minx/cache_xcount);
     db.miny  = floor(til.miny/cache_ycount);
     db.maxx  = floor(til.maxx/cache_xcount);
@@ -615,6 +656,8 @@ int main(int argc, char * argv[])
         cache_cached += nbtiles_extent_cached;
         cache_size += fileinfo.size;
 
+        // Display identification and coverage information for a single DB file
+        // for current zoom level and extent
         if (json_output) {
           coverage = (double)nbtiles_extent_cached/(double)nbtiles_extent_max;
           if (ix > db.minx || iy > db.miny) printf(",\n");
@@ -633,6 +676,7 @@ int main(int argc, char * argv[])
       }
     }
 
+    // Display coverage information for current zoom level and extent
     if (json_output) {
       coverage = zoom_cached / zoom_max;
       printf("\n      ],\n");
@@ -646,6 +690,7 @@ int main(int argc, char * argv[])
   }
 
 
+  // Display global coverage information
   if (json_output) {
     apr_off_t tile_size = (apr_off_t)(cache_size/cache_cached);
     apr_off_t missing_size = (apr_off_t)(cache_max-cache_cached)*tile_size;
@@ -657,19 +702,25 @@ int main(int argc, char * argv[])
     printf("  },\n");
     printf("  \"extent_cached_size\": %jd,\n", (intmax_t)cache_size);
     printf("  \"avg_tile_size\": %jd,\n", tile_size);
-    printf("  \"estimated_missing_tile_size\": %jd,\n", missing_size);
+    printf("  \"estimated_cache_missing_size\": %jd,\n", missing_size);
     printf("  \"coverage\": %3.5g\n", coverage);
     printf("}\n");
   }
 
 
-// success:
+success:
   apr_terminate();
   return 0;
 
 
 failure:
-  fprintf(stderr, "%s: %s\n", argv[0], ctx.get_error_message(&ctx));
+  if (GC_HAS_ERROR(&ctx)) {
+    fprintf(stderr, "%s: %s\n", base_name(argv[0]),
+        ctx.get_error_message(&ctx));
+  }
   apr_terminate();
   return 1;
 }
+
+
+// vim: ts=2 sts=2 et sw=2
