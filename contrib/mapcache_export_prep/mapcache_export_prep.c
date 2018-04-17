@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
 #include <apr_general.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
@@ -23,7 +25,9 @@ const apr_getopt_option_t optlist[] = {
   { "extent",    'e', TRUE,  "Extent to analyze: format minx,miny,maxx,maxy" },
   { "zoom",      'z', TRUE,  "Set min and max zoom levels to analyze,"
                                " separated by a comma, eg: 12,15" },
-  { "query",     'q', TRUE,  "Set query for counting tiles in a rectangle" },
+  { "query",     'q', TRUE,  "Set query for counting tiles in a rectangle."
+                               " Default value works with default schema of"
+                               " SQLite caches" },
   { "endofopt",   0,  FALSE, "End of options" }
 };
 
@@ -38,7 +42,7 @@ const char * base_name(const char * path)
 
 
 // Display help message
-void usage(const char * path, char * msg, ...)
+void usage(apr_pool_t * pool, const char * path, char * msg, ...)
 {
   int i;
   const char * name = base_name(path);
@@ -52,14 +56,27 @@ void usage(const char * path, char * msg, ...)
     va_end(args);
   }
 
-  fprintf(stderr, "Usage: %s options:\n", name);
+  fprintf(stderr, "\nUsage:      %s <options>\n\n", name);
   for (i=0 ; optlist[i].optch ; i++)
   {
-    fprintf(stderr, "    -%c | --%s%s: %s\n",
-        optlist[i].optch, optlist[i].name,
-        optlist[i].has_arg ? " <value>" : "",
-        optlist[i].description);
+    char ** words;
+    int linewidth = 16;
+    struct winsize w;
 
+    if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) < 0) w.ws_col = 0;
+    fprintf(stderr, "    -%c | --%s%s\n                ",
+        optlist[i].optch, optlist[i].name,
+        optlist[i].has_arg ? " <value>" : "");
+    apr_tokenize_to_argv(optlist[i].description, &words, pool);
+    for (;*words;words++) {
+      linewidth += strlen(*words)+1;
+      if (w.ws_col > 0 && linewidth > w.ws_col) {
+        fprintf(stderr, "\n                ");
+        linewidth = 16 + strlen(*words)+1;
+      }
+      fprintf(stderr, "%s ", *words);
+    }
+    fprintf(stderr, "\n");
   }
 }
 
@@ -288,7 +305,7 @@ int main(int argc, char * argv[])
   {
     switch (optk) {
       case 'h': // --help
-        usage(argv[0], NULL);
+        usage(ctx.pool, argv[0], NULL);
         goto success;
         break;
       case 'c': // --config <config_file>
@@ -314,8 +331,8 @@ int main(int argc, char * argv[])
         if (mapcache_util_extract_double_list(&ctx, optv, ",", &list, &nelts)
             != MAPCACHE_SUCCESS || nelts != 4)
         {
-          ctx.set_error(&ctx, 500, "failed to parse extent, expected four"
-                        " real numbers separated by comma, got: \"%s\"", optv);
+          usage(ctx.pool, argv[0], "Failed to parse extent: \"%s\"", optv);
+          goto failure;
         }
         bbox.minx = list[0];
         bbox.miny = list[1];
@@ -329,7 +346,7 @@ int main(int argc, char * argv[])
           maxzoom = strtol(text+1, &text, 10);
         }
         if (*text != '\0') {
-          usage(argv[0], "Bad int format for zoom level: %s", optv);
+          usage(ctx.pool, argv[0], "Bad int format for zoom level: %s", optv);
           goto failure;
         }
         break;
@@ -337,14 +354,14 @@ int main(int argc, char * argv[])
     }
   }
   if (status != APR_EOF) {
-    usage(argv[0], "Bad options");
+    usage(ctx.pool, argv[0], "Bad options");
     goto failure;
   }
 
 
   // Load Mapcache configuration file in Mapcache internal data structure
   if (!config_file) {
-    usage(argv[0], "Configuration file has not been specified");
+    usage(ctx.pool, argv[0], "Configuration file has not been specified");
     goto failure;
   }
   mapcache_configuration_parse(&ctx, config_file, ctx.config, 0);
@@ -353,7 +370,7 @@ int main(int argc, char * argv[])
 
   // Retrieve tileset information
   if (!tileset_name) {
-    usage(argv[0], "Tileset has not been specified");
+    usage(ctx.pool, argv[0], "Tileset has not been specified");
     goto failure;
   }
   tileset = mapcache_configuration_get_tileset(ctx.config, tileset_name);
@@ -367,7 +384,7 @@ int main(int argc, char * argv[])
 
   // Retrieve grid information
   if (!grid_name) {
-    usage(argv[0], "Grid has not been specified");
+    usage(ctx.pool, argv[0], "Grid has not been specified");
     goto failure;
   }
   for (i=0 ; i<tileset->grid_links->nelts ; i++) {
@@ -469,7 +486,8 @@ int main(int argc, char * argv[])
         key = apr_strtok(kvp, "=", &sav);
         val = apr_strtok(NULL, "=", &sav);
         if (!key || !val) {
-          usage(argv[0], "Can't parse dimension settings: %s", dim_spec);
+          usage(ctx.pool, argv[0],
+              "Can't parse dimension settings: %s", dim_spec);
           goto failure;
         }
         mapcache_set_requested_dimension(&ctx, dimensions, key, val);
@@ -567,14 +585,14 @@ int main(int argc, char * argv[])
   // Display global identification information
   if (json_output) {
     printf("{\n");
-    printf("  \"layer\": \"%s\",\n", tileset->name);
-    printf("  \"grid\": \"%s\",\n", grid->name);
-    printf("  \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
+    printf("   \"layer\": \"%s\",\n", tileset->name);
+    printf("   \"grid\": \"%s\",\n", grid->name);
+    printf("   \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
         bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
-    printf("  \"unit\": \"%s\",\n", grid->unit==MAPCACHE_UNIT_METERS? "m":
+    printf("   \"unit\": \"%s\",\n", grid->unit==MAPCACHE_UNIT_METERS? "m":
                                     grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
                                                                       "ft");
-    printf("  \"zoom_levels\": [\n");
+    printf("   \"zoom_levels\": [\n");
   }
 
 
@@ -585,9 +603,9 @@ int main(int argc, char * argv[])
     // Display identification information for current zoom level
     if (json_output) {
       if (iz > minzoom) printf(",\n");
-      printf("    {\n");
-      printf("      \"level\": %d,\n", iz);
-      printf("      \"files\": [\n");
+      printf("      {\n");
+      printf("         \"level\": %d,\n", iz);
+      printf("         \"files\": [\n");
     }
 
     // Convert bounding box coordinates in tiles and DB files
@@ -661,17 +679,21 @@ int main(int argc, char * argv[])
         if (json_output) {
           coverage = (double)nbtiles_extent_cached/(double)nbtiles_extent_max;
           if (ix > db.minx || iy > db.miny) printf(",\n");
-          printf("        {\n");
-          printf("          \"name\": \"%s\",\n", dbfile);
-          printf("          \"size\": %jd,\n", (intmax_t)fileinfo.size);
-          printf("          \"nb_tiles\": {\n");
-          printf("            \"file_maximum\": %d,\n", nbtiles_file_max);
-          printf("            \"file_cached\": %d,\n", nbtiles_file_cached);
-          printf("            \"extent_maximum\": %d,\n", nbtiles_extent_max);
-          printf("            \"extent_cached\": %d\n", nbtiles_extent_cached);
-          printf("          },\n");
-          printf("          \"coverage\": %3.5g\n", coverage);
-          printf("        }");
+          printf("            {\n");
+          printf("               \"name\": \"%s\",\n", dbfile);
+          printf("               \"size\": %jd,\n", (intmax_t)fileinfo.size);
+          printf("               \"nb_tiles\": {\n");
+          printf("                  \"file_maximum\": %d,\n",
+                                      nbtiles_file_max);
+          printf("                  \"file_cached\": %d,\n",
+                                      nbtiles_file_cached);
+          printf("                  \"extent_maximum\": %d,\n",
+                                      nbtiles_extent_max);
+          printf("                  \"extent_cached\": %d\n",
+                                      nbtiles_extent_cached);
+          printf("               },\n");
+          printf("               \"coverage\": %3.5g\n", coverage);
+          printf("            }");
         }
       }
     }
@@ -679,13 +701,13 @@ int main(int argc, char * argv[])
     // Display coverage information for current zoom level and extent
     if (json_output) {
       coverage = zoom_cached / zoom_max;
-      printf("\n      ],\n");
-      printf("      \"nb_tiles\": {\n");
-      printf("        \"extent_maximum\": %.18g,\n", zoom_max);
-      printf("        \"extent_cached\": %.18g\n", zoom_cached);
-      printf("      },\n");
-      printf("      \"coverage\": %3.5g\n", coverage);
-      printf("    }");
+      printf("\n         ],\n");
+      printf("         \"nb_tiles\": {\n");
+      printf("            \"extent_maximum\": %.18g,\n", zoom_max);
+      printf("            \"extent_cached\": %.18g\n", zoom_cached);
+      printf("         },\n");
+      printf("         \"coverage\": %3.5g\n", coverage);
+      printf("      }");
     }
   }
 
@@ -695,15 +717,15 @@ int main(int argc, char * argv[])
     apr_off_t tile_size = (apr_off_t)(cache_size/cache_cached);
     apr_off_t missing_size = (apr_off_t)(cache_max-cache_cached)*tile_size;
     coverage = cache_cached / cache_max;
-    printf("\n  ],\n");
-    printf("  \"nb_tiles\": {\n");
-    printf("    \"extent_maximum\": %.18g,\n", cache_max);
-    printf("    \"extent_cached\": %.18g\n", cache_cached);
-    printf("  },\n");
-    printf("  \"extent_cached_size\": %jd,\n", (intmax_t)cache_size);
-    printf("  \"avg_tile_size\": %jd,\n", tile_size);
-    printf("  \"estimated_cache_missing_size\": %jd,\n", missing_size);
-    printf("  \"coverage\": %3.5g\n", coverage);
+    printf("\n   ],\n");
+    printf("   \"nb_tiles\": {\n");
+    printf("      \"extent_maximum\": %.18g,\n", cache_max);
+    printf("      \"extent_cached\": %.18g\n", cache_cached);
+    printf("   },\n");
+    printf("   \"coverage\": %3.5g,\n", coverage);
+    printf("   \"extent_cached_size\": %jd,\n", (intmax_t)cache_size);
+    printf("   \"avg_tile_size\": %jd,\n", tile_size);
+    printf("   \"estimated_cache_missing_size\": %jd\n", missing_size);
     printf("}\n");
   }
 
