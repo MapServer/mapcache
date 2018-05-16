@@ -1,4 +1,21 @@
 add_executable(mapcache_export_prep mapcache_export_prep.c)
 target_link_libraries(mapcache_export_prep mapcache)
+
+find_package(GDAL)
+if (GDAL_FOUND)
+  include_directories(${GDAL_INCLUDE_DIR})
+  target_link_libraries(mapcache_export_prep ${GDAL_LIBRARY})
+else (GDAL_FOUND)
+  report_mandatory_not_found(GDAL)
+endif (GDAL_FOUND)
+
+find_package(GEOS)
+if (GEOS_FOUND)
+  include_directories(${GEOS_INCLUDE_DIR})
+  target_link_libraries(mapcache_export_prep ${GEOS_LIBRARY})
+else (GEOS_FOUND)
+  report_mandatory_not_found(GEOS)
+endif (GEOS_FOUND)
+
 include_directories("${PROJECT_BINARY_DIR}/contrib/mapcache_export_prep/")
 INSTALL(TARGETS mapcache_export_prep RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

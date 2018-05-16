@@ -11,6 +11,8 @@
 #include <sqlite3.h>
 #include "mapcache.h"
 #include "ezxml.h"
+#include <geos_c.h>
+#include <ogr_api.h>
 
 
 // List of command line options
@@ -78,6 +80,31 @@ void usage(apr_pool_t * pool, const char * path, char * msg, ...)
     }
     fprintf(stderr, "\n");
   }
+}
+
+
+// GEOS notice function
+void notice(const char *fmt,...)
+{
+  va_list ap;
+  fprintf(stdout,"{ notice: ");
+  va_start(ap,fmt);
+  vfprintf(stdout,fmt,ap);
+  va_end(ap);
+  fprintf(stdout," }\n");
+}
+
+
+// GEOS log_and_exit function
+void log_and_exit(const char *fmt,...)
+{
+  va_list ap;
+  fprintf(stderr,"{ error: ");
+  va_start(ap,fmt);
+  vfprintf(stderr,fmt,ap);
+  va_end(ap);
+  fprintf(stderr," }\n");
+  exit(1);
 }
 
 
@@ -254,6 +281,41 @@ int count_tiles(mapcache_context * ctx, const char * dbfile,
 }
 
 
+// Convert `mapcache_extent` to `GEOSGeometry` polygon
+GEOSGeometry * mapcache_extent_to_GEOSGeometry(mapcache_extent *extent)
+{
+  GEOSCoordSequence *cs = GEOSCoordSeq_create(5,2);
+  GEOSGeometry *lr = GEOSGeom_createLinearRing(cs);
+  GEOSGeometry *bb = GEOSGeom_createPolygon(lr,NULL,0);
+  GEOSCoordSeq_setX(cs,0,extent->minx);
+  GEOSCoordSeq_setY(cs,0,extent->miny);
+  GEOSCoordSeq_setX(cs,1,extent->maxx);
+  GEOSCoordSeq_setY(cs,1,extent->miny);
+  GEOSCoordSeq_setX(cs,2,extent->maxx);
+  GEOSCoordSeq_setY(cs,2,extent->maxy);
+  GEOSCoordSeq_setX(cs,3,extent->minx);
+  GEOSCoordSeq_setY(cs,3,extent->maxy);
+  GEOSCoordSeq_setX(cs,4,extent->minx);
+  GEOSCoordSeq_setY(cs,4,extent->miny);
+  return bb;
+}
+
+// Convert `GEOSGeometry` to GeoJSON string
+char * GEOSGeometry_to_GeoJSON(GEOSGeometry *g)
+{
+  OGRGeometryH geom;
+  GEOSWKTWriter * wr = GEOSWKTWriter_create();
+  char * wkt = GEOSWKTWriter_write(wr,g);
+  OGR_G_CreateFromWkt(&wkt,NULL,&geom);
+  return OGR_G_ExportToJson(geom);
+}
+
+// Convert `mapcache_extent` to GeoJSON string
+char * mapcache_extent_to_GeoJSON(mapcache_extent *extent)
+{
+  return GEOSGeometry_to_GeoJSON(mapcache_extent_to_GEOSGeometry(extent));
+}
+
 int main(int argc, char * argv[])
 {
   mapcache_context ctx;
@@ -291,8 +353,9 @@ int main(int argc, char * argv[])
   apr_off_t cache_size = 0;
 
 
-  // Initialize Apache runtime and Mapcache context
+  // Initialize Apache runtime GEOS library and Mapcache context
   apr_initialize();
+  initGEOS(notice, log_and_exit);
   apr_pool_create(&ctx.pool, NULL);
   mapcache_context_init(&ctx);
   ctx.config = mapcache_configuration_create(ctx.pool);
@@ -588,7 +651,8 @@ int main(int argc, char * argv[])
     printf("   \"layer\": \"%s\",\n", tileset->name);
     printf("   \"grid\": \"%s\",\n", grid->name);
     printf("   \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
-        bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
+                bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
+    printf("   \"geometry\": %s,\n", mapcache_extent_to_GeoJSON(&bbox));
     printf("   \"unit\": \"%s\",\n", grid->unit==MAPCACHE_UNIT_METERS? "m":
                                     grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
                                                                       "ft");
@@ -630,14 +694,26 @@ int main(int argc, char * argv[])
         int nbtiles_file_max, nbtiles_file_cached;
         int nbtiles_extent_max, nbtiles_extent_cached;
         mapcache_extent area;
+        mapcache_extent db_extent,tile_extent;
         const mapcache_extent full_extent = {
               0, 0, (double)INT_MAX, (double)INT_MAX };
 
-        // Build up BD file name
+        // Build up DB file name
         x = ix * cache_xcount;
         y = iy * cache_ycount;
         dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
             xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
+
+        // Build up DB extent
+        mapcache_grid_get_tile_extent(&ctx, grid, x, y, iz, &tile_extent);
+        if (GC_HAS_ERROR(&ctx)) goto failure;
+        db_extent.minx = fmaxl(tile_extent.minx,grid->extent.minx);
+        db_extent.miny = fmaxl(tile_extent.miny,grid->extent.miny);
+        mapcache_grid_get_tile_extent(&ctx, grid, x+cache_xcount-1,
+                                      y+cache_ycount-1, iz, &tile_extent);
+        if (GC_HAS_ERROR(&ctx)) goto failure;
+        db_extent.maxx = fminl(tile_extent.maxx,grid->extent.maxx);
+        db_extent.maxy = fminl(tile_extent.maxy,grid->extent.maxy);
 
         fileinfo.size = 0;
         nbtiles_file_max = cache_xcount * cache_ycount;
@@ -681,6 +757,15 @@ int main(int argc, char * argv[])
           if (ix > db.minx || iy > db.miny) printf(",\n");
           printf("            {\n");
           printf("               \"name\": \"%s\",\n", dbfile);
+          printf("               \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
+                                   db_extent.minx, db_extent.miny,
+                                   db_extent.maxx, db_extent.maxy);
+          printf("               \"geometry\": %s,\n",
+                                   mapcache_extent_to_GeoJSON(&db_extent));
+          printf("               \"unit\": \"%s\",\n",
+                                   grid->unit==MAPCACHE_UNIT_METERS? "m":
+                                   grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
+                                                                     "ft");
           printf("               \"size\": %jd,\n", (intmax_t)fileinfo.size);
           printf("               \"nb_tiles\": {\n");
           printf("                  \"file_maximum\": %d,\n",
@@ -731,6 +816,7 @@ int main(int argc, char * argv[])
 
 
 success:
+  finishGEOS();
   apr_terminate();
   return 0;
 
@@ -740,6 +826,7 @@ failure:
     fprintf(stderr, "%s: %s\n", base_name(argv[0]),
         ctx.get_error_message(&ctx));
   }
+  finishGEOS();
   apr_terminate();
   return 1;
 }
