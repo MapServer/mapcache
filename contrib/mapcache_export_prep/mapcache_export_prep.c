@@ -11,6 +11,7 @@
 #include <sqlite3.h>
 #include "mapcache.h"
 #include "ezxml.h"
+#include "cJSON.h"
 #include <geos_c.h>
 #include <ogr_api.h>
 
@@ -116,6 +117,22 @@ void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
   vfprintf(stderr, msg, args);
   va_end(args);
   fprintf(stderr, "\n");
+}
+
+
+// cJSON memory allocation Hook on APR pool mechanism
+static apr_pool_t * _pool_for_cJSON_malloc_hook;
+static void * _malloc_for_cJSON(size_t size) {
+  return apr_palloc(_pool_for_cJSON_malloc_hook,size);
+}
+static void _free_for_cJSON(void *ptr) { }
+static void _create_json_pool(apr_pool_t * parent_pool) {
+  cJSON_Hooks hooks = { _malloc_for_cJSON, _free_for_cJSON };
+  apr_pool_create(&_pool_for_cJSON_malloc_hook,parent_pool);
+  cJSON_InitHooks(&hooks);
+}
+static void _destroy_json_pool() {
+  apr_pool_destroy(_pool_for_cJSON_malloc_hook);
 }
 
 
@@ -324,6 +341,7 @@ int main(int argc, char * argv[])
   int optk;
   const char * optv;
   int json_output = TRUE;
+  cJSON *jreport, *jitem, *jzooms, *jzoom, *jfiles, *jfile;
   const char * config_file = NULL;
   const char * tileset_name = NULL;
   const char * grid_name = NULL;
@@ -353,10 +371,11 @@ int main(int argc, char * argv[])
   apr_off_t cache_size = 0;
 
 
-  // Initialize Apache runtime GEOS library and Mapcache context
+  // Initialize Apache, GEOS, cJSON and Mapcache
   apr_initialize();
   initGEOS(notice, log_and_exit);
   apr_pool_create(&ctx.pool, NULL);
+  _create_json_pool(ctx.pool);
   mapcache_context_init(&ctx);
   ctx.config = mapcache_configuration_create(ctx.pool);
   ctx.log = mapcache_log;
@@ -645,18 +664,22 @@ int main(int argc, char * argv[])
   mapcache_grid_compute_limits(grid, &bbox, limits, 0);
 
 
-  // Display global identification information
+  // Report global identification information
   if (json_output) {
-    printf("{\n");
-    printf("   \"layer\": \"%s\",\n", tileset->name);
-    printf("   \"grid\": \"%s\",\n", grid->name);
-    printf("   \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
-                bbox.minx, bbox.miny, bbox.maxx, bbox.maxy);
-    printf("   \"geometry\": %s,\n", mapcache_extent_to_GeoJSON(&bbox));
-    printf("   \"unit\": \"%s\",\n", grid->unit==MAPCACHE_UNIT_METERS? "m":
-                                    grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
-                                                                      "ft");
-    printf("   \"zoom_levels\": [\n");
+    jreport = cJSON_CreateObject();
+    cJSON_AddStringToObject(jreport, "layer", tileset->name);
+    cJSON_AddStringToObject(jreport, "grid", grid->name);
+    jitem = cJSON_AddArrayToObject(jreport, "extent");
+    cJSON_AddNumberToObject(jitem, "", bbox.minx);
+    cJSON_AddNumberToObject(jitem, "", bbox.miny);
+    cJSON_AddNumberToObject(jitem, "", bbox.maxx);
+    cJSON_AddNumberToObject(jitem, "", bbox.maxy);
+    jitem = cJSON_Parse(mapcache_extent_to_GeoJSON(&bbox));
+    cJSON_AddItemToObject(jreport, "geometry", jitem);
+    cJSON_AddStringToObject(jreport, "unit",
+                            grid->unit==MAPCACHE_UNIT_METERS? "m":
+                            grid->unit==MAPCACHE_UNIT_DEGREES?"dd":"ft");
+    jzooms = cJSON_AddArrayToObject(jreport, "zoom_levels");
   }
 
 
@@ -664,12 +687,12 @@ int main(int argc, char * argv[])
   for (iz = minzoom ; iz <=maxzoom ; iz ++) {
     double zoom_max = 0, zoom_cached = 0;
 
-    // Display identification information for current zoom level
+    // Report identification information for current zoom level
     if (json_output) {
-      if (iz > minzoom) printf(",\n");
-      printf("      {\n");
-      printf("         \"level\": %d,\n", iz);
-      printf("         \"files\": [\n");
+      jzoom = cJSON_CreateObject();
+      cJSON_AddItemToObject(jzooms, "", jzoom);
+      cJSON_AddNumberToObject(jzoom, "level", iz);
+      jfiles = cJSON_AddArrayToObject(jzoom, "files");
     }
 
     // Convert bounding box coordinates in tiles and DB files
@@ -750,72 +773,71 @@ int main(int argc, char * argv[])
         cache_cached += nbtiles_extent_cached;
         cache_size += fileinfo.size;
 
-        // Display identification and coverage information for a single DB file
+        // Report identification and coverage information for a single DB file
         // for current zoom level and extent
         if (json_output) {
           coverage = (double)nbtiles_extent_cached/(double)nbtiles_extent_max;
-          if (ix > db.minx || iy > db.miny) printf(",\n");
-          printf("            {\n");
-          printf("               \"name\": \"%s\",\n", dbfile);
-          printf("               \"extent\": [ %.18g, %.18g, %.18g, %.18g ],\n",
-                                   db_extent.minx, db_extent.miny,
-                                   db_extent.maxx, db_extent.maxy);
-          printf("               \"geometry\": %s,\n",
-                                   mapcache_extent_to_GeoJSON(&db_extent));
-          printf("               \"unit\": \"%s\",\n",
-                                   grid->unit==MAPCACHE_UNIT_METERS? "m":
-                                   grid->unit==MAPCACHE_UNIT_DEGREES?"dd":
-                                                                     "ft");
-          printf("               \"size\": %jd,\n", (intmax_t)fileinfo.size);
-          printf("               \"nb_tiles\": {\n");
-          printf("                  \"file_maximum\": %d,\n",
-                                      nbtiles_file_max);
-          printf("                  \"file_cached\": %d,\n",
-                                      nbtiles_file_cached);
-          printf("                  \"extent_maximum\": %d,\n",
-                                      nbtiles_extent_max);
-          printf("                  \"extent_cached\": %d\n",
-                                      nbtiles_extent_cached);
-          printf("               },\n");
-          printf("               \"coverage\": %3.5g\n", coverage);
-          printf("            }");
+          jfile = cJSON_CreateObject();
+          cJSON_AddItemToObject(jfiles, "", jfile);
+          cJSON_AddStringToObject(jfile, "name", dbfile);
+          jitem = cJSON_AddArrayToObject(jfile, "extent");
+          cJSON_AddNumberToObject(jitem, "", db_extent.minx);
+          cJSON_AddNumberToObject(jitem, "", db_extent.miny);
+          cJSON_AddNumberToObject(jitem, "", db_extent.maxx);
+          cJSON_AddNumberToObject(jitem, "", db_extent.maxy);
+          jitem = cJSON_Parse(mapcache_extent_to_GeoJSON(&db_extent));
+          cJSON_AddItemToObject(jfile, "geometry", jitem);
+          cJSON_AddStringToObject(jfile, "unit",
+                                  grid->unit==MAPCACHE_UNIT_METERS? "m":
+                                  grid->unit==MAPCACHE_UNIT_DEGREES?"dd":"ft");
+          cJSON_AddNumberToObject(jfile, "size", fileinfo.size);
+          jitem = cJSON_CreateObject();
+          cJSON_AddNumberToObject(jitem,"file_maximum",nbtiles_file_max);
+          cJSON_AddNumberToObject(jitem,"file_cached",nbtiles_file_cached);
+          cJSON_AddNumberToObject(jitem,"extent_maximum",nbtiles_extent_max);
+          cJSON_AddNumberToObject(jitem,"extent_cached",nbtiles_extent_cached);
+          cJSON_AddItemToObject(jfile, "nb_tiles", jitem);
+          cJSON_AddNumberToObject(jfile, "coverage", coverage);
         }
       }
     }
 
-    // Display coverage information for current zoom level and extent
+    // Report coverage information for current zoom level and extent
     if (json_output) {
       coverage = zoom_cached / zoom_max;
-      printf("\n         ],\n");
-      printf("         \"nb_tiles\": {\n");
-      printf("            \"extent_maximum\": %.18g,\n", zoom_max);
-      printf("            \"extent_cached\": %.18g\n", zoom_cached);
-      printf("         },\n");
-      printf("         \"coverage\": %3.5g\n", coverage);
-      printf("      }");
+      jitem = cJSON_CreateObject();
+      cJSON_AddNumberToObject(jitem, "extent_maximum", zoom_max);
+      cJSON_AddNumberToObject(jitem, "extent_cached", zoom_cached);
+      cJSON_AddItemToObject(jzoom, "nb_tiles", jitem);
+      cJSON_AddNumberToObject(jzoom, "coverage", coverage);
     }
   }
 
 
-  // Display global coverage information
+  // Report global coverage information
   if (json_output) {
     apr_off_t tile_size = (apr_off_t)(cache_size/cache_cached);
     apr_off_t missing_size = (apr_off_t)(cache_max-cache_cached)*tile_size;
     coverage = cache_cached / cache_max;
-    printf("\n   ],\n");
-    printf("   \"nb_tiles\": {\n");
-    printf("      \"extent_maximum\": %.18g,\n", cache_max);
-    printf("      \"extent_cached\": %.18g\n", cache_cached);
-    printf("   },\n");
-    printf("   \"coverage\": %3.5g,\n", coverage);
-    printf("   \"extent_cached_size\": %jd,\n", (intmax_t)cache_size);
-    printf("   \"avg_tile_size\": %jd,\n", tile_size);
-    printf("   \"estimated_cache_missing_size\": %jd\n", missing_size);
-    printf("}\n");
+    jitem = cJSON_CreateObject();
+    cJSON_AddNumberToObject(jitem, "extent_maximum", cache_max);
+    cJSON_AddNumberToObject(jitem, "extent_cached", cache_cached);
+    cJSON_AddItemToObject(jreport, "nb_tiles", jitem);
+    cJSON_AddNumberToObject(jreport, "coverage", coverage);
+    cJSON_AddNumberToObject(jreport, "extent_cached_size", cache_size);
+    cJSON_AddNumberToObject(jreport, "avg_tile_size", tile_size);
+    cJSON_AddNumberToObject(jreport, "estimated_cache_missing_size",
+                            missing_size);
+  }
+
+  // Display JSON report
+  if (json_output) {
+    printf("%s\n", cJSON_Print(jreport));
   }
 
 
 success:
+  _destroy_json_pool();
   finishGEOS();
   apr_terminate();
   return 0;
@@ -826,6 +848,7 @@ failure:
     fprintf(stderr, "%s: %s\n", base_name(argv[0]),
         ctx.get_error_message(&ctx));
   }
+  _destroy_json_pool();
   finishGEOS();
   apr_terminate();
   return 1;
