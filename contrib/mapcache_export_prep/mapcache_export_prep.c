@@ -14,24 +14,38 @@
 #include "cJSON.h"
 #include <geos_c.h>
 #include <ogr_api.h>
+#include <cpl_error.h>
 
 
 // List of command line options
 const apr_getopt_option_t optlist[] = {
-  { "help",      'h', FALSE, "Display this message and exit" },
-  { "config",    'c', TRUE,  "Configuration file (/path/to/mapcache.xml)" },
-  { "dimension", 'D', TRUE,  "Set the value of a dimension: format"
-                               " DIMENSIONNAME=VALUE. Can be used multiple"
-                               " times for multiple dimensions" },
-  { "tileset",   't', TRUE,  "Tileset to analyze" },
-  { "grid",      'g', TRUE,  "Grid to analyze" },
-  { "extent",    'e', TRUE,  "Extent to analyze: format minx,miny,maxx,maxy" },
-  { "zoom",      'z', TRUE,  "Set min and max zoom levels to analyze,"
-                               " separated by a comma, eg: 12,15" },
-  { "query",     'q', TRUE,  "Set query for counting tiles in a rectangle."
-                               " Default value works with default schema of"
-                               " SQLite caches" },
-  { "endofopt",   0,  FALSE, "End of options" }
+  { "help",           'h', FALSE, "Display this message and exit" },
+  { "config",         'c', TRUE,  "Configuration file"
+                                    " (/path/to/mapcache.xml)" },
+  { "dimension",      'D', TRUE,  "Set the value of a dimension: format"
+                                    " DIMENSIONNAME=VALUE. Can be used"
+                                    " multiple times for multiple"
+                                    " dimensions" },
+  { "tileset",        't', TRUE,  "Tileset to analyze" },
+  { "grid",           'g', TRUE,  "Grid to analyze" },
+  { "extent",         'e', TRUE,  "Extent to analyze:"
+                                    "format minx,miny,maxx,maxy. Cannot be"
+                                    " used with --ogr-datasource." },
+  { "ogr-datasource", 'd', TRUE,  "OGR data source to get features from."
+                                    " Cannot be used with --extent." },
+  { "ogr-layer",      'l', TRUE,  "OGR layer inside OGR data source. Cannot"
+                                    " be used with --ogr-sql." },
+  { "ogr-where",      'w', TRUE,  "Filter to apply on OGR layer features."
+                                    " Cannot be used with --ogr-sql." },
+  { "ogr-sql",        's', TRUE,  "SQL query to filter inside OGR data"
+                                    " source. Cannot be used with"
+                                    " --ogr-layer or --ogr-where." },
+  { "zoom",           'z', TRUE,  "Set min and max zoom levels to analyze,"
+                                    " separated by a comma, eg: 12,15" },
+  { "query",          'q', TRUE,  "Set query for counting tiles in a"
+                                    " rectangle. Default value works with"
+                                    " default schema of SQLite caches." },
+  { "endofopt",        0,  FALSE, "End of options" }
 };
 
 
@@ -333,6 +347,36 @@ char * mapcache_extent_to_GeoJSON(mapcache_extent *extent)
   return GEOSGeometry_to_GeoJSON(mapcache_extent_to_GEOSGeometry(extent));
 }
 
+// Convert `OGRLayerH` to `cJSON` structure embedding GeoJSON data
+cJSON * OGRLayerH_to_cJSON(OGRLayerH layer)
+{
+  cJSON *jlayer, *jfeatures, *jfeature, *jgeom;
+  OGRFeatureH feature;
+  int nfeat = 0;
+
+  jlayer = cJSON_CreateObject();
+  cJSON_AddStringToObject(jlayer, "type", "FeatureCollection");
+  jfeatures = cJSON_AddArrayToObject(jlayer, "features");
+
+  OGR_L_ResetReading(layer);
+  while ((feature = OGR_L_GetNextFeature(layer))) {
+    OGRGeometryH ogr_geom = OGR_F_GetGeometryRef(feature);
+    jgeom = cJSON_Parse(OGR_G_ExportToJson(ogr_geom));
+    jfeature = cJSON_CreateObject();
+    cJSON_AddItemToObject(jfeatures, "", jfeature);
+    cJSON_AddStringToObject(jfeature, "type", "Feature");
+    cJSON_AddItemToObject(jfeature, "geometry", jgeom);
+    nfeat++;
+  }
+
+  if (nfeat == 1) {
+    return jgeom;
+  } else {
+    return jlayer;
+  }
+}
+
+
 int main(int argc, char * argv[])
 {
   mapcache_context ctx;
@@ -341,12 +385,19 @@ int main(int argc, char * argv[])
   int optk;
   const char * optv;
   int json_output = TRUE;
-  cJSON *jreport, *jitem, *jzooms, *jzoom, *jfiles, *jfile;
+  cJSON *jreport, *jitem, *jzooms, *jzoom, *jfiles, *jfile, *jgeom;
   const char * config_file = NULL;
   const char * tileset_name = NULL;
   const char * grid_name = NULL;
   const char * dim_spec = NULL;
   const char * count_query = NULL;
+  const char * extent = NULL;
+  const char * ogr_file = NULL;
+  const char * ogr_layer = NULL;
+  const char * ogr_where = NULL;
+  const char * ogr_sql = NULL;
+  int nClippers = 0;
+  const GEOSPreparedGeometry **clippers = NULL;
   mapcache_tileset * tileset = NULL;
   mapcache_grid * grid = NULL;
   mapcache_extent_i * limits;
@@ -371,9 +422,10 @@ int main(int argc, char * argv[])
   apr_off_t cache_size = 0;
 
 
-  // Initialize Apache, GEOS, cJSON and Mapcache
+  // Initialize Apache, GEOS, OGR, cJSON and Mapcache
   apr_initialize();
   initGEOS(notice, log_and_exit);
+  OGRRegisterAll();
   apr_pool_create(&ctx.pool, NULL);
   _create_json_pool(ctx.pool);
   mapcache_context_init(&ctx);
@@ -410,16 +462,19 @@ int main(int argc, char * argv[])
         count_query = optv;
         break;
       case 'e': // --extent <minx>,<miny>,<maxx>,<maxy>
-        if (mapcache_util_extract_double_list(&ctx, optv, ",", &list, &nelts)
-            != MAPCACHE_SUCCESS || nelts != 4)
-        {
-          usage(ctx.pool, argv[0], "Failed to parse extent: \"%s\"", optv);
-          goto failure;
-        }
-        bbox.minx = list[0];
-        bbox.miny = list[1];
-        bbox.maxx = list[2];
-        bbox.maxy = list[3];
+        extent = optv;
+        break;
+      case 'd': // --ogr-datasource <ogr_file>
+        ogr_file = optv;
+        break;
+      case 'l': // --ogr-layer <ogr_layer>
+        ogr_layer = optv;
+        break;
+      case 'w': // --ogr-where <ogr_where>
+        ogr_where = optv;
+        break;
+      case 's': // --ogr-sql <ogr_sql>
+        ogr_sql = optv;
         break;
       case 'z': // --zoom <z>
         minzoom = strtol(optv, &text, 10);
@@ -432,7 +487,6 @@ int main(int argc, char * argv[])
           goto failure;
         }
         break;
-
     }
   }
   if (status != APR_EOF) {
@@ -482,6 +536,132 @@ int main(int argc, char * argv[])
         "Grid \"%s\" has not been found in tileset \"%s\"",
         grid_name, tileset->name);
     goto failure;
+  }
+
+
+  // Retrieve region of interest geometry, either from --extent or from
+  // --ogr-... option group
+  if (extent && ogr_file) {
+    ctx.set_error(&ctx, 500,
+        "Extent and OGR Data Source are mutually exclusive");
+    goto failure;
+  }
+  if (!ogr_file && (ogr_sql || ogr_layer || ogr_where)) {
+    ctx.set_error(&ctx, 500,
+        "OGR Data Source is required with other OGR related options");
+    goto failure;
+  }
+  if (ogr_sql && (ogr_layer || ogr_where)) {
+    ctx.set_error(&ctx, 500,
+        "--ogr-sql cannot be used with --ogr-layer or --ogr-where");
+    goto failure;
+  }
+
+  // Region of interest is specified with --extent
+  if (extent) {
+    GEOSGeometry *geom;
+
+    if (mapcache_util_extract_double_list(&ctx, extent, ",", &list, &nelts)
+        != MAPCACHE_SUCCESS || nelts != 4)
+    {
+      usage(ctx.pool, argv[0], "Failed to parse extent: \"%s\"", extent);
+      goto failure;
+    }
+    bbox.minx = list[0];
+    bbox.miny = list[1];
+    bbox.maxx = list[2];
+    bbox.maxy = list[3];
+    nClippers = 1;
+    geom = mapcache_extent_to_GEOSGeometry(&bbox);
+    clippers = apr_palloc(ctx.pool, 2*sizeof(void*));
+    clippers[0] = GEOSPrepare(geom);
+    clippers[nClippers] = NULL;
+    jgeom = cJSON_Parse(GEOSGeometry_to_GeoJSON(geom));
+  }
+
+
+  // Region of interest is specified with OGR
+  if (ogr_file) {
+    OGRDataSourceH ogr = NULL;
+    OGRLayerH layer = NULL;
+    OGRFeatureH feature;
+    GEOSWKTReader *geoswktreader;
+
+    ogr = OGROpen(ogr_file, FALSE, NULL);
+    if (!ogr) {
+      ctx.set_error(&ctx, 500, "Failed to open OGR data source: %s", ogr_file);
+      goto failure;
+    }
+
+    // Get layer from OGR data source
+    if (ogr_sql) {
+      // Get layer from SQL
+      layer = OGR_DS_ExecuteSQL(ogr,ogr_sql, NULL, NULL);
+      if (!layer) {
+        ctx.set_error(&ctx, 500, "Failed to get OGR layer from OGR SQL query");
+      }
+    } else {
+      // Get layer from OGR layer / OGR where
+      int nlayers = OGR_DS_GetLayerCount(ogr);
+      if (nlayers > 1 && !ogr_layer) {
+        ctx.set_error(&ctx, 500, "OGR data source has more than one layer"
+                                 " but OGR layer has not been specified");
+        goto failure;
+      } else if (ogr_layer) {
+        layer = OGR_DS_GetLayerByName(ogr, ogr_layer);
+      } else {
+        layer = OGR_DS_GetLayer(ogr, 0);
+      }
+      if (!layer) {
+        ctx.set_error(&ctx, 500, "Failed to find OGR layer");
+        goto failure;
+      }
+      if (ogr_where) {
+        if (OGR_L_SetAttributeFilter(layer, ogr_where) != OGRERR_NONE) {
+          ctx.set_error(&ctx, 500, "Failed to filter with --ogr-where %s",
+                        ogr_where);
+          goto failure;
+        }
+      }
+    }
+    OGR_L_ResetReading(layer);
+
+    // Get geometry from layer
+    nClippers = OGR_L_GetFeatureCount(layer, TRUE);
+    if (nClippers == 0) {
+      ctx.set_error(&ctx, 500, "Failed to find features in OGR layer");
+      goto failure;
+    }
+    clippers = apr_palloc(ctx.pool, (1+nClippers)*sizeof(void*));
+    geoswktreader = GEOSWKTReader_create();
+    nClippers = 0;
+    while ((feature = OGR_L_GetNextFeature(layer))) {
+      char *wkt;
+      GEOSGeometry *geos_geom;
+      OGREnvelope ogr_extent;
+      OGRGeometryH ogr_geom = OGR_F_GetGeometryRef(feature);
+      if (!ogr_geom || !OGR_G_IsValid(ogr_geom)) continue;
+      OGR_G_ExportToWkt(ogr_geom,&wkt);
+      geos_geom = GEOSWKTReader_read(geoswktreader,wkt);
+      GEOSFree(wkt);
+      OGR_G_GetEnvelope(ogr_geom, &ogr_extent);
+      if (nClippers == 0) {
+        bbox.minx = ogr_extent.MinX;
+        bbox.miny = ogr_extent.MinY;
+        bbox.maxx = ogr_extent.MaxX;
+        bbox.maxy = ogr_extent.MaxY;
+      } else {
+        bbox.minx = fminl(bbox.minx, ogr_extent.MinX);
+        bbox.miny = fminl(bbox.miny, ogr_extent.MinY);
+        bbox.maxx = fmaxl(bbox.maxx, ogr_extent.MaxX);
+        bbox.maxy = fmaxl(bbox.maxy, ogr_extent.MaxY);
+      }
+      clippers[nClippers] = GEOSPrepare(geos_geom);
+      nClippers++;
+      OGR_F_Destroy(feature);
+    }
+    clippers[nClippers] = NULL;
+    jgeom = OGRLayerH_to_cJSON(layer);
   }
 
 
@@ -669,16 +849,15 @@ int main(int argc, char * argv[])
     jreport = cJSON_CreateObject();
     cJSON_AddStringToObject(jreport, "layer", tileset->name);
     cJSON_AddStringToObject(jreport, "grid", grid->name);
-    jitem = cJSON_AddArrayToObject(jreport, "extent");
+    cJSON_AddStringToObject(jreport, "unit",
+                            grid->unit==MAPCACHE_UNIT_METERS? "m":
+                            grid->unit==MAPCACHE_UNIT_DEGREES?"dd":"ft");
+    jitem = cJSON_AddArrayToObject(jreport, "bounding_box");
     cJSON_AddNumberToObject(jitem, "", bbox.minx);
     cJSON_AddNumberToObject(jitem, "", bbox.miny);
     cJSON_AddNumberToObject(jitem, "", bbox.maxx);
     cJSON_AddNumberToObject(jitem, "", bbox.maxy);
-    jitem = cJSON_Parse(mapcache_extent_to_GeoJSON(&bbox));
-    cJSON_AddItemToObject(jreport, "geometry", jitem);
-    cJSON_AddStringToObject(jreport, "unit",
-                            grid->unit==MAPCACHE_UNIT_METERS? "m":
-                            grid->unit==MAPCACHE_UNIT_DEGREES?"dd":"ft");
+    cJSON_AddItemToObject(jreport, "geometry", jgeom);
     jzooms = cJSON_AddArrayToObject(jreport, "zoom_levels");
   }
 
