@@ -15,7 +15,14 @@
 #include <geos_c.h>
 #include <ogr_api.h>
 #include <cpl_error.h>
+#include <cpl_conv.h>
 
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Command Line Interface
+//
+///////////////////////////////////////////////////////////////////////////////
 
 // List of command line options
 const apr_getopt_option_t optlist[] = {
@@ -48,7 +55,6 @@ const apr_getopt_option_t optlist[] = {
   { "endofopt",        0,  FALSE, "End of options" }
 };
 
-
 // Extract basename from a path
 const char * base_name(const char * path)
 {
@@ -56,7 +62,6 @@ const char * base_name(const char * path)
   for (subdir=path ; (subdir=strchr(subdir, '/')) ; basename=++subdir);
   return basename;
 }
-
 
 // Display help message
 void usage(apr_pool_t * pool, const char * path, char * msg, ...)
@@ -97,6 +102,11 @@ void usage(apr_pool_t * pool, const char * path, char * msg, ...)
   }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+//
+// Hooks for support libraries
+//
+///////////////////////////////////////////////////////////////////////////////
 
 // GEOS notice function
 void notice(const char *fmt,...)
@@ -108,7 +118,6 @@ void notice(const char *fmt,...)
   va_end(ap);
   fprintf(stdout," }\n");
 }
-
 
 // GEOS log_and_exit function
 void log_and_exit(const char *fmt,...)
@@ -122,7 +131,6 @@ void log_and_exit(const char *fmt,...)
   exit(1);
 }
 
-
 // Mapcache log function
 void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
 {
@@ -132,7 +140,6 @@ void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
   va_end(args);
   fprintf(stderr, "\n");
 }
-
 
 // cJSON memory allocation Hook on APR pool mechanism
 static apr_pool_t * _pool_for_cJSON_malloc_hook;
@@ -150,6 +157,38 @@ static void _destroy_json_pool() {
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+//
+// Operations on Mapcache SQLite files
+//
+///////////////////////////////////////////////////////////////////////////////
+
+// Compute the extent of a SQLite file given its (x,y,z) and (xcount,ycount)
+
+void get_dbfile_extent(mapcache_context *ctx, mapcache_grid *grid,
+                       int dbx, int dby, int z, int xcount, int ycount,
+                       mapcache_extent *db_extent)
+{
+  int tilx, tily;
+  mapcache_extent tile_extent;
+
+  // Bottom left tile gives db_minx and db_miny
+  tilx = dbx * xcount;
+  tily = dby * ycount;
+  mapcache_grid_get_tile_extent(ctx, grid, tilx, tily, z, &tile_extent);
+  if (GC_HAS_ERROR(ctx)) return;
+  db_extent->minx = fmaxl(tile_extent.minx,grid->extent.minx);
+  db_extent->miny = fmaxl(tile_extent.miny,grid->extent.miny);
+
+  // Top right tile gives db_maxx and db_maxy
+  tilx += xcount-1;
+  tily += ycount-1;
+  mapcache_grid_get_tile_extent(ctx, grid, tilx, tily, z, &tile_extent);
+  if (GC_HAS_ERROR(&ctx)) return;
+  db_extent->maxx = fminl(tile_extent.maxx,grid->extent.maxx);
+  db_extent->maxy = fminl(tile_extent.maxy,grid->extent.maxy);
+}
+
 // Replace all occurrences of substr in string
 char * str_replace_all(apr_pool_t *pool, const char *string,
                        const char *substr, const char *replacement)
@@ -160,7 +199,6 @@ char * str_replace_all(apr_pool_t *pool, const char *string,
   }
   return replaced;
 }
-
 
 // Build up actual SQLite filename from dbfile template
 char * dbfilename(apr_pool_t * pool, char * template,
@@ -312,8 +350,14 @@ int count_tiles(mapcache_context * ctx, const char * dbfile,
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+//
+// Conversions between various geometry formats
+//
+///////////////////////////////////////////////////////////////////////////////
+
 // Convert `mapcache_extent` to `GEOSGeometry` polygon
-GEOSGeometry * mapcache_extent_to_GEOSGeometry(mapcache_extent *extent)
+GEOSGeometry * mapcache_extent_to_GEOSGeometry(const mapcache_extent *extent)
 {
   GEOSCoordSequence *cs = GEOSCoordSeq_create(5,2);
   GEOSGeometry *lr = GEOSGeom_createLinearRing(cs);
@@ -332,23 +376,42 @@ GEOSGeometry * mapcache_extent_to_GEOSGeometry(mapcache_extent *extent)
 }
 
 // Convert `GEOSGeometry` to GeoJSON string
-char * GEOSGeometry_to_GeoJSON(GEOSGeometry *g)
+char * GEOSGeometry_to_GeoJSON(const GEOSGeometry *g)
 {
   OGRGeometryH geom;
   GEOSWKTWriter * wr = GEOSWKTWriter_create();
   char * wkt = GEOSWKTWriter_write(wr,g);
+  char * geojson = NULL;
   OGR_G_CreateFromWkt(&wkt,NULL,&geom);
-  return OGR_G_ExportToJson(geom);
+  geojson = OGR_G_ExportToJson(geom);
+  OGR_G_DestroyGeometry(geom);
+  GEOSWKTWriter_destroy(wr);
+  return geojson;
+}
+
+// Convert `GEOSGeometry` to `cJSON` structure embedding GeoJSON data
+cJSON * GEOSGeometry_to_cJSON(const GEOSGeometry *g)
+{
+  char * geojson = GEOSGeometry_to_GeoJSON(g);
+  cJSON * jgeom = cJSON_Parse(geojson);
+  CPLFree(geojson);
+  return jgeom;
 }
 
 // Convert `mapcache_extent` to GeoJSON string
-char * mapcache_extent_to_GeoJSON(mapcache_extent *extent)
+char * mapcache_extent_to_GeoJSON(const mapcache_extent *extent)
 {
   return GEOSGeometry_to_GeoJSON(mapcache_extent_to_GEOSGeometry(extent));
 }
 
+// Convert `mapcache_extent` to `cJSON` structure embedding GeoJSON data
+cJSON * mapcache_extent_to_cJSON(const mapcache_extent *extent)
+{
+  return GEOSGeometry_to_cJSON(mapcache_extent_to_GEOSGeometry(extent));
+}
+
 // Convert `OGRLayerH` to `cJSON` structure embedding GeoJSON data
-cJSON * OGRLayerH_to_cJSON(OGRLayerH layer)
+cJSON * OGRLayerH_to_cJSON(const OGRLayerH layer)
 {
   cJSON *jlayer, *jfeatures, *jfeature, *jgeom;
   OGRFeatureH feature;
@@ -361,7 +424,9 @@ cJSON * OGRLayerH_to_cJSON(OGRLayerH layer)
   OGR_L_ResetReading(layer);
   while ((feature = OGR_L_GetNextFeature(layer))) {
     OGRGeometryH ogr_geom = OGR_F_GetGeometryRef(feature);
-    jgeom = cJSON_Parse(OGR_G_ExportToJson(ogr_geom));
+    char * geojson = OGR_G_ExportToJson(ogr_geom);
+    jgeom = cJSON_Parse(geojson);
+    CPLFree(geojson);
     jfeature = cJSON_CreateObject();
     cJSON_AddItemToObject(jfeatures, "", jfeature);
     cJSON_AddStringToObject(jfeature, "type", "Feature");
@@ -376,6 +441,12 @@ cJSON * OGRLayerH_to_cJSON(OGRLayerH layer)
   }
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Program entry point
+//
+///////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char * argv[])
 {
@@ -397,7 +468,9 @@ int main(int argc, char * argv[])
   const char * ogr_where = NULL;
   const char * ogr_sql = NULL;
   int nClippers = 0;
-  const GEOSPreparedGeometry **clippers = NULL;
+  const GEOSGeometry **clippers = NULL;
+  GEOSGeometry *region_in_db = NULL;
+  GEOSGeometry *db_geom = NULL;
   mapcache_tileset * tileset = NULL;
   mapcache_grid * grid = NULL;
   mapcache_extent_i * limits;
@@ -405,7 +478,7 @@ int main(int argc, char * argv[])
   apr_array_header_t * dimensions = NULL;
   char * cache_dbfile = NULL;
   apr_hash_t * xyz_fmt;
-  int i, ix, iy, iz;
+  int i, ix, iy, iz, ic;
   ezxml_t doc, node;
   ezxml_t cache_node = NULL;
   ezxml_t dbfile_node = NULL;
@@ -559,8 +632,6 @@ int main(int argc, char * argv[])
 
   // Region of interest is specified with --extent
   if (extent) {
-    GEOSGeometry *geom;
-
     if (mapcache_util_extract_double_list(&ctx, extent, ",", &list, &nelts)
         != MAPCACHE_SUCCESS || nelts != 4)
     {
@@ -572,11 +643,10 @@ int main(int argc, char * argv[])
     bbox.maxx = list[2];
     bbox.maxy = list[3];
     nClippers = 1;
-    geom = mapcache_extent_to_GEOSGeometry(&bbox);
     clippers = apr_palloc(ctx.pool, 2*sizeof(void*));
-    clippers[0] = GEOSPrepare(geom);
+    clippers[0] = mapcache_extent_to_GEOSGeometry(&bbox);
     clippers[nClippers] = NULL;
-    jgeom = cJSON_Parse(GEOSGeometry_to_GeoJSON(geom));
+    jgeom = GEOSGeometry_to_cJSON(clippers[0]);
   }
 
 
@@ -643,7 +713,7 @@ int main(int argc, char * argv[])
       if (!ogr_geom || !OGR_G_IsValid(ogr_geom)) continue;
       OGR_G_ExportToWkt(ogr_geom,&wkt);
       geos_geom = GEOSWKTReader_read(geoswktreader,wkt);
-      GEOSFree(wkt);
+      CPLFree(wkt);
       OGR_G_GetEnvelope(ogr_geom, &ogr_extent);
       if (nClippers == 0) {
         bbox.minx = ogr_extent.MinX;
@@ -656,10 +726,10 @@ int main(int argc, char * argv[])
         bbox.maxx = fmaxl(bbox.maxx, ogr_extent.MaxX);
         bbox.maxy = fmaxl(bbox.maxy, ogr_extent.MaxY);
       }
-      clippers[nClippers] = GEOSPrepare(geos_geom);
+      clippers[nClippers] = geos_geom;
       nClippers++;
-      OGR_F_Destroy(feature);
     }
+    GEOSWKTReader_destroy(geoswktreader);
     clippers[nClippers] = NULL;
     jgeom = OGRLayerH_to_cJSON(layer);
   }
@@ -775,7 +845,8 @@ int main(int argc, char * argv[])
   }
 
 
-  // Set default query for counting tiles in a SQLite cache file
+  // Set default query for counting tiles in a rectangular part of a SQLite
+  // cache file
   if (!count_query) {
     count_query = "SELECT count(rowid)"
                   "  FROM tiles"
@@ -888,34 +959,43 @@ int main(int argc, char * argv[])
     // and count cached tiles belonging to bounding box
     for (ix = db.minx ; ix <= db.maxx ; ix++) {
       for (iy = db.miny ; iy <= db.maxy ; iy++) {
-        int x;
-        int y;
+        int x = ix * cache_xcount;
+        int y = iy * cache_ycount;
         char * dbfile;
         apr_file_t * filehandle;
         apr_finfo_t fileinfo;
         int nbtiles_file_max, nbtiles_file_cached;
         int nbtiles_extent_max, nbtiles_extent_cached;
         mapcache_extent area;
-        mapcache_extent db_extent,tile_extent;
+        mapcache_extent db_extent;
         const mapcache_extent full_extent = {
               0, 0, (double)INT_MAX, (double)INT_MAX };
 
+        // Build up DB extent
+        get_dbfile_extent(&ctx, grid, ix, iy, iz, cache_xcount, cache_ycount,
+                          &db_extent);
+        if (GC_HAS_ERROR(&ctx)) goto failure;
+
+        // Compute intersection between region of interest and DB extent
+        if (db_geom) GEOSGeom_destroy(db_geom);
+        if (region_in_db) GEOSGeom_destroy(region_in_db);
+        db_geom = mapcache_extent_to_GEOSGeometry(&db_extent);
+        region_in_db = GEOSGeom_createEmptyPolygon();
+        for (ic = 0 ; clippers[ic] ; ic++) {
+          GEOSGeometry *intersection, *temp;
+          intersection = GEOSIntersection(db_geom, clippers[i]);
+          temp = GEOSUnion(region_in_db, intersection);
+          GEOSGeom_destroy(region_in_db);
+          GEOSGeom_destroy(intersection);
+          region_in_db = temp;
+        }
+
+        // Jump to next DB file if this one is outside the region of interest
+        if (GEOSisEmpty(region_in_db)) continue;
+
         // Build up DB file name
-        x = ix * cache_xcount;
-        y = iy * cache_ycount;
         dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
             xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
-
-        // Build up DB extent
-        mapcache_grid_get_tile_extent(&ctx, grid, x, y, iz, &tile_extent);
-        if (GC_HAS_ERROR(&ctx)) goto failure;
-        db_extent.minx = fmaxl(tile_extent.minx,grid->extent.minx);
-        db_extent.miny = fmaxl(tile_extent.miny,grid->extent.miny);
-        mapcache_grid_get_tile_extent(&ctx, grid, x+cache_xcount-1,
-                                      y+cache_ycount-1, iz, &tile_extent);
-        if (GC_HAS_ERROR(&ctx)) goto failure;
-        db_extent.maxx = fminl(tile_extent.maxx,grid->extent.maxx);
-        db_extent.maxy = fminl(tile_extent.maxy,grid->extent.maxy);
 
         fileinfo.size = 0;
         nbtiles_file_max = cache_xcount * cache_ycount;
@@ -964,11 +1044,8 @@ int main(int argc, char * argv[])
           cJSON_AddNumberToObject(jitem, "", db_extent.miny);
           cJSON_AddNumberToObject(jitem, "", db_extent.maxx);
           cJSON_AddNumberToObject(jitem, "", db_extent.maxy);
-          jitem = cJSON_Parse(mapcache_extent_to_GeoJSON(&db_extent));
+          jitem = GEOSGeometry_to_cJSON(region_in_db);
           cJSON_AddItemToObject(jfile, "geometry", jitem);
-          cJSON_AddStringToObject(jfile, "unit",
-                                  grid->unit==MAPCACHE_UNIT_METERS? "m":
-                                  grid->unit==MAPCACHE_UNIT_DEGREES?"dd":"ft");
           cJSON_AddNumberToObject(jfile, "size", fileinfo.size);
           jitem = cJSON_CreateObject();
           cJSON_AddNumberToObject(jitem,"file_maximum",nbtiles_file_max);
@@ -1034,4 +1111,4 @@ failure:
 }
 
 
-// vim: ts=2 sts=2 et sw=2
+// vim: set tw=79 ts=2 sw=2 sts=2 et ai si nonu syn=c fo+=ro :
