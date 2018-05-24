@@ -290,8 +290,10 @@ char * str_replace_all(apr_pool_t *pool, const char *string,
 char * dbfilename(apr_pool_t * pool, char * template,
                   mapcache_tileset * tileset, mapcache_grid * grid,
                   apr_array_header_t * dimensions, apr_hash_t * fmt, int z,
-                  int tilx, int tily, int xcount, int ycount)
+                  int dbx, int dby, int xcount, int ycount)
 {
+  int tilx = dbx * xcount;
+  int tily = dby * ycount;
   char * path = apr_pstrdup(pool, template);
   if (!strstr(path, "{")) {
     return path;
@@ -331,10 +333,10 @@ char * dbfilename(apr_pool_t * pool, char * template,
     char * curfmt;
     curfmt = apr_hash_get(fmt, "x", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{x}",
-        apr_psprintf(pool, curfmt, tilx/xcount*xcount));
+        apr_psprintf(pool, curfmt, tilx));
     curfmt = apr_hash_get(fmt, "div_x", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{div_x}",
-        apr_psprintf(pool, curfmt, tilx/xcount));
+        apr_psprintf(pool, curfmt, dbx));
     curfmt = apr_hash_get(fmt, "inv_x", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{inv_x}",
         apr_psprintf(pool, curfmt, (maxx-1-tilx)/xcount*xcount));
@@ -349,10 +351,10 @@ char * dbfilename(apr_pool_t * pool, char * template,
     char * curfmt;
     curfmt = apr_hash_get(fmt, "y", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{y}",
-        apr_psprintf(pool, curfmt, tily/ycount*ycount));
+        apr_psprintf(pool, curfmt, tily));
     curfmt = apr_hash_get(fmt, "div_y", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{div_y}",
-        apr_psprintf(pool, curfmt, tily/ycount));
+        apr_psprintf(pool, curfmt, dby));
     curfmt = apr_hash_get(fmt, "inv_y", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{inv_y}",
         apr_psprintf(pool, curfmt, (maxy-1-tily)/ycount*ycount));
@@ -552,11 +554,10 @@ int main(int argc, char * argv[])
   double * list = NULL;
   int nelts;
   int minzoom = 0, maxzoom = 0;
-  double coverage;
   int64_t tiles_max_in_cache = 0;
   int64_t tiles_cached_in_cache = 0;
-  double cache_max = 0, cache_cached = 0;
-  apr_off_t cache_size = 0;
+  apr_off_t size_of_cache = 0;
+  int64_t tiles_in_cache = 0;
 
 
   /////////////////////////////////////////////////////////////////////////////
@@ -1025,8 +1026,6 @@ int main(int argc, char * argv[])
     int64_t tiles_cached_in_level = 0;
     mapcache_extent_i til_region_bbox;
     mapcache_extent_i db_region_bbox;
-    //--
-    double zoom_max = 0, zoom_cached = 0;
 
     // Report identification information for current zoom level
     if (json_output) {
@@ -1067,14 +1066,6 @@ int main(int argc, char * argv[])
         int npoints, p;
         mapcache_extent_i til_region_in_file_bbox;
         int region_in_file_is_rectangle = FALSE;
-        //--
-        int x = ix * cache_xcount;
-        int y = iy * cache_ycount;
-///        int nbtiles_file_cached;
-///        int nbtiles_extent_max, nbtiles_extent_cached;
-///        mapcache_extent area;
-///        const mapcache_extent full_extent = {
-///              0, 0, (double)INT_MAX, (double)INT_MAX };
 
         // Display progression
         if (show_progress) {
@@ -1086,22 +1077,30 @@ int main(int argc, char * argv[])
           double progz = (double)(iz - minzoom) * incz;
           double progx = (double)(ix - db_region_bbox.minx) * incx;
           double progy = (double)(iy - db_region_bbox.miny) * incy;
-          fprintf(stderr, " In progress: %.3f%% done (%d,%d,%d)\r",
-                          (progz + progx + progy) * 100.0,iz,ix,iy);
+          fprintf(stderr, "\033[2K In progress (z:%d x:%d y:%d): %.3f%% done\r",
+              iz, ix, iy, (progz + progx + progy) * 100.0);
           fflush(stderr);
         }
 
         // Retrieve DB file name and check for its existence (read access)
         file_name = dbfilename(ctx.pool, cache_dbfile, tileset, grid,
-            dimensions, xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
+            dimensions, xyz_fmt, iz, ix, iy, cache_xcount, cache_ycount);
         file_open_report = apr_file_open(&filehandle, file_name,
               APR_FOPEN_READ|APR_FOPEN_BINARY, APR_FPROT_OS_DEFAULT, ctx.pool);
 
-        // Retrieve file size
+        // Retrieve file size and count cached tiles regardless the region of
+        // interest (for average tile size estimation)
         fileinfo.size = 0;
         if (file_open_report == APR_SUCCESS) {
+          int tmpmax, tmpcached;
+          const mapcache_extent_i full_extent = { 0, 0, INT_MAX, INT_MAX };
+
           apr_file_info_get(&fileinfo, APR_FINFO_SIZE, filehandle);
           apr_file_close(filehandle);
+          count_tiles_in_rectangle(&ctx, iz, full_extent, tileset, grid_link,
+              dimensions, file_name, count_query, &tmpmax, &tmpcached);
+          size_of_cache += fileinfo.size;
+          tiles_in_cache += tmpcached;
         }
 
         // Compute file bounding box expressed in tiles
@@ -1167,10 +1166,12 @@ int main(int argc, char * argv[])
         mapcache_grid_get_xy(&ctx, grid, region_in_file_bbox.maxx,
             region_in_file_bbox.maxy, iz, &(til_region_in_file_bbox.maxx),
             &(til_region_in_file_bbox.maxy));
-        if (til_region_in_file_bbox.maxx > (x+cache_xcount-1)) {
+        if (til_region_in_file_bbox.maxx > (til_file_bbox.minx+cache_xcount-1))
+        {
           (til_region_in_file_bbox.maxx)--;
         }
-        if (til_region_in_file_bbox.maxy > (y+cache_ycount-1)) {
+        if (til_region_in_file_bbox.maxy > (til_file_bbox.miny+cache_ycount-1))
+        {
           (til_region_in_file_bbox.maxy)--;
         }
 
@@ -1213,104 +1214,9 @@ int main(int argc, char * argv[])
           tiles_cached_in_file += tmpcached;
         }
 
-          // Build up DB file name
-///       dbfile = dbfilename(ctx.pool, cache_dbfile, tileset, grid, dimensions,
-///           xyz_fmt, iz, x, y, cache_xcount, cache_ycount);
-
-///       fileinfo.size = 0;
-///        nbtiles_file_max = cache_xcount * cache_ycount;
-///        nbtiles_file_cached = 0;
-///        area.minx = fmaxl(x, til.minx);
-///        area.miny = fmaxl(y, til.miny);
-///        area.maxx = fminl(x+cache_xcount-1, til.maxx);
-///        area.maxy = fminl(y+cache_ycount-1, til.maxy);
-///        nbtiles_extent_max = (area.maxx-area.minx+1)*(area.maxy-area.miny+1);
-///        nbtiles_extent_cached = 0;
-
-///       // If file exists, get its size and its cached tile counts both in
-///       // total and in specified extent
-///       open_dbfile_report = apr_file_open(&filehandle, dbfile,
-///           APR_FOPEN_READ|APR_FOPEN_BINARY, APR_FPROT_OS_DEFAULT, ctx.pool);
-///       if (open_dbfile_report == APR_SUCCESS) {
-///         // Get file size
-///         apr_file_info_get(&fileinfo, APR_FINFO_SIZE, filehandle);
-///         apr_file_close(filehandle);
-
-///          // Get number of cached tiles within extent present in file
-///          nbtiles_extent_cached = count_tiles(&ctx, dbfile, count_query, til,
-///                                              iz, grid, tileset, dimensions);
-///
-///          // Get total number of cached tiles present in file
-///          nbtiles_file_cached = count_tiles(&ctx, dbfile, count_query,
-///                                            full_extent, iz, grid, tileset,
-///                                            dimensions);
-///       }
-///        zoom_max += nbtiles_extent_max;
-///        zoom_cached += nbtiles_extent_cached;
-///        cache_max += nbtiles_extent_max;
-///        cache_cached += nbtiles_extent_cached;
-///        cache_size += fileinfo.size;
-
-///     // Compute extent of region inside current DB file
-///     reg_in_db_bbox = GEOSEnvelope(region_in_file_geom);
-///     reg_in_db_ring = GEOSGetExteriorRing(reg_in_db_bbox);
-///     npoints = GEOSGeomGetNumPoints(reg_in_db_ring);
-///     for (p=0 ; p<npoints ; p++) {
-///       double xcoord, ycoord;
-///       const GEOSCoordSequence * coordseq;
-///       coordseq = GEOSGeom_getCoordSeq(reg_in_db_ring);
-///       GEOSCoordSeq_getX(coordseq, p, &xcoord);
-///       GEOSCoordSeq_getY(coordseq, p, &ycoord);
-///       if (p==0) {
-///         reg_in_db_extent.minx = xcoord;
-///         reg_in_db_extent.miny = ycoord;
-///         reg_in_db_extent.maxx = xcoord;
-///         reg_in_db_extent.maxy = ycoord;
-///       } else {
-///         reg_in_db_extent.minx = fminl(reg_in_db_extent.minx, xcoord);
-///         reg_in_db_extent.miny = fminl(reg_in_db_extent.miny, ycoord);
-///         reg_in_db_extent.maxx = fmaxl(reg_in_db_extent.maxx, xcoord);
-///         reg_in_db_extent.maxy = fmaxl(reg_in_db_extent.maxy, ycoord);
-///       }
-///     }
-///     GEOSGeom_destroy(reg_in_db_bbox);
-///     mapcache_grid_get_xy(&ctx, grid,
-///         reg_in_db_extent.minx, reg_in_db_extent.miny, iz,
-///         &(til_reg_in_db.minx), &(til_reg_in_db.miny));
-///     mapcache_grid_get_xy(&ctx, grid,
-///         reg_in_db_extent.maxx, reg_in_db_extent.maxy, iz,
-///         &(til_reg_in_db.maxx), &(til_reg_in_db.maxy));
-///     if (til_reg_in_db.maxx > (x+cache_xcount-1)) (til_reg_in_db.maxx)--;
-///     if (til_reg_in_db.maxy > (y+cache_ycount-1)) (til_reg_in_db.maxy)--;
-
-///     if (GEOSPreparedContains(region_prepgeom, file_geom)) {
-///       printf("DEBUG: %d:(%d,%d)\n", iz,ix,iy);
-///     } else
-///     {
-///       // Iterate over tiles in DB file belonging to region of interest
-///       for (tx = til_region_in_file_bbox.minx ;
-///            tx <= til_region_in_file_bbox.maxx ; tx++) {
-///         for (ty = til_region_in_file_bbox.miny ;
-///              ty <= til_region_in_file_bbox.maxy ; ty++) {
-///           mapcache_extent tilextent;
-
-///           mapcache_grid_get_tile_extent(&ctx,grid,tx,ty,iz,&tilextent);
-///           if (!tilgeom) {
-///             tilgeom = mapcache_extent_to_GEOSGeometry(&tilextent);
-///           } else {
-///             update_GEOSGeometry_with_mapcache_extent(tilgeom, &tilextent);
-///           }
-///           if (GEOSPreparedIntersects(region_prepgeom, tilgeom) == 1) {
-///             tiles_max_in_file++;
-///           }
-///         }
-///       }
-///     }
-
         // Report identification and coverage information for a single DB file
         // for current zoom level and extent
         if (json_output) {
-///          coverage = (double)nbtiles_extent_cached/(double)nbtiles_extent_max;
           jfile = cJSON_CreateObject();
           cJSON_AddItemToObject(jfiles, "", jfile);
           cJSON_AddStringToObject(jfile, "file_name", file_name);
@@ -1320,18 +1226,6 @@ int main(int argc, char * argv[])
           cJSON_AddNumberToObject(jitem, "", file_bbox.miny);
           cJSON_AddNumberToObject(jitem, "", file_bbox.maxx);
           cJSON_AddNumberToObject(jitem, "", file_bbox.maxy);
-///       jitem = GEOSGeometry_to_cJSON(reg_in_db_bbox);
-///       cJSON_AddItemToObject(jfile, "region_bounding_box", jitem);
-///       jitem = cJSON_AddArrayToObject(jfile, "region_extent");
-///       cJSON_AddNumberToObject(jitem, "", reg_in_db_extent.minx);
-///       cJSON_AddNumberToObject(jitem, "", reg_in_db_extent.miny);
-///       cJSON_AddNumberToObject(jitem, "", reg_in_db_extent.maxx);
-///       cJSON_AddNumberToObject(jitem, "", reg_in_db_extent.maxy);
-///       jitem = cJSON_AddArrayToObject(jfile, "til_region_extent");
-///       cJSON_AddNumberToObject(jitem, "", til_reg_in_db.minx);
-///       cJSON_AddNumberToObject(jitem, "", til_reg_in_db.miny);
-///       cJSON_AddNumberToObject(jitem, "", til_reg_in_db.maxx);
-///       cJSON_AddNumberToObject(jitem, "", til_reg_in_db.maxy);
           jregion = cJSON_CreateObject();
           cJSON_AddItemToObject(jfile, "region_in_file", jregion);
           jitem = cJSON_AddArrayToObject(jregion, "bounding_box");
@@ -1342,13 +1236,11 @@ int main(int argc, char * argv[])
           jitem = GEOSGeometry_to_cJSON(region_in_file_geom);
           cJSON_AddItemToObject(jregion, "geometry", jitem);
           jitem = cJSON_CreateObject();
-          cJSON_AddNumberToObject(jitem,"max_in_file", tiles_max_in_file);
+          cJSON_AddItemToObject(jfile, "nb_tiles_in_region", jitem);
           cJSON_AddNumberToObject(jitem,"cached_in_file", tiles_cached_in_file);
-///          cJSON_AddNumberToObject(jitem,"file_cached",nbtiles_file_cached);
-///          cJSON_AddNumberToObject(jitem,"extent_maximum",nbtiles_extent_max);
-///          cJSON_AddNumberToObject(jitem,"extent_cached",nbtiles_extent_cached);
-          cJSON_AddItemToObject(jfile, "nb_tiles", jitem);
-///          cJSON_AddNumberToObject(jfile, "coverage", coverage);
+          cJSON_AddNumberToObject(jitem,"max_in_file", tiles_max_in_file);
+          cJSON_AddNumberToObject(jitem,"coverage",
+              (double)tiles_cached_in_file/(double)tiles_max_in_file);
         }
 
         // Add tiles in file to tiles in zoom level
@@ -1367,39 +1259,42 @@ int main(int argc, char * argv[])
 
     // Report coverage information for current zoom level and extent
     if (json_output) {
-      coverage = zoom_cached / zoom_max;
       jitem = cJSON_CreateObject();
-      cJSON_AddNumberToObject(jitem, "max_in_level", tiles_max_in_level);
+      cJSON_AddItemToObject(jzoom, "nb_tiles_in_region", jitem);
       cJSON_AddNumberToObject(jitem, "cached_in_level", tiles_cached_in_level);
-      cJSON_AddNumberToObject(jitem, "extent_maximum", zoom_max);
-      cJSON_AddNumberToObject(jitem, "extent_cached", zoom_cached);
-      cJSON_AddItemToObject(jzoom, "nb_tiles", jitem);
-      cJSON_AddNumberToObject(jzoom, "coverage", coverage);
+      cJSON_AddNumberToObject(jitem, "max_in_level", tiles_max_in_level);
+      cJSON_AddNumberToObject(jitem,"coverage",
+          (double)tiles_cached_in_level/(double)tiles_max_in_level);
     }
   }
 
 
   // Report global coverage information
   if (json_output) {
-    apr_off_t tile_size = (apr_off_t)(cache_size/cache_cached);
-    apr_off_t missing_size = (apr_off_t)(cache_max-cache_cached)*tile_size;
-    coverage = cache_cached / cache_max;
+    apr_off_t average_tile_size = size_of_cache/tiles_in_cache;
+
     jitem = cJSON_CreateObject();
+    cJSON_AddItemToObject(jreport, "nb_tiles_in_region", jitem);
     cJSON_AddNumberToObject(jitem, "max_in_cache", tiles_max_in_cache);
     cJSON_AddNumberToObject(jitem, "cached_in_cache", tiles_cached_in_cache);
-    cJSON_AddNumberToObject(jitem, "extent_maximum", cache_max);
-    cJSON_AddNumberToObject(jitem, "extent_cached", cache_cached);
-    cJSON_AddItemToObject(jreport, "nb_tiles", jitem);
-    cJSON_AddNumberToObject(jreport, "coverage", coverage);
-    cJSON_AddNumberToObject(jreport, "extent_cached_size", cache_size);
-    cJSON_AddNumberToObject(jreport, "avg_tile_size", tile_size);
-    cJSON_AddNumberToObject(jreport, "estimated_cache_missing_size",
-                            missing_size);
+    cJSON_AddNumberToObject(jitem,"coverage",
+        (double)tiles_cached_in_cache/(double)tiles_max_in_cache);
+    jitem = cJSON_CreateObject();
+    cJSON_AddItemToObject(jreport, "sizes", jitem);
+    cJSON_AddNumberToObject(jitem, "total_size_of_files", size_of_cache);
+    cJSON_AddNumberToObject(jitem, "total_nbtiles_in_files", tiles_in_cache);
+    cJSON_AddNumberToObject(jitem, "average_tile_size", average_tile_size);
+    cJSON_AddNumberToObject(jitem, "estimated_max_cache_size",
+        average_tile_size*tiles_max_in_cache);
+    cJSON_AddNumberToObject(jitem, "estimated_cached_cache_size",
+        average_tile_size*tiles_cached_in_cache);
+    cJSON_AddNumberToObject(jitem, "estimated_missing_cache_size",
+        average_tile_size*(tiles_max_in_cache-tiles_cached_in_cache));
   }
 
   // Last progression indication
   if (show_progress) {
-    fprintf(stderr, " Finished: 100.000%% done    \n");
+    fprintf(stderr, "\033[2K Finished: 100.000%% done\n");
   }
 
   // Display JSON report
