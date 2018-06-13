@@ -74,6 +74,8 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_postgresql_create(ctx,ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
         dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"elasticsearch")) {
+        dimension = mapcache_dimension_elasticsearch_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
         //backwards compatibility
         dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
