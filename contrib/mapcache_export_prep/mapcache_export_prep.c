@@ -567,17 +567,21 @@ int main(int argc, char * argv[])
   mapcache_tileset * tileset = NULL;
   mapcache_grid * grid = NULL;
   mapcache_grid_link * grid_link;
-  mapcache_cache * cache;
   apr_array_header_t * dimensions = NULL;
-  char * cache_dbfile = NULL;
-  apr_hash_t * xyz_fmt;
+  struct cache_info {
+    mapcache_cache * cache;
+    int minzoom, maxzoom;
+    char * dbfile;
+    apr_hash_t * formats;
+    int xcount, ycount;
+  } *cache;
+  apr_array_header_t * caches = NULL;
   int i, ix, iy, iz;
   ezxml_t doc, node;
   ezxml_t cache_node = NULL;
   ezxml_t dbfile_node = NULL;
   char * text;
   apr_hash_index_t * hi;
-  int cache_xcount, cache_ycount;
   mapcache_extent region_bbox = { 0, 0, 0, 0 };
   double * list = NULL;
   int nelts;
@@ -586,6 +590,7 @@ int main(int argc, char * argv[])
   int64_t tiles_cached_in_cache = 0;
   apr_off_t size_of_cache = 0;
   int64_t tiles_in_cache = 0;
+  apr_hash_t * db_files = NULL;
 
 
   /////////////////////////////////////////////////////////////////////////////
@@ -867,54 +872,87 @@ int main(int argc, char * argv[])
   /////////////////////////////////////////////////////////////////////////////
   // Retrieve cache information from XML document
   //
-  cache = tileset->_cache;
-  if (cache->type != MAPCACHE_CACHE_SQLITE) {
-    ctx.set_error(&ctx, 500,
-        "cache \"%s\" of tileset \"%s\" is not of type SQLite",
-        cache->name, tileset->name);
-    goto failure;
-  }
-  for (node = ezxml_child(doc, "cache") ; node ; node = node->next) {
-    if (strcmp(ezxml_attr(node, "name"), cache->name) == 0) {
-      cache_node = node;
-      break;
+
+  cache = apr_palloc(ctx.pool, sizeof(struct cache_info));
+  cache->cache = tileset->_cache;
+
+  // TODO: Work in progress: take "composite" meta caches into account
+  {
+    const char * val;
+
+    if (cache->cache->type != MAPCACHE_CACHE_SQLITE) {
+      ctx.set_error(&ctx, 500,
+          "cache \"%s\" of tileset \"%s\" is not of type SQLite",
+          cache->cache->name, tileset->name);
+      goto failure;
     }
+
+    // Retrieve cache element in XML configuration
+    for (node = ezxml_child(doc, "cache") ; node ; node = node->next) {
+      if (strcmp(ezxml_attr(node, "name"), cache->cache->name) == 0) {
+        cache_node = node;
+        break;
+      }
+    }
+    if (!cache_node) {
+      ctx.set_error(&ctx, 500,
+          "cache \"%s\" has not been not found", cache->cache->name);
+      goto failure;
+    }
+
+    // Read min-zoom and max-zoom attributes of <cache> element
+    cache->minzoom = 0;
+    cache->maxzoom = INT_MAX;
+    val = ezxml_attr(cache_node, "min-zoom");
+    if (val) cache->minzoom = (int)strtol(val, NULL, 10);
+    val = ezxml_attr(cache_node, "max-zoom");
+    if (val) cache->maxzoom = (int)strtol(val, NULL, 10);
+
+    // Read <dbfile> element from <cache>
+    dbfile_node = ezxml_child(cache_node, "dbfile");
+    cache->dbfile = dbfile_node->txt;
+    if (!cache->dbfile) {
+      ctx.set_error(&ctx, 500,
+          "Failed to parse <dbfile> tag of cache \"%s\"", cache->cache->name);
+      goto failure;
+    }
+
+    // Read formats of x,y,z placeholders in dbfile template
+    cache->formats = apr_hash_make(ctx.pool);
+    apr_hash_set(cache->formats, "x",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "y",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "z",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "inv_x",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "inv_y",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "div_x",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "div_y",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(cache->formats, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
+    for (hi = apr_hash_first(ctx.pool, cache->formats)
+        ; hi
+        ; hi = apr_hash_next(hi))
+    {
+      const char *key, *val, *attr;
+      apr_hash_this(hi, (const void**)&key, NULL, (void**)&val);
+      attr = apr_pstrcat(ctx.pool, key, "_fmt", NULL);
+      val = ezxml_attr(dbfile_node, attr);
+      if (!val) val = "%d";
+      apr_hash_set(cache->formats, key, APR_HASH_KEY_STRING, val);
+    }
+
+    // Read xcount and ycount
+    cache->xcount = cache->ycount = -1;
+    node = ezxml_child(cache_node, "xcount");
+    if (node) text = node->txt;
+    if (text) cache->xcount = (int)strtol(text, NULL, 10);
+    node = ezxml_child(cache_node, "ycount");
+    if (node) text = node->txt;
+    if (text) cache->ycount = (int)strtol(text, NULL, 10);
+
+    // Store cache information in table
+    if (!caches) caches = apr_array_make(ctx.pool, 1, sizeof(void*));
+    APR_ARRAY_PUSH(caches, struct cache_info*) = cache;
   }
-  if (!cache_node) {
-    ctx.set_error(&ctx, 500,
-        "cache \"%s\" has not been not found", cache->name);
-    goto failure;
-  }
-  dbfile_node = ezxml_child(cache_node, "dbfile");
-  cache_dbfile = dbfile_node->txt;
-  if (!cache_dbfile) {
-    ctx.set_error(&ctx, 500,
-        "Failed to parse <dbfile> tag of cache \"%s\"", cache->name);
-    goto failure;
-  }
-  xyz_fmt = apr_hash_make(ctx.pool);
-  apr_hash_set(xyz_fmt, "x",         APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "y",         APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "z",         APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "inv_x",     APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "inv_y",     APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "div_x",     APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "div_y",     APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
-  apr_hash_set(xyz_fmt, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
-  for (hi = apr_hash_first(ctx.pool, xyz_fmt) ; hi ; hi = apr_hash_next(hi)) {
-    const char *key, *val, *attr;
-    apr_hash_this(hi, (const void**)&key, NULL, (void**)&val);
-    attr = apr_pstrcat(ctx.pool, key, "_fmt", NULL);
-    val = ezxml_attr(dbfile_node, attr);
-    if (!val) val = "%d";
-    apr_hash_set(xyz_fmt, key, APR_HASH_KEY_STRING, val);
-  }
-  cache_xcount = cache_ycount = -1;
-  text = ezxml_child(cache_node, "xcount")->txt;
-  if (text) cache_xcount = (int)strtol(text, NULL, 10);
-  text = ezxml_child(cache_node, "ycount")->txt;
-  if (text) cache_ycount = (int)strtol(text, NULL, 10);
 
 
   /////////////////////////////////////////////////////////////////////////////
@@ -982,6 +1020,7 @@ int main(int argc, char * argv[])
                   "  FROM tiles"
                   " WHERE (x between :minx and :maxx)"
                   "   AND (y between :miny and :maxy)"
+                  "   AND (z=:z)"
                   "   AND tileset=:tileset AND grid=:grid AND dim=:dim";
   }
 
@@ -1054,6 +1093,15 @@ int main(int argc, char * argv[])
     int64_t tiles_cached_in_level = 0;
     mapcache_extent_i til_region_bbox;
     mapcache_extent_i db_region_bbox;
+    int cid;
+
+    // Select cache according to zoom level
+    for ( cid=0 ; cid < caches->nelts ; cid++ ) {
+      cache = APR_ARRAY_IDX(caches, cid, struct cache_info*);
+      fprintf(stderr, "\nDEBUG: %d: %s (%d, %d) -- \n", cid,
+          cache->cache->name, cache->minzoom, cache->maxzoom);
+      if ((iz >= cache->minzoom) && (iz <= cache->maxzoom)) break;
+    }
 
     // Report identification information for current zoom level
     if (json_output) {
@@ -1069,12 +1117,21 @@ int main(int argc, char * argv[])
         &(til_region_bbox.minx), &(til_region_bbox.miny));
     mapcache_grid_get_xy(&ctx, grid, region_bbox.maxx, region_bbox.maxy, iz,
         &(til_region_bbox.maxx), &(til_region_bbox.maxy));
-    db_region_bbox.minx = floor(til_region_bbox.minx/cache_xcount);
-    db_region_bbox.miny = floor(til_region_bbox.miny/cache_ycount);
-    db_region_bbox.maxx = floor(til_region_bbox.maxx/cache_xcount);
-    db_region_bbox.maxy = floor(til_region_bbox.maxy/cache_ycount);
+
+    if ((cache->xcount > 0) && (cache->ycount > 0)) {
+      db_region_bbox.minx = floor(til_region_bbox.minx/cache->xcount);
+      db_region_bbox.miny = floor(til_region_bbox.miny/cache->ycount);
+      db_region_bbox.maxx = floor(til_region_bbox.maxx/cache->xcount);
+      db_region_bbox.maxy = floor(til_region_bbox.maxy/cache->ycount);
+    } else {
+      db_region_bbox.minx = 0;
+      db_region_bbox.miny = 0;
+      db_region_bbox.maxx = 0;
+      db_region_bbox.maxy = 0;
+    }
 
     // Iterate over DB files of current level within region bounding box
+    if (!db_files) db_files = apr_hash_make(ctx.pool);
     for (ix = db_region_bbox.minx ; ix <= db_region_bbox.maxx ; ix++) {
       for (iy = db_region_bbox.miny ; iy <= db_region_bbox.maxy ; iy++) {
         int tiles_max_in_file = 0;
@@ -1094,6 +1151,7 @@ int main(int argc, char * argv[])
         int npoints, p;
         mapcache_extent_i til_region_in_file_bbox;
         int region_in_file_is_rectangle = FALSE;
+        apr_off_t *sizeref;
 
         // Display progression
         if (show_progress) {
@@ -1111,31 +1169,59 @@ int main(int argc, char * argv[])
         }
 
         // Retrieve DB file name and check for its existence (read access)
-        file_name = dbfilename(ctx.pool, cache_dbfile, tileset, grid,
-            dimensions, xyz_fmt, iz, ix, iy, cache_xcount, cache_ycount);
-        file_open_report = apr_file_open(&filehandle, file_name,
-              APR_FOPEN_READ|APR_FOPEN_BINARY, APR_FPROT_OS_DEFAULT, ctx.pool);
+        file_name = dbfilename(ctx.pool, cache->dbfile, tileset, grid,
+            dimensions, cache->formats, iz, ix, iy, cache->xcount,
+            cache->ycount);
 
+        // Unless this has already been done on this file,
         // Retrieve file size and count cached tiles regardless the region of
         // interest (for average tile size estimation)
         fileinfo.size = 0;
-        if (file_open_report == APR_SUCCESS) {
-          int tmpmax, tmpcached;
-          const mapcache_extent_i full_extent = { 0, 0, INT_MAX, INT_MAX };
-
-          apr_file_info_get(&fileinfo, APR_FINFO_SIZE, filehandle);
-          apr_file_close(filehandle);
-          count_tiles_in_rectangle(&ctx, iz, full_extent, tileset, grid_link,
-              dimensions, file_name, count_query, &tmpmax, &tmpcached);
-          size_of_cache += fileinfo.size;
-          tiles_in_cache += tmpcached;
+        sizeref = apr_hash_get(db_files, file_name, APR_HASH_KEY_STRING);
+        if (sizeref) {
+          fileinfo.size = *sizeref;
+        } else {
+          file_open_report = apr_file_open(&filehandle, file_name,
+              APR_FOPEN_READ|APR_FOPEN_BINARY, APR_FPROT_OS_DEFAULT, ctx.pool);
+          if (file_open_report == APR_SUCCESS) {
+            int level;
+            // Retrieve file size
+            apr_file_info_get(&fileinfo, APR_FINFO_SIZE, filehandle);
+            apr_file_close(filehandle);
+            sizeref = apr_pcalloc(ctx.pool, sizeof(apr_off_t));
+            *sizeref = fileinfo.size;
+            apr_hash_set(db_files, file_name, APR_HASH_KEY_STRING, sizeref);
+            size_of_cache += fileinfo.size;
+            // Retrieve total number of cached tiles in file
+            for (level = 0 ; level < grid->nlevels ; level++) {
+              int tmpmax, tmpcached;
+              const mapcache_extent_i full_extent = { 0, 0, INT_MAX, INT_MAX };
+              count_tiles_in_rectangle(&ctx, level, full_extent, tileset,
+                  grid_link, dimensions, file_name, count_query, &tmpmax,
+                  &tmpcached);
+              tiles_in_cache += tmpcached;
+            }
+          }
         }
 
         // Compute file bounding box expressed in tiles
-        til_file_bbox.minx = ix * cache_xcount;
-        til_file_bbox.miny = iy * cache_ycount;
-        til_file_bbox.maxx = til_file_bbox.minx + cache_xcount - 1;
-        til_file_bbox.maxy = til_file_bbox.miny + cache_ycount - 1;
+        if ((cache->xcount > 0) && (cache->ycount > 0)) {
+          til_file_bbox.minx = ix * cache->xcount;
+          til_file_bbox.miny = iy * cache->ycount;
+          til_file_bbox.maxx = til_file_bbox.minx + cache->xcount - 1;
+          til_file_bbox.maxy = til_file_bbox.miny + cache->ycount - 1;
+          if (til_file_bbox.maxx >= grid->levels[iz]->maxx) {
+            til_file_bbox.maxx = grid->levels[iz]->maxx - 1;
+          }
+          if (til_file_bbox.maxy >= grid->levels[iz]->maxy) {
+            til_file_bbox.maxy = grid->levels[iz]->maxy - 1;
+          }
+        } else {
+          til_file_bbox.minx = 0;
+          til_file_bbox.miny = 0;
+          til_file_bbox.maxx = grid->levels[iz]->maxx - 1;
+          til_file_bbox.maxy = grid->levels[iz]->maxy - 1;
+        }
 
         // Compute file bounding box expressed in grid units for the current
         // zoom level
@@ -1194,13 +1280,15 @@ int main(int argc, char * argv[])
         mapcache_grid_get_xy(&ctx, grid, region_in_file_bbox.maxx,
             region_in_file_bbox.maxy, iz, &(til_region_in_file_bbox.maxx),
             &(til_region_in_file_bbox.maxy));
-        if (til_region_in_file_bbox.maxx > (til_file_bbox.minx+cache_xcount-1))
-        {
-          (til_region_in_file_bbox.maxx)--;
-        }
-        if (til_region_in_file_bbox.maxy > (til_file_bbox.miny+cache_ycount-1))
-        {
-          (til_region_in_file_bbox.maxy)--;
+        if ((cache->xcount > 0) && (cache->ycount > 0)) {
+          if (til_region_in_file_bbox.maxx>(til_file_bbox.minx+cache->xcount-1))
+          {
+            (til_region_in_file_bbox.maxx)--;
+          }
+          if (til_region_in_file_bbox.maxy>(til_file_bbox.miny+cache->ycount-1))
+          {
+            (til_region_in_file_bbox.maxy)--;
+          }
         }
 
         // If region/file intersection is a rectangle, count tiles in a single
@@ -1299,25 +1387,34 @@ int main(int argc, char * argv[])
 
   // Report global coverage information
   if (json_output) {
-    apr_off_t average_tile_size = size_of_cache/tiles_in_cache;
-
     jitem = cJSON_CreateObject();
     cJSON_AddItemToObject(jreport, "nb_tiles_in_region", jitem);
-    cJSON_AddNumberToObject(jitem, "max_in_cache", tiles_max_in_cache);
     cJSON_AddNumberToObject(jitem, "cached_in_cache", tiles_cached_in_cache);
+    cJSON_AddNumberToObject(jitem, "max_in_cache", tiles_max_in_cache);
     cJSON_AddNumberToObject(jitem,"coverage",
         (double)tiles_cached_in_cache/(double)tiles_max_in_cache);
     jitem = cJSON_CreateObject();
     cJSON_AddItemToObject(jreport, "sizes", jitem);
     cJSON_AddNumberToObject(jitem, "total_size_of_files", size_of_cache);
     cJSON_AddNumberToObject(jitem, "total_nbtiles_in_files", tiles_in_cache);
-    cJSON_AddNumberToObject(jitem, "average_tile_size", average_tile_size);
-    cJSON_AddNumberToObject(jitem, "estimated_max_cache_size",
-        average_tile_size*tiles_max_in_cache);
-    cJSON_AddNumberToObject(jitem, "estimated_cached_cache_size",
-        average_tile_size*tiles_cached_in_cache);
-    cJSON_AddNumberToObject(jitem, "estimated_missing_cache_size",
-        average_tile_size*(tiles_max_in_cache-tiles_cached_in_cache));
+    if (tiles_in_cache > 0) {
+      apr_off_t average_tile_size = size_of_cache/tiles_in_cache;
+
+      cJSON_AddNumberToObject(jitem, "average_tile_size", average_tile_size);
+      cJSON_AddNumberToObject(jitem, "estimated_max_cache_size",
+          average_tile_size*tiles_max_in_cache);
+      cJSON_AddNumberToObject(jitem, "estimated_cached_cache_size",
+          average_tile_size*tiles_cached_in_cache);
+      cJSON_AddNumberToObject(jitem, "estimated_missing_cache_size",
+          average_tile_size*(tiles_max_in_cache-tiles_cached_in_cache));
+    } else {
+      const char * na = "N/A: cache is empty";
+
+      cJSON_AddStringToObject(jitem, "average_tile_size", na);
+      cJSON_AddStringToObject(jitem, "estimated_max_cache_size", na);
+      cJSON_AddNumberToObject(jitem, "estimated_cached_cache_size", 0);
+      cJSON_AddStringToObject(jitem, "estimated_missing_cache_size", na);
+    }
   }
 
   // Last progression indication
