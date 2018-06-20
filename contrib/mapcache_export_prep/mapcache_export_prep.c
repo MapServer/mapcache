@@ -569,6 +569,7 @@ int main(int argc, char * argv[])
   mapcache_grid_link * grid_link;
   apr_array_header_t * dimensions = NULL;
   struct cache_info {
+    ezxml_t node;
     mapcache_cache * cache;
     int minzoom, maxzoom;
     char * dbfile;
@@ -578,7 +579,6 @@ int main(int argc, char * argv[])
   apr_array_header_t * caches = NULL;
   int i, ix, iy, iz;
   ezxml_t doc, node;
-  ezxml_t cache_node = NULL;
   ezxml_t dbfile_node = NULL;
   char * text;
   apr_hash_index_t * hi;
@@ -591,6 +591,7 @@ int main(int argc, char * argv[])
   apr_off_t size_of_cache = 0;
   int64_t tiles_in_cache = 0;
   apr_hash_t * db_files = NULL;
+  int cid;
 
 
   /////////////////////////////////////////////////////////////////////////////
@@ -873,62 +874,82 @@ int main(int argc, char * argv[])
   // Retrieve cache information from XML document
   //
 
+  // Create table of caches
+  if (!caches) caches = apr_array_make(ctx.pool, 1, sizeof(void*));
+
+  // Retrieve cache element in XML configuration
   cache = apr_palloc(ctx.pool, sizeof(struct cache_info));
   cache->cache = tileset->_cache;
+  cache->node = NULL;
+  for (node = ezxml_child(doc, "cache") ; node ; node = node->next) {
+    if (strcmp(ezxml_attr(node, "name"), cache->cache->name) == 0) {
+      cache->node = node;
+      break;
+    }
+  }
 
-  // TODO: Work in progress: take "composite" meta caches into account
-  {
-    const char * val;
+  // Retrieve individuals caches in the composite
+  if (cache->cache->type == MAPCACHE_CACHE_COMPOSITE) {
+    for (node = ezxml_child(cache->node, "cache") ; node ; node = node->next) {
+      struct cache_info * c = apr_palloc(ctx.pool, sizeof(struct cache_info));
+      const char * val;
+      ezxml_t n;
+      // Read min-zoom and max-zoom attributes of <cache> reference
+      c->minzoom = 0;
+      c->maxzoom = INT_MAX;
+      val = ezxml_attr(node, "min-zoom");
+      if (val) c->minzoom = (int)strtol(val, NULL, 10);
+      val = ezxml_attr(node, "max-zoom");
+      if (val) c->maxzoom = (int)strtol(val, NULL, 10);
+      // Retrieve individual cache element in XML configuration
+      c->cache = mapcache_configuration_get_cache(ctx.config, node->txt);
+      c->node = NULL;
+      for (n = ezxml_child(doc, "cache") ; n ; n = n->next) {
+        if (strcmp(ezxml_attr(n, "name"), c->cache->name) == 0) {
+          c->node = n;
+          break;
+        }
+      }
+      APR_ARRAY_PUSH(caches, struct cache_info*) = c;
+    }
+  }
+  else {
+    APR_ARRAY_PUSH(caches, struct cache_info*) = cache;
+  }
 
-    if (cache->cache->type != MAPCACHE_CACHE_SQLITE) {
+  // Retrieve information on all stored caches
+  for ( cid=0 ; cid < caches->nelts ; cid++ ) {
+    struct cache_info * c = APR_ARRAY_IDX(caches, cid, struct cache_info*);
+
+    // Only SQLite caches are handled
+    if (c->cache->type != MAPCACHE_CACHE_SQLITE) {
       ctx.set_error(&ctx, 500,
           "cache \"%s\" of tileset \"%s\" is not of type SQLite",
-          cache->cache->name, tileset->name);
+          c->cache->name, tileset->name);
       goto failure;
     }
-
-    // Retrieve cache element in XML configuration
-    for (node = ezxml_child(doc, "cache") ; node ; node = node->next) {
-      if (strcmp(ezxml_attr(node, "name"), cache->cache->name) == 0) {
-        cache_node = node;
-        break;
-      }
-    }
-    if (!cache_node) {
-      ctx.set_error(&ctx, 500,
-          "cache \"%s\" has not been not found", cache->cache->name);
-      goto failure;
-    }
-
-    // Read min-zoom and max-zoom attributes of <cache> element
-    cache->minzoom = 0;
-    cache->maxzoom = INT_MAX;
-    val = ezxml_attr(cache_node, "min-zoom");
-    if (val) cache->minzoom = (int)strtol(val, NULL, 10);
-    val = ezxml_attr(cache_node, "max-zoom");
-    if (val) cache->maxzoom = (int)strtol(val, NULL, 10);
 
     // Read <dbfile> element from <cache>
-    dbfile_node = ezxml_child(cache_node, "dbfile");
-    cache->dbfile = dbfile_node->txt;
-    if (!cache->dbfile) {
+    dbfile_node = ezxml_child(c->node, "dbfile");
+    c->dbfile = dbfile_node->txt;
+    if (!c->dbfile) {
       ctx.set_error(&ctx, 500,
-          "Failed to parse <dbfile> tag of cache \"%s\"", cache->cache->name);
+          "Failed to parse <dbfile> tag of cache \"%s\"", c->cache->name);
       goto failure;
     }
 
     // Read formats of x,y,z placeholders in dbfile template
-    cache->formats = apr_hash_make(ctx.pool);
-    apr_hash_set(cache->formats, "x",         APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "y",         APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "z",         APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "inv_x",     APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "inv_y",     APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "div_x",     APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "div_y",     APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
-    apr_hash_set(cache->formats, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
-    for (hi = apr_hash_first(ctx.pool, cache->formats)
+    c->formats = apr_hash_make(ctx.pool);
+    apr_hash_set(c->formats, "x",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "y",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "z",         APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_x",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_y",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "div_x",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "div_y",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
+    for (hi = apr_hash_first(ctx.pool, c->formats)
         ; hi
         ; hi = apr_hash_next(hi))
     {
@@ -937,21 +958,19 @@ int main(int argc, char * argv[])
       attr = apr_pstrcat(ctx.pool, key, "_fmt", NULL);
       val = ezxml_attr(dbfile_node, attr);
       if (!val) val = "%d";
-      apr_hash_set(cache->formats, key, APR_HASH_KEY_STRING, val);
+      apr_hash_set(c->formats, key, APR_HASH_KEY_STRING, val);
     }
 
     // Read xcount and ycount
-    cache->xcount = cache->ycount = -1;
-    node = ezxml_child(cache_node, "xcount");
+    c->xcount = c->ycount = -1;
+    node = ezxml_child(c->node, "xcount");
+    text = NULL;
     if (node) text = node->txt;
-    if (text) cache->xcount = (int)strtol(text, NULL, 10);
-    node = ezxml_child(cache_node, "ycount");
+    if (text) c->xcount = (int)strtol(text, NULL, 10);
+    node = ezxml_child(c->node, "ycount");
+    text = NULL;
     if (node) text = node->txt;
-    if (text) cache->ycount = (int)strtol(text, NULL, 10);
-
-    // Store cache information in table
-    if (!caches) caches = apr_array_make(ctx.pool, 1, sizeof(void*));
-    APR_ARRAY_PUSH(caches, struct cache_info*) = cache;
+    if (text) c->ycount = (int)strtol(text, NULL, 10);
   }
 
 
@@ -1093,14 +1112,17 @@ int main(int argc, char * argv[])
     int64_t tiles_cached_in_level = 0;
     mapcache_extent_i til_region_bbox;
     mapcache_extent_i db_region_bbox;
-    int cid;
 
     // Select cache according to zoom level
     for ( cid=0 ; cid < caches->nelts ; cid++ ) {
       cache = APR_ARRAY_IDX(caches, cid, struct cache_info*);
-      fprintf(stderr, "\nDEBUG: %d: %s (%d, %d) -- \n", cid,
-          cache->cache->name, cache->minzoom, cache->maxzoom);
       if ((iz >= cache->minzoom) && (iz <= cache->maxzoom)) break;
+    }
+    if (cache->cache->type != MAPCACHE_CACHE_SQLITE) {
+      ctx.set_error(&ctx, 500,
+          "cache \"%s\" of tileset \"%s\" is not of type SQLite",
+          cache->cache->name, tileset->name);
+      goto failure;
     }
 
     // Report identification information for current zoom level
@@ -1199,6 +1221,7 @@ int main(int argc, char * argv[])
               count_tiles_in_rectangle(&ctx, level, full_extent, tileset,
                   grid_link, dimensions, file_name, count_query, &tmpmax,
                   &tmpcached);
+              if (GC_HAS_ERROR(&ctx)) goto failure;
               tiles_in_cache += tmpcached;
             }
           }
