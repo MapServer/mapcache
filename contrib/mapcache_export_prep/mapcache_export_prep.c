@@ -80,6 +80,10 @@ const apr_getopt_option_t optlist[] = {
   { "query",          'q', TRUE,  "Set query for counting tiles in a"
                                     " rectangle. Default value works with"
                                     " default schema of SQLite caches." },
+  { "short-output",   'o', FALSE, "Only existing SQLite files are reported,"
+                                    " missing SQLite files are still taken"
+                                    " into account for level and global"
+                                    " coverage." },
   { "endofopt",        0,  FALSE, "End of options" }
 };
 
@@ -592,6 +596,8 @@ int main(int argc, char * argv[])
   int64_t tiles_in_cache = 0;
   apr_hash_t * db_files = NULL;
   int cid;
+  int nb_missing_files = 0;
+  int report_missing_files = TRUE;
 
 
   /////////////////////////////////////////////////////////////////////////////
@@ -655,6 +661,9 @@ int main(int argc, char * argv[])
         break;
       case 'z': // --zoom <minz>[,<maxz>]
         zoom = optv;
+        break;
+      case 'o': // --short-output
+        report_missing_files = FALSE;
         break;
     }
   }
@@ -1225,6 +1234,10 @@ int main(int argc, char * argv[])
               tiles_in_cache += tmpcached;
             }
           }
+          else
+          {
+            nb_missing_files++ ;
+          }
         }
 
         // Compute file bounding box expressed in tiles
@@ -1356,30 +1369,33 @@ int main(int argc, char * argv[])
         // Report identification and coverage information for a single DB file
         // for current zoom level and extent
         if (json_output) {
-          jfile = cJSON_CreateObject();
-          cJSON_AddItemToObject(jfiles, "", jfile);
-          cJSON_AddStringToObject(jfile, "file_name", file_name);
-          cJSON_AddNumberToObject(jfile, "file_size", fileinfo.size);
-          jitem = cJSON_AddArrayToObject(jfile, "file_bounding_box");
-          cJSON_AddNumberToObject(jitem, "", file_bbox.minx);
-          cJSON_AddNumberToObject(jitem, "", file_bbox.miny);
-          cJSON_AddNumberToObject(jitem, "", file_bbox.maxx);
-          cJSON_AddNumberToObject(jitem, "", file_bbox.maxy);
-          jregion = cJSON_CreateObject();
-          cJSON_AddItemToObject(jfile, "region_in_file", jregion);
-          jitem = cJSON_AddArrayToObject(jregion, "bounding_box");
-          cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.minx);
-          cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.miny);
-          cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxx);
-          cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxy);
-          jitem = GEOSGeometry_to_cJSON(region_in_file_geom);
-          cJSON_AddItemToObject(jregion, "geometry", jitem);
-          jitem = cJSON_CreateObject();
-          cJSON_AddItemToObject(jfile, "nb_tiles_in_region", jitem);
-          cJSON_AddNumberToObject(jitem,"cached_in_file", tiles_cached_in_file);
-          cJSON_AddNumberToObject(jitem,"max_in_file", tiles_max_in_file);
-          cJSON_AddNumberToObject(jitem,"coverage",
-              (double)tiles_cached_in_file/(double)tiles_max_in_file);
+          if (report_missing_files || (file_open_report == APR_SUCCESS)) {
+            jfile = cJSON_CreateObject();
+            cJSON_AddItemToObject(jfiles, "", jfile);
+            cJSON_AddStringToObject(jfile, "file_name", file_name);
+            cJSON_AddNumberToObject(jfile, "file_size", fileinfo.size);
+            jitem = cJSON_AddArrayToObject(jfile, "file_bounding_box");
+            cJSON_AddNumberToObject(jitem, "", file_bbox.minx);
+            cJSON_AddNumberToObject(jitem, "", file_bbox.miny);
+            cJSON_AddNumberToObject(jitem, "", file_bbox.maxx);
+            cJSON_AddNumberToObject(jitem, "", file_bbox.maxy);
+            jregion = cJSON_CreateObject();
+            cJSON_AddItemToObject(jfile, "region_in_file", jregion);
+            jitem = cJSON_AddArrayToObject(jregion, "bounding_box");
+            cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.minx);
+            cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.miny);
+            cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxx);
+            cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxy);
+            jitem = GEOSGeometry_to_cJSON(region_in_file_geom);
+            cJSON_AddItemToObject(jregion, "geometry", jitem);
+            jitem = cJSON_CreateObject();
+            cJSON_AddItemToObject(jfile, "nb_tiles_in_region", jitem);
+            cJSON_AddNumberToObject(jitem,"cached_in_file",
+                tiles_cached_in_file);
+            cJSON_AddNumberToObject(jitem,"max_in_file", tiles_max_in_file);
+            cJSON_AddNumberToObject(jitem,"coverage",
+                (double)tiles_cached_in_file/(double)tiles_max_in_file);
+          }
         }
 
         // Add tiles in file to tiles in zoom level
@@ -1437,6 +1453,9 @@ int main(int argc, char * argv[])
       cJSON_AddStringToObject(jitem, "estimated_max_cache_size", na);
       cJSON_AddNumberToObject(jitem, "estimated_cached_cache_size", 0);
       cJSON_AddStringToObject(jitem, "estimated_missing_cache_size", na);
+    }
+    if (!report_missing_files) {
+      cJSON_AddNumberToObject(jreport, "nb_missing_files", nb_missing_files);
     }
   }
 
