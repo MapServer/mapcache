@@ -26,6 +26,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
+
+#if defined(USE_OGR) && defined(USE_GEOS)
+#define USE_CLIPPERS
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -40,10 +45,13 @@
 #include "mapcache.h"
 #include "ezxml.h"
 #include "cJSON.h"
+
+#ifdef USE_CLIPPERS
 #include <geos_c.h>
 #include <ogr_api.h>
 #include <cpl_error.h>
 #include <cpl_conv.h>
+#endif // USE_CLIPPERS
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,6 +74,7 @@ const apr_getopt_option_t optlist[] = {
   { "extent",         'e', TRUE,  "Extent to analyze:"
                                     "format minx,miny,maxx,maxy. Cannot be"
                                     " used with --ogr-datasource." },
+#ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE,  "OGR data source to get features from."
                                     " Cannot be used with --extent." },
   { "ogr-layer",      'l', TRUE,  "OGR layer inside OGR data source. Cannot"
@@ -75,6 +84,7 @@ const apr_getopt_option_t optlist[] = {
   { "ogr-sql",        's', TRUE,  "SQL query to filter inside OGR data"
                                     " source. Cannot be used with"
                                     " --ogr-layer or --ogr-where." },
+#endif // USE_CLIPPERS
   { "zoom",           'z', TRUE,  "Set min and max zoom levels to analyze,"
                                     " separated by a comma, eg: 12,15" },
   { "query",          'q', TRUE,  "Set query for counting tiles in a"
@@ -140,6 +150,7 @@ void usage(apr_pool_t * pool, const char * path, char * msg, ...)
 //
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef USE_CLIPPERS
 // GEOS notice function
 void notice(const char *fmt,...)
 {
@@ -162,6 +173,7 @@ void log_and_exit(const char *fmt,...)
   fprintf(stderr," }\n");
   exit(1);
 }
+#endif // USE_CLIPPERS
 
 // Mapcache log function
 void mapcache_log(mapcache_context *ctx, mapcache_log_level lvl, char *msg, ...)
@@ -195,6 +207,7 @@ static void _destroy_json_pool() {
 //
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef USE_CLIPPERS
 // Convert `mapcache_extent` to `GEOSGeometry` polygon
 GEOSGeometry * mapcache_extent_to_GEOSGeometry(const mapcache_extent *extent)
 {
@@ -299,6 +312,44 @@ cJSON * OGRLayerH_to_cJSON(const OGRLayerH layer)
     return jlayer;
   }
 }
+#else
+// Convert `mapcache_extent` to `cJSON` structure embedding GeoJSON data
+cJSON * mapcache_extent_to_cJSON(const mapcache_extent *extent)
+{
+  cJSON * geojson = cJSON_CreateObject();
+  cJSON * jpolygon;
+  cJSON * jpoint;
+
+  cJSON_AddStringToObject(geojson, "type", "Polygon");
+  jpolygon = cJSON_AddArrayToObject(geojson, "coordinates");
+
+  jpoint = cJSON_AddArrayToObject(jpolygon, "");
+  cJSON_AddNumberToObject(jpoint, "", extent->minx);
+  cJSON_AddNumberToObject(jpoint, "", extent->miny);
+
+  jpoint = cJSON_CreateObject();
+  jpoint = cJSON_AddArrayToObject(jpolygon, "");
+  cJSON_AddNumberToObject(jpoint, "", extent->maxx);
+  cJSON_AddNumberToObject(jpoint, "", extent->miny);
+
+  jpoint = cJSON_CreateObject();
+  jpoint = cJSON_AddArrayToObject(jpolygon, "");
+  cJSON_AddNumberToObject(jpoint, "", extent->maxx);
+  cJSON_AddNumberToObject(jpoint, "", extent->maxy);
+
+  jpoint = cJSON_CreateObject();
+  jpoint = cJSON_AddArrayToObject(jpolygon, "");
+  cJSON_AddNumberToObject(jpoint, "", extent->minx);
+  cJSON_AddNumberToObject(jpoint, "", extent->maxy);
+
+  jpoint = cJSON_CreateObject();
+  jpoint = cJSON_AddArrayToObject(jpolygon, "");
+  cJSON_AddNumberToObject(jpoint, "", extent->minx);
+  cJSON_AddNumberToObject(jpoint, "", extent->miny);
+
+  return geojson;
+}
+#endif // USE_CLIPPERS
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -482,6 +533,7 @@ void count_tiles_in_rectangle(
 }
 
 
+#ifdef USE_CLIPPERS
 // Count tiles in arbitrary region geometry for given zoom level, iterating
 // over supplied bounding box expressed in tiles
 void count_tiles_in_region(
@@ -536,6 +588,7 @@ void count_tiles_in_region(
   }
   GEOSGeom_destroy(tile_geom);
 }
+#endif // USE_CLIPPERS
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -565,9 +618,12 @@ int main(int argc, char * argv[])
   const char * ogr_where = NULL;
   const char * ogr_sql = NULL;
   const char * zoom = NULL;
+#ifdef USE_CLIPPERS
   GEOSGeometry *region_geom;
   GEOSGeometry *grid_geom;
   const GEOSPreparedGeometry *region_prepgeom = NULL;
+#else // Use region_bbox instead of region_geom
+#endif // USE_CLIPPERS
   mapcache_tileset * tileset = NULL;
   mapcache_grid * grid = NULL;
   mapcache_grid_link * grid_link;
@@ -604,8 +660,10 @@ int main(int argc, char * argv[])
   // Initialize Apache, GEOS, OGR, cJSON and Mapcache
   //
   apr_initialize();
+#ifdef USE_CLIPPERS
   initGEOS(notice, log_and_exit);
   OGRRegisterAll();
+#endif // USE_CLIPPERS
   apr_pool_create(&ctx.pool, NULL);
   _create_json_pool(ctx.pool);
   mapcache_context_init(&ctx);
@@ -749,7 +807,9 @@ int main(int argc, char * argv[])
 
   // Region of interest is specified with --extent
   if (extent) {
+#ifdef USE_CLIPPERS
     GEOSGeometry *temp;
+#endif
     if (mapcache_util_extract_double_list(&ctx, extent, ",", &list, &nelts)
         != MAPCACHE_SUCCESS || nelts != 4)
     {
@@ -771,10 +831,14 @@ int main(int argc, char * argv[])
       region_bbox.miny = region_bbox.maxy;
       region_bbox.maxy = swap;
     }
+#ifdef USE_CLIPPERS
     temp = mapcache_extent_to_GEOSGeometry(&region_bbox);
     region_geom = temp;
+#else // Use region_bbox instead of region_geom
+#endif
   }
 
+#ifdef USE_CLIPPERS
   // Region of interest is specified with OGR
   if (ogr_file) {
     OGRDataSourceH ogr = NULL;
@@ -859,11 +923,20 @@ int main(int argc, char * argv[])
     }
     GEOSWKTReader_destroy(geoswktreader);
   }
+#endif // USE_CLIPPERS
 
   // Region of interest must be within grid extent
+#ifdef USE_CLIPPERS
   region_prepgeom = GEOSPrepare(region_geom);
   grid_geom = mapcache_extent_to_GEOSGeometry(&(grid->extent));
   if (GEOSPreparedWithin(region_prepgeom, grid_geom) != 1) {
+#else // Use region_bbox instead of region_geom
+  if (   (region_bbox.minx < grid->extent.minx)
+      || (region_bbox.miny < grid->extent.miny)
+      || (region_bbox.maxx > grid->extent.maxx)
+      || (region_bbox.maxy > grid->extent.maxy))
+  {
+#endif // USE_CLIPPERS
     ctx.set_error(&ctx, 500,
         "Requested geometry is not contained within Grid extent: "
         "[ %.18g, %.18g, %.18g, %.18g ]\n", grid->extent.minx,
@@ -1103,8 +1176,13 @@ int main(int argc, char * argv[])
     cJSON_AddNumberToObject(jitem, "", region_bbox.miny);
     cJSON_AddNumberToObject(jitem, "", region_bbox.maxx);
     cJSON_AddNumberToObject(jitem, "", region_bbox.maxy);
+#ifdef USE_CLIPPERS
     cJSON_AddItemToObject(jregion, "geometry",
-                          GEOSGeometry_to_cJSON(region_geom));
+        GEOSGeometry_to_cJSON(region_geom));
+#else // Use region_bbox instead of region_geom
+    cJSON_AddItemToObject(jregion, "geometry",
+        mapcache_extent_to_cJSON(&region_bbox));
+#endif // USE_CLIPPERS
     jzooms = cJSON_AddArrayToObject(jreport, "zoom_levels");
   }
 
@@ -1174,14 +1252,17 @@ int main(int argc, char * argv[])
         mapcache_extent_i til_file_bbox;
         mapcache_extent file_bbox;
         mapcache_extent temp_bbox;
-        GEOSGeometry *file_geom;
         mapcache_extent region_in_file_bbox;
-        GEOSGeometry *region_in_file_geom;
+#ifdef USE_CLIPPERS
+        GEOSGeometry *file_geom;
         GEOSGeometry *temp_geom;
+        GEOSGeometry *region_in_file_geom;
         const GEOSGeometry *temp_ring;
         int npoints, p;
+#endif // USE_CLIPPERS
         mapcache_extent_i til_region_in_file_bbox;
         int region_in_file_is_rectangle = FALSE;
+        int region_in_file_is_empty = FALSE;
         apr_off_t *sizeref;
 
         // Display progression
@@ -1273,12 +1354,30 @@ int main(int argc, char * argv[])
         file_bbox.maxy = temp_bbox.maxy;
 
         // Compute part of region of interest within file bounding box
+#ifdef USE_CLIPPERS
         file_geom = mapcache_extent_to_GEOSGeometry(&file_bbox);
         region_in_file_geom = GEOSIntersection(region_geom, file_geom);
+        region_in_file_is_empty = GEOSisEmpty(region_in_file_geom);
+#else // use <var>_bbox instead of <var>_geom
+        region_in_file_is_rectangle = TRUE;
+        region_in_file_bbox.minx = fmaxl(region_bbox.minx, file_bbox.minx);
+        region_in_file_bbox.maxx = fminl(region_bbox.maxx, file_bbox.maxx);
+        if (region_in_file_bbox.minx > region_in_file_bbox.maxx) {
+          region_in_file_bbox.minx = region_in_file_bbox.maxx = 0;
+          region_in_file_is_empty = TRUE;
+        }
+        region_in_file_bbox.miny = fmaxl(region_bbox.miny, file_bbox.miny);
+        region_in_file_bbox.maxy = fminl(region_bbox.maxy, file_bbox.maxy);
+        if (region_in_file_bbox.miny > region_in_file_bbox.maxy) {
+          region_in_file_bbox.miny = region_in_file_bbox.maxy = 0;
+          region_in_file_is_empty = TRUE;
+        }
+#endif // USE_CLIPPERS
 
         // Jump to next file if this one is outside the region of interest
-        if (GEOSisEmpty(region_in_file_geom)) continue;
+        if (region_in_file_is_empty) continue;
 
+#ifdef USE_CLIPPERS
         // Compute bounding box of region/file intersection expressed in grid
         // units
         temp_geom = GEOSEnvelope(region_in_file_geom);
@@ -1307,6 +1406,7 @@ int main(int argc, char * argv[])
         region_in_file_is_rectangle =
           (GEOSEquals(region_in_file_geom, temp_geom) == 1);
         GEOSGeom_destroy(temp_geom);
+#endif // USE_CLIPPERS
 
         // Compute bounding box of region/file intersection expressed in
         // tiles for current zoom level
@@ -1347,6 +1447,7 @@ int main(int argc, char * argv[])
           tiles_cached_in_file += tmpcached;
         }
 
+#ifdef USE_CLIPPERS
         // Else, if file is partially inside region, iterate over tiles
         else {
           int tmpmax, tmpcached;
@@ -1365,6 +1466,7 @@ int main(int argc, char * argv[])
           tiles_max_in_file += tmpmax;
           tiles_cached_in_file += tmpcached;
         }
+#endif // USE_CLIPPERS
 
         // Report identification and coverage information for a single DB file
         // for current zoom level and extent
@@ -1386,7 +1488,11 @@ int main(int argc, char * argv[])
             cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.miny);
             cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxx);
             cJSON_AddNumberToObject(jitem, "", region_in_file_bbox.maxy);
+#ifdef USE_CLIPPERS
             jitem = GEOSGeometry_to_cJSON(region_in_file_geom);
+#else // use <var>_bbox instead of <var>_geom
+            jitem = mapcache_extent_to_cJSON(&region_in_file_bbox);
+#endif // USE_CLIPPERS
             cJSON_AddItemToObject(jregion, "geometry", jitem);
             jitem = cJSON_CreateObject();
             cJSON_AddItemToObject(jfile, "nb_tiles_in_region", jitem);
@@ -1403,8 +1509,10 @@ int main(int argc, char * argv[])
         tiles_cached_in_level += tiles_cached_in_file;
 
         // Release resources that are no longer needed
+#ifdef USE_CLIPPERS
         GEOSGeom_destroy(file_geom);
         GEOSGeom_destroy(region_in_file_geom);
+#endif // USE_CLIPPERS
       }
     }
 
@@ -1472,7 +1580,9 @@ int main(int argc, char * argv[])
 
 success:
   _destroy_json_pool();
+#ifdef USE_CLIPPERS
   finishGEOS();
+#endif // USE_CLIPPERS
   apr_terminate();
   return 0;
 
@@ -1483,7 +1593,9 @@ failure:
         ctx.get_error_message(&ctx));
   }
   _destroy_json_pool();
+#ifdef USE_CLIPPERS
   finishGEOS();
+#endif // USE_CLIPPERS
   apr_terminate();
   return 1;
 }
