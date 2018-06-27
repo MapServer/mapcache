@@ -27,6 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache_export_prep_config.h"
 #if defined(USE_OGR) && defined(USE_GEOS)
 #define USE_CLIPPERS
 #endif
