@@ -100,7 +100,7 @@ const apr_getopt_option_t optlist[] = {
 // Extract basename from a path
 const char * base_name(const char * path)
 {
-  const char *subdir, *basename;
+  const char *subdir, *basename=path;
   for (subdir=path ; (subdir=strchr(subdir, '/')) ; basename=++subdir);
   return basename;
 }
