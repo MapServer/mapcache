@@ -47,6 +47,44 @@ struct mapcache_source_wms {
   mapcache_http *http;
 };
 
+void _apply_dimensions(mapcache_context *ctx, apr_table_t *params, mapcache_map *map)
+{
+  const char *filter_tmpl;
+  if(map->dimensions && map->dimensions->nelts>0) {
+    int i;
+    for(i=0; i<map->dimensions->nelts; i++) {
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
+      /* set both DIM_key=val and key=val KVP params */
+      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
+      if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
+        char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
+        apr_table_setn(params,dim_name,rdim->cached_value);
+      }
+    }
+  }
+
+  filter_tmpl = apr_table_get(params,"FILTER");
+  if (filter_tmpl != 0 && strstr(filter_tmpl,"{dim")) {
+    char *filter = apr_pstrdup(ctx->pool,filter_tmpl);
+    int i;
+    for(i=0; i<map->dimensions->nelts; i++) {
+      mapcache_requested_dimension *entry = APR_ARRAY_IDX(map->dimensions,i, mapcache_requested_dimension*);
+      char *dimval;
+      char *single_dim;
+      if(!entry->cached_value) {
+        ctx->set_error(ctx,500,"BUG: dimension (%s) not set",entry->dimension->name);
+        return;
+      }
+      dimval = apr_pstrdup(ctx->pool,entry->cached_value);
+      single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+      while(strstr(filter,single_dim)) {
+        filter = mapcache_util_str_replace(ctx->pool,filter, single_dim, dimval);
+      }
+    }
+    apr_table_setn(params,"FILTER",filter);
+  }
+}
+
 /**
  * \private \memberof mapcache_source_wms
  * \sa mapcache_source::render_map()
@@ -64,20 +102,9 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *pso
   apr_table_setn(params,"SRS",map->grid_link->grid->srs);
 
   apr_table_overlap(params,wms->getmap_params,APR_OVERLAP_TABLES_SET);
-  
-  if(map->dimensions && map->dimensions->nelts>0) {
-    int i;
-    for(i=0; i<map->dimensions->nelts; i++) {
-      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
-      /* set both DIM_key=val and key=val KVP params */
-      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
-      if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
-        char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
-        apr_table_setn(params,dim_name,rdim->cached_value);
-      }
-    }
-  }
-  
+
+  _apply_dimensions(ctx, params, map);
+
   /* if the source has no LAYERS parameter defined, then use the tileset name
    * as the LAYERS to request. When using mirror-mode, the source has no layers
    * defined, it is added based on the incoming request
@@ -118,19 +145,8 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_source *source, 
   apr_table_setn(params,"INFO_FORMAT",fi->format);
 
   apr_table_overlap(params,wms->getfeatureinfo_params,0);
-  
-  if(map->dimensions && map->dimensions->nelts>0) {
-    int i;
-    for(i=0; i<map->dimensions->nelts; i++) {
-      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
-      /* set both DIM_key=val and key=val KVP params */
-      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
-      if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
-        char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
-        apr_table_setn(params,dim_name,rdim->cached_value);
-      }
-    }
-  }
+
+  _apply_dimensions(ctx, params, map);
 
   fi->data = mapcache_buffer_create(30000,ctx->pool);
   http = mapcache_http_clone(ctx, wms->http);
