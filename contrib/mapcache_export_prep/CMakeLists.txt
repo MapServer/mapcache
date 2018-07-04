@@ -33,7 +33,7 @@ set (CURRENT_BINARY_DIR "${PROJECT_BINARY_DIR}/contrib/mapcache_export_prep/")
 include_directories("${CURRENT_BINARY_DIR}")
 
 configure_file (
-  "${CMAKE_CURRENT_LIST_DIR}/mapcache_export_prep_config.h.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/mapcache_export_prep_config.h.in"
   "${CURRENT_BINARY_DIR}/mapcache_export_prep_config.h"
 )
 
