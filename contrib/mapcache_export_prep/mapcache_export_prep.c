@@ -800,11 +800,6 @@ int main(int argc, char * argv[])
         "--ogr-sql cannot be used with --ogr-layer or --ogr-where");
     goto failure;
   }
-  if (!extent && !ogr_file) {
-    ctx.set_error(&ctx, 500,
-        "Neither Extent nor OGR Data Source has been specified");
-    goto failure;
-  }
 
   // Region of interest is specified with --extent
   if (extent) {
@@ -925,6 +920,22 @@ int main(int argc, char * argv[])
     GEOSWKTReader_destroy(geoswktreader);
   }
 #endif // USE_CLIPPERS
+
+  // Set region to grid extent when no region has been provided
+  if (!extent && !ogr_file) {
+#ifdef USE_CLIPPERS
+    GEOSGeometry *temp;
+#endif
+    region_bbox.minx = grid->extent.minx;
+    region_bbox.miny = grid->extent.miny;
+    region_bbox.maxx = grid->extent.maxx;
+    region_bbox.maxy = grid->extent.maxy;
+#ifdef USE_CLIPPERS
+    temp = mapcache_extent_to_GEOSGeometry(&region_bbox);
+    region_geom = temp;
+#else // Use region_bbox instead of region_geom
+#endif
+  }
 
   // Region of interest must be within grid extent
 #ifdef USE_CLIPPERS
