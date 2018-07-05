@@ -1265,6 +1265,7 @@ int main(int argc, char * argv[])
         int region_in_file_is_rectangle = FALSE;
         int region_in_file_is_empty = FALSE;
         apr_off_t *sizeref;
+        double res;
 
         // Display progression
         if (show_progress) {
@@ -1414,8 +1415,10 @@ int main(int argc, char * argv[])
         mapcache_grid_get_xy(&ctx, grid, region_in_file_bbox.minx,
             region_in_file_bbox.miny, iz, &(til_region_in_file_bbox.minx),
             &(til_region_in_file_bbox.miny));
-        mapcache_grid_get_xy(&ctx, grid, region_in_file_bbox.maxx,
-            region_in_file_bbox.maxy, iz, &(til_region_in_file_bbox.maxx),
+        // Note: upper endpoints maxx and maxy do not belong to the bbox
+        res = grid->levels[iz]->resolution;
+        mapcache_grid_get_xy(&ctx, grid, region_in_file_bbox.maxx-res,
+            region_in_file_bbox.maxy-res, iz, &(til_region_in_file_bbox.maxx),
             &(til_region_in_file_bbox.maxy));
         if ((cache->xcount > 0) && (cache->ycount > 0)) {
           if (til_region_in_file_bbox.maxx>(til_file_bbox.minx+cache->xcount-1))
