@@ -483,7 +483,8 @@ void count_tiles_in_rectangle(
 
   rc = sqlite3_prepare_v2(db, count_query, -1, &res, 0);
   if (rc != SQLITE_OK) {
-    ctx->set_error(ctx, 500, "SQLite failed: '%s'", sqlite3_errmsg(db));
+    ctx->set_error(ctx, 500, "SQLite failed on %s: '%s'",
+        dbfile, sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -519,11 +520,12 @@ void count_tiles_in_rectangle(
       count = strtol((const char*)sqlite3_column_text(res, 0), NULL, 10);
       break;
     case SQLITE_DONE:
-      ctx->set_error(ctx, 500, "SQLite returned no tile count");
+      ctx->set_error(ctx, 500, "SQLite returned no tile count (%s)", dbfile);
       count = 0;
       break;
     default:
-      ctx->set_error(ctx, 500, "SQLite failed: '%s'", sqlite3_errmsg(db));
+      ctx->set_error(ctx, 500, "SQLite failed on %s: '%s'",
+          dbfile, sqlite3_errmsg(db));
       count = 0;
   }
 
