@@ -322,4 +322,4 @@ add_subdirectory(cgi)
 add_subdirectory(apache)
 add_subdirectory(nginx)
 
-add_subdirectory(contrib/mapcache_export_prep)
+add_subdirectory(contrib/mapcache_detail)

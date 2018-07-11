@@ -3,14 +3,14 @@ option(WITH_GEOS
 option(WITH_OGR
        "Choose if OGR/GDAL input vector support should be built in" ON)
 
-add_executable(mapcache_export_prep mapcache_export_prep.c)
-target_link_libraries(mapcache_export_prep mapcache)
+add_executable(mapcache_detail mapcache_detail.c)
+target_link_libraries(mapcache_detail mapcache)
 
 if (WITH_OGR)
   find_package(GDAL)
   if (GDAL_FOUND)
     include_directories(${GDAL_INCLUDE_DIR})
-    target_link_libraries(mapcache_export_prep ${GDAL_LIBRARY})
+    target_link_libraries(mapcache_detail ${GDAL_LIBRARY})
     set (USE_OGR 1)
   else (GDAL_FOUND)
     report_optional_not_found(GDAL)
@@ -21,7 +21,7 @@ if (WITH_GEOS)
   find_package(GEOS)
   if (GEOS_FOUND)
     include_directories(${GEOS_INCLUDE_DIR})
-    target_link_libraries(mapcache_export_prep ${GEOS_LIBRARY})
+    target_link_libraries(mapcache_detail ${GEOS_LIBRARY})
     set (USE_GEOS 1)
   else (GEOS_FOUND)
     report_optional_not_found(GEOS)
@@ -29,17 +29,17 @@ if (WITH_GEOS)
 endif (WITH_GEOS)
 
 
-set (CURRENT_BINARY_DIR "${PROJECT_BINARY_DIR}/contrib/mapcache_export_prep/")
+set (CURRENT_BINARY_DIR "${PROJECT_BINARY_DIR}/contrib/mapcache_detail/")
 include_directories("${CURRENT_BINARY_DIR}")
 
 configure_file (
-  "${CMAKE_CURRENT_SOURCE_DIR}/mapcache_export_prep_config.h.in"
-  "${CURRENT_BINARY_DIR}/mapcache_export_prep_config.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/mapcache_detail_config.h.in"
+  "${CURRENT_BINARY_DIR}/mapcache_detail_config.h"
 )
 
-message(STATUS "* Export Preparation Configuration Options:")
+message(STATUS "* mapcache_detail Configuration Options:")
 status_optional_component("GEOS" "${USE_GEOS}" "${GEOS_LIBRARY}")
 status_optional_component("OGR" "${USE_OGR}" "${GDAL_LIBRARY}")
 
-INSTALL(TARGETS mapcache_export_prep
+INSTALL(TARGETS mapcache_detail
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
