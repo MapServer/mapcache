@@ -2,7 +2,7 @@
  *
  * Project:  MapServer
  * Purpose:  MapCache tile caching support file: ElasticSearch dimension support
- * Author:   Thomas Bonfort and the MapServer team.
+ * Author:   Jerome Boue and the MapServer team.
  *
  ******************************************************************************
  * Copyright (c) 1996-2018 Regents of the University of Minnesota.
