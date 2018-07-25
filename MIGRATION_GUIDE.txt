@@ -1,4 +1,4 @@
-Migrating from Mapcache 1.6 to TBD
+Migrating from Mapcache 1.6 to 1.8
 ===================================
 
 * <dimensions type="time" ...>...<query>SQL</query> should be replaced by

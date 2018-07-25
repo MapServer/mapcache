@@ -1612,7 +1612,7 @@ mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_p
 mapcache_dimension* mapcache_dimension_time_create(mapcache_context *ctx, apr_pool_t *pool);
 mapcache_dimension* mapcache_dimension_elasticsearch_create(mapcache_context *ctx, apr_pool_t *pool);
 
-apr_array_header_t* mapcache_dimension_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
+MS_DLL_EXPORT apr_array_header_t* mapcache_dimension_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 apr_array_header_t* mapcache_dimension_time_get_entries_for_value(mapcache_context *ctx, mapcache_dimension *dimension, const char *value,
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
