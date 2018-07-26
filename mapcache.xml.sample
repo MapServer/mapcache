@@ -772,12 +772,17 @@
 
       <!-- metadata
          optional metadata tags used for responding to GetCapabilities request.
-         you can put anything in here, although only the title and abstract tags
-         are currently used to populate the GetCapabilities document.
+         you can put anything in here, although only the title, abstract and
+         keywords tags are currently used to populate the GetCapabilities
+         document.
       -->
       <metadata>
          <title>vmap0 map</title>
          <abstract>blabla</abstract>
+         <keywords>
+           <keyword>foo</keyword>
+           <keyword>bar</keyword>
+         </keywords>
       </metadata>
 
       <!-- watermark
