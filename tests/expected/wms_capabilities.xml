@@ -61,7 +61,6 @@
     <Layer>
       <Title>no title set, add some in metadata</Title>
       <SRS>EPSG:3857</SRS>
-      <SRS>EPSG:4326</SRS>
       <SRS>EPSG:900913</SRS>
       <Layer cascaded="1" queryable="0">
         <Name>global</Name>
