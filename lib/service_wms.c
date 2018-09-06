@@ -182,23 +182,58 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
    */
   {
     int srs_count = (int)apr_hash_count(cfg->grids);
-    char** srs_list = (char**)malloc(srs_count * sizeof(char*));
+    int layer_count = (int)apr_hash_count(cfg->tilesets);
+    struct srs_item { char * name; int count; };
+    struct srs_item * srs_list = malloc(srs_count * sizeof(struct srs_item));
     int srs_iter = 0;
+    int nb_common_srs = 0;
     int i;
 
+    // Build list of all layer's SRS
     grid_index = apr_hash_first(ctx->pool,cfg->grids);
     while(grid_index) {
       const void *key;
       apr_ssize_t keylen;
       mapcache_grid *grid = NULL;
       apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
-      srs_list[srs_iter++] = grid->srs;
+      srs_list[srs_iter].count = 0;
+      srs_list[srs_iter++].name = grid->srs;
       grid_index = apr_hash_next(grid_index);
     }
-    qsort(srs_list, srs_count, sizeof(char*), sort_strings);
-    for(i = 0; i < srs_count; i ++)
-    {
-      ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),srs_list[i]);
+    qsort(srs_list, srs_count, sizeof(struct srs_item), sort_strings);
+
+    // Find out how many tilesets use each SRS
+    tileindex_index = apr_hash_first(ctx->pool,cfg->tilesets);
+    while(tileindex_index) {
+      const void *key;
+      apr_ssize_t keylen;
+      mapcache_tileset *tileset = NULL;
+      apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
+      for(i=0; i<tileset->grid_links->nelts; i++) {
+        mapcache_grid_link *gridlink;
+        mapcache_grid *grid;
+        int j;
+        gridlink = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
+        grid = gridlink->grid;
+        for(j=0;j<srs_iter;j++) {
+          if (!strcmp(grid->srs,srs_list[j].name)) {
+            srs_list[j].count++;
+            break;
+          }
+        }
+      }
+      tileindex_index = apr_hash_next(tileindex_index);
+    }
+
+    // Output only SRS common to all layers
+    for(i = 0; i < srs_count; i ++) {
+      if (srs_list[i].count == layer_count) {
+        ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),srs_list[i].name);
+        nb_common_srs++;
+      }
+    }
+    if (nb_common_srs == 0) {
+      ezxml_add_child(toplayer,"SRS",0);
     }
     free(srs_list);
   }
