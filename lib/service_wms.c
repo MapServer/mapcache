@@ -174,11 +174,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   ezxml_set_txt(tmpxml,title);
 
   /*
-   * announce all layer srs's in the root layer. This part of the wms spec we
-   * cannot respect with a caching solution, as each tileset can only be served
-   * under a specified number of projections.
-   *
-   * TODO: check for duplicates in gris srs
+   * announce all common layer srs's in the root layer.
    */
   {
     int srs_count = (int)apr_hash_count(cfg->grids);
