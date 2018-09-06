@@ -208,13 +208,22 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       for(i=0; i<tileset->grid_links->nelts; i++) {
         mapcache_grid_link *gridlink;
         mapcache_grid *grid;
-        int j;
+        int j,k;
         gridlink = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
         grid = gridlink->grid;
-        for(j=0;j<srs_iter;j++) {
+        for (j=0; j<srs_iter; j++) {
           if (!strcmp(grid->srs,srs_list[j].name)) {
             srs_list[j].count++;
             break;
+          }
+        }
+        for (k=0; k<grid->srs_aliases->nelts; k++) {
+          char * gridalias = APR_ARRAY_IDX(grid->srs_aliases,k,char*);
+          for (j=0; j<srs_iter; j++) {
+            if (!strcmp(gridalias,srs_list[j].name)) {
+              srs_list[j].count++;
+              break;
+            }
           }
         }
       }
