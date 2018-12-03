@@ -1543,6 +1543,8 @@ int main(int argc, char * argv[])
             cJSON_AddItemToObject(jregion, "geometry", jitem);
             jitem = cJSON_CreateObject();
             cJSON_AddItemToObject(jfile, "nb_tiles_in_region", jitem);
+            cJSON_AddNumberToObject(jitem,"missing_in_file",
+                tiles_max_in_file - tiles_cached_in_file);
             cJSON_AddNumberToObject(jitem,"cached_in_file",
                 tiles_cached_in_file);
             cJSON_AddNumberToObject(jitem,"max_in_file", tiles_max_in_file);
@@ -1571,6 +1573,8 @@ int main(int argc, char * argv[])
     if (json_output) {
       jitem = cJSON_CreateObject();
       cJSON_AddItemToObject(jzoom, "nb_tiles_in_region", jitem);
+      cJSON_AddNumberToObject(jitem, "missing_in_level",
+          tiles_max_in_level - tiles_cached_in_level);
       cJSON_AddNumberToObject(jitem, "cached_in_level", tiles_cached_in_level);
       cJSON_AddNumberToObject(jitem, "max_in_level", tiles_max_in_level);
       cJSON_AddNumberToObject(jitem,"coverage",
@@ -1583,6 +1587,8 @@ int main(int argc, char * argv[])
   if (json_output) {
     jitem = cJSON_CreateObject();
     cJSON_AddItemToObject(jreport, "nb_tiles_in_region", jitem);
+    cJSON_AddNumberToObject(jitem, "missing_in_cache",
+        tiles_max_in_cache - tiles_cached_in_cache);
     cJSON_AddNumberToObject(jitem, "cached_in_cache", tiles_cached_in_cache);
     cJSON_AddNumberToObject(jitem, "max_in_cache", tiles_max_in_cache);
     cJSON_AddNumberToObject(jitem,"coverage",
