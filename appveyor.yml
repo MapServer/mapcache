@@ -57,7 +57,7 @@ build_script:
 
   - cd %APPVEYOR_BUILD_FOLDER%
 
-  - if not exist apr-util-1.6.1-win32-src.zip appveyor DownloadFile http://apache.mindstudios.com/apr/apr-util-1.6.1-win32-src.zip
+  - if not exist apr-util-1.6.1-win32-src.zip appveyor DownloadFile https://archive.apache.org/dist/apr/apr-util-1.6.1-win32-src.zip
   - 7z x apr-util-1.6.1-win32-src.zip
   - mkdir build-cmake\apr-util
   - cd build-cmake\apr-util
