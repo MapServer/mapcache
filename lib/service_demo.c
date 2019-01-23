@@ -57,7 +57,7 @@ static char *demo_head =
   "        padding: 0px;\n"
   "    }\n"
   "    </style>\n"
-  "    <script src=\"http://www.openlayers.org/api/OpenLayers.js\"></script>\n"
+  "    <script src=\"https://www.openlayers.org/api/OpenLayers.js\"></script>\n"
   "    <script type=\"text/javascript\">\n"
   "%s\n"
   "var map;\n"
