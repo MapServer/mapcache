@@ -6,6 +6,18 @@ option(WITH_OGR
 add_executable(mapcache_detail mapcache_detail.c)
 target_link_libraries(mapcache_detail mapcache)
 
+if (WITH_SQLITE)
+  find_package(SQLITE)
+  if(SQLITE_FOUND)
+    include_directories(${SQLITE_INCLUDE_DIR})
+    target_link_libraries(mapcache_detail ${SQLITE_LIBRARY})
+  else(SQLITE_FOUND)
+    report_mandatory_not_found(SQLITE)
+  endif(SQLITE_FOUND)
+else (WITH_SQLITE)
+  report_dependency_error(MAPCACHE_DETAIL SQLITE)
+endif (WITH_SQLITE)
+
 if (WITH_OGR)
   find_package(GDAL)
   if (GDAL_FOUND)
@@ -38,6 +50,9 @@ configure_file (
 )
 
 message(STATUS "* mapcache_detail Configuration Options:")
+message(STATUS " * Mandatory components")
+message(STATUS "  * SQLite: ${SQLITE_LIBRARY}")
+message(STATUS " * Optional components")
 status_optional_component("GEOS" "${USE_GEOS}" "${GEOS_LIBRARY}")
 status_optional_component("OGR" "${USE_OGR}" "${GDAL_LIBRARY}")
 
