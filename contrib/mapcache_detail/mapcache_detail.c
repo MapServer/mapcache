@@ -36,7 +36,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
-#include <sys/ioctl.h>
+
 #include <apr_general.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
@@ -45,6 +45,13 @@
 #include "mapcache.h"
 #include "ezxml.h"
 #include "cJSON.h"
+
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/ioctl.h>
+#endif
 
 #ifdef USE_CLIPPERS
 #include <geos_c.h>
@@ -105,6 +112,20 @@ const char * base_name(const char * path)
   return basename;
 }
 
+// Get terminal columns
+int termcols()
+{
+#if defined(_WIN32) && !defined(__CYGWIN__)
+  CONSOLE_SCREEN_BUFFER_INFO csbi;
+  if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE),&csbi)) csbi.dwSize.X = 0;
+  return csbi.dwSize.X;
+#else
+  struct winsize w;
+  if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) < 0) w.ws_col = 0;
+  return w.ws_col;
+#endif
+}
+
 // Display help message
 void usage(apr_pool_t * pool, const char * path, char * msg, ...)
 {
@@ -125,16 +146,15 @@ void usage(apr_pool_t * pool, const char * path, char * msg, ...)
   {
     char ** words;
     int linewidth = 16;
-    struct winsize w;
+    const int cols = termcols();
 
-    if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) < 0) w.ws_col = 0;
     fprintf(stderr, "    -%c | --%s%s\n                ",
         optlist[i].optch, optlist[i].name,
         optlist[i].has_arg ? " <value>" : "");
     apr_tokenize_to_argv(optlist[i].description, &words, pool);
     for (;*words;words++) {
       linewidth += strlen(*words)+1;
-      if (w.ws_col > 0 && linewidth > w.ws_col) {
+      if (cols > 0 && linewidth > cols) {
         fprintf(stderr, "\n                ");
         linewidth = 16 + strlen(*words)+1;
       }
