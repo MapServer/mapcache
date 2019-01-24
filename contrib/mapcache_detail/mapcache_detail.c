@@ -34,6 +34,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <float.h>
 
@@ -49,7 +50,6 @@
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include <windows.h>
 #else
-#include <unistd.h>
 #include <sys/ioctl.h>
 #endif
 
