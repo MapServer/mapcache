@@ -36,7 +36,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <apr_general.h>
 #include <apr_getopt.h>
