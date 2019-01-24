@@ -1111,7 +1111,7 @@ int main(int argc, char * argv[])
       mapcache_requested_dimension *entry;
       apr_array_header_t * vals;
       entry = APR_ARRAY_IDX(dimensions, i, mapcache_requested_dimension*);
-      vals = entry->dimension->get_entries_for_value(&ctx,
+      vals = mapcache_dimension_get_entries_for_value(&ctx,
                 entry->dimension, entry->requested_value, tileset, NULL, grid);
       if (GC_HAS_ERROR(&ctx)) goto failure;
       if (!vals || vals->nelts == 0) {
