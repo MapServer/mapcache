@@ -62,7 +62,11 @@ static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
 
 int _wmts_service_identification_keywords(void *in, const char *key, const char *value) {
    ezxml_t node = (ezxml_t )in;
-   ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+   if (!strcasecmp(key,"keyword")) {
+     ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+   } else {
+     ezxml_set_txt(ezxml_add_child(node,key,0),value);
+   }
 
    return 1;
 }
@@ -84,10 +88,6 @@ static ezxml_t _wmts_service_identification(mapcache_context *ctx, mapcache_cfg 
   value = apr_table_get(cfg->metadata,"keyword");
   if(value) {
     ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
-    /*
-     * @todo: cfg->metadata holds only one item named keyword,
-     *    adjust configuration_xml.c
-     */
     apr_table_do(_wmts_service_identification_keywords, nodeKeywords, cfg->metadata, "keyword", NULL);
     ezxml_insert(nodeKeywords, node, 0);
   }
@@ -329,6 +329,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     ezxml_t layer;
     const char *title;
     const char *abstract;
+    const char *keywords;
     ezxml_t style;
     char *dimensionstemplate="";
     ezxml_t resourceurl;
@@ -336,15 +337,33 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     apr_hash_this(layer_index,&key,&keylen,(void**)&tileset);
 
     layer = ezxml_add_child(contents,"Layer",0);
+
+    /* optional layer title */
     title = apr_table_get(tileset->metadata,"title");
     if(title) {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Title",0),title);
     } else {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Title",0),tileset->name);
+
+    /* optional layer abstract */
     }
     abstract = apr_table_get(tileset->metadata,"abstract");
     if(abstract) {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Abstract",0),abstract);
+    }
+
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
+    if (keywords) {
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+        apr_table_do(_wmts_service_identification_keywords, nodeKeywords, contents, "keyword", NULL);
+        ezxml_insert(nodeKeywords, layer, 0);
+      }
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {

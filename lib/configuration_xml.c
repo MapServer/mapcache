@@ -42,8 +42,21 @@
 void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 {
   ezxml_t cur_node;
-  for(cur_node = node->child; cur_node; cur_node = cur_node->sibling) {
-    apr_table_add(metadata,cur_node->name, cur_node->txt);
+  for(cur_node = node->child; cur_node; cur_node = cur_node->ordered) {
+    if (!cur_node->child) {
+      // Parse simple text
+      apr_table_add(metadata, cur_node->name, cur_node->txt);
+    } else {
+      // Parse tags:
+      //   `>` suffix in name indicates that value is a table and not a string
+      char * name = apr_pstrcat(ctx->pool,cur_node->name,">",NULL);
+      apr_table_t * contents = apr_table_make(ctx->pool,3);
+      ezxml_t sub_node;
+      for(sub_node = cur_node->child; sub_node; sub_node = sub_node->ordered) {
+        apr_table_add(contents, sub_node->name, sub_node->txt);
+      }
+      apr_table_addn(metadata, name, (const char *)contents);
+    }
   }
 }
 
@@ -55,6 +68,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     char *name = (char*)ezxml_attr(dimension_node,"name");
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
+    char *time = (char*)ezxml_attr(dimension_node,"time");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
 
     mapcache_dimension *dimension = NULL;
@@ -69,10 +83,16 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
         dimension = mapcache_dimension_values_create(ctx,ctx->pool);
       } else if(!strcmp(type,"regex")) {
         dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"postgresql")) {
+        dimension = mapcache_dimension_postgresql_create(ctx,ctx->pool);
       } else if(!strcmp(type,"sqlite")) {
         dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"elasticsearch")) {
+        dimension = mapcache_dimension_elasticsearch_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
-        dimension = mapcache_dimension_time_create(ctx,ctx->pool);
+        //backwards compatibility
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+        dimension->isTime = 1;
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -87,6 +107,10 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 
     if(unit && *unit) {
       dimension->unit = apr_pstrdup(ctx->pool,unit);
+    }
+
+    if(time && *time && !strcasecmp(time,"true")) {
+      dimension->isTime = 1;
     }
     
     if(default_value && *default_value) {

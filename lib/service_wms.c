@@ -32,6 +32,13 @@
 #include <math.h>
 #include "mapcache_services.h"
 
+static int metadata_xml_add_child(void * rec, const char * key, const char * value)
+{
+  ezxml_t node = (ezxml_t)rec;
+  ezxml_set_txt(ezxml_add_child(node,key,0),value);
+  return 1;
+}
+
 static int sort_strings(const void* pa, const void* pb)
 {
     char** ppszA = (char**)pa;
@@ -174,31 +181,71 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   ezxml_set_txt(tmpxml,title);
 
   /*
-   * announce all layer srs's in the root layer. This part of the wms spec we
-   * cannot respect with a caching solution, as each tileset can only be served
-   * under a specified number of projections.
-   *
-   * TODO: check for duplicates in gris srs
+   * announce all common layer srs's in the root layer.
    */
   {
     int srs_count = (int)apr_hash_count(cfg->grids);
-    char** srs_list = (char**)malloc(srs_count * sizeof(char*));
+    int layer_count = (int)apr_hash_count(cfg->tilesets);
+    struct srs_item { char * name; int count; };
+    struct srs_item * srs_list = malloc(srs_count * sizeof(struct srs_item));
     int srs_iter = 0;
+    int nb_common_srs = 0;
     int i;
 
+    // Build list of all layer's SRS
     grid_index = apr_hash_first(ctx->pool,cfg->grids);
     while(grid_index) {
       const void *key;
       apr_ssize_t keylen;
       mapcache_grid *grid = NULL;
       apr_hash_this(grid_index,&key,&keylen,(void**)&grid);
-      srs_list[srs_iter++] = grid->srs;
+      srs_list[srs_iter].count = 0;
+      srs_list[srs_iter++].name = grid->srs;
       grid_index = apr_hash_next(grid_index);
     }
-    qsort(srs_list, srs_count, sizeof(char*), sort_strings);
-    for(i = 0; i < srs_count; i ++)
-    {
-      ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),srs_list[i]);
+    qsort(srs_list, srs_count, sizeof(struct srs_item), sort_strings);
+
+    // Find out how many tilesets use each SRS
+    tileindex_index = apr_hash_first(ctx->pool,cfg->tilesets);
+    while(tileindex_index) {
+      const void *key;
+      apr_ssize_t keylen;
+      mapcache_tileset *tileset = NULL;
+      apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
+      for(i=0; i<tileset->grid_links->nelts; i++) {
+        mapcache_grid_link *gridlink;
+        mapcache_grid *grid;
+        int j,k;
+        gridlink = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
+        grid = gridlink->grid;
+        for (j=0; j<srs_iter; j++) {
+          if (!strcmp(grid->srs,srs_list[j].name)) {
+            srs_list[j].count++;
+            break;
+          }
+        }
+        for (k=0; k<grid->srs_aliases->nelts; k++) {
+          char * gridalias = APR_ARRAY_IDX(grid->srs_aliases,k,char*);
+          for (j=0; j<srs_iter; j++) {
+            if (!strcmp(gridalias,srs_list[j].name)) {
+              srs_list[j].count++;
+              break;
+            }
+          }
+        }
+      }
+      tileindex_index = apr_hash_next(tileindex_index);
+    }
+
+    // Output only SRS common to all layers
+    for(i = 0; i < srs_count; i ++) {
+      if (srs_list[i].count == layer_count) {
+        ezxml_set_txt(ezxml_add_child(toplayer,"SRS",0),srs_list[i].name);
+        nb_common_srs++;
+      }
+    }
+    if (nb_common_srs == 0) {
+      ezxml_add_child(toplayer,"SRS",0);
     }
     free(srs_list);
   }
@@ -213,6 +260,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     apr_ssize_t keylen;
     const char *title;
     const char *abstract;
+    const char *keywords;
     int i;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
@@ -237,6 +285,19 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
       ezxml_set_txt(ezxml_add_child(layerxml,"Abstract",0),abstract);
     }
 
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
+    if (keywords) {
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_add_child(layerxml,"KeywordList",0);
+        apr_table_do(metadata_xml_add_child, nodeKeywords, contents, "keyword", NULL);
+      }
+    }
+
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
       ezxml_t wgsxml = ezxml_add_child(layerxml,"LatLonBoundingBox",0);
       ezxml_set_attr(wgsxml,"minx",apr_psprintf(ctx->pool,"%f",tileset->wgs84bbox.minx));
@@ -259,6 +320,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
           ezxml_set_attr(dimxml,"units",dimension->unit);
         }
         values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
+        GC_CHECK_ERROR(ctx);
         for(value_idx=0;value_idx<values->nelts;value_idx++) {
           char *idval = APR_ARRAY_IDX(values,value_idx,char*);
           if(dimval) {
@@ -267,7 +329,9 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
             dimval = apr_pstrdup(ctx->pool,idval);
           }
         }
-        ezxml_set_txt(dimxml,dimval);
+        if(dimval) {
+          ezxml_set_txt(dimxml,dimval);
+        }
       }
     }
 
@@ -860,7 +924,7 @@ proxies:
       for(j=0; j<rule->match_params->nelts; j++) {
         mapcache_dimension *match_param = APR_ARRAY_IDX(rule->match_params,j,mapcache_dimension*);
         const char *value = apr_table_get(params,match_param->name);
-        if(!value || match_param->get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
+        if(!value || match_param->_get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
           got_a_match = 0;
           break;

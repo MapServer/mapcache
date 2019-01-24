@@ -1,0 +1,147 @@
+image: Visual Studio 2017
+
+platform:
+- x64
+
+environment:
+  matrix:
+# VS 2017
+  - VS_VERSION: Visual Studio 15 2017
+
+shallow_clone: true
+
+build_script:
+  - echo build_script
+  - if "%platform%" == "x64" SET VS_FULL=%VS_VERSION% Win64
+  - if "%platform%" == "x86" SET VS_FULL=%VS_VERSION%
+  - if "%platform%" == "x86" SET SDK=release-1911
+  - if "%platform%" == "x64" SET SDK=release-1911-x64
+  - echo "%VS_FULL%"
+  - if "%platform%" == "x64" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
+  - if "%platform%" == "x86" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars32.bat"
+  - set SDK_ZIP=%SDK%-dev.zip
+  - set SDK_URL=http://download.gisinternals.com/sdk/downloads/%SDK_ZIP%
+  - echo "%SDK_ZIP%"
+  - echo "%SDK_URL%"
+  - mkdir sdk
+  - cd sdk
+  - appveyor DownloadFile "%SDK_URL%"
+  - 7z x "%SDK_ZIP%" > nul
+  - cd %SDK%
+  - cd lib
+  - copy libpng.lib libpng.lib.lib
+  - cd %APPVEYOR_BUILD_FOLDER%
+  - set SDK_PREFIX=%CD%\sdk\%SDK%
+  - set SDK_INC=%CD%\sdk\%SDK%\include
+  - set SDK_LIB=%CD%\sdk\%SDK%\lib
+  - set SDK_BIN=%CD%\sdk\%SDK%\bin
+  - set REGEX_DIR=%CD%\sdk\regex-0.12
+
+  - if not exist apr-1.6.3-win32-src.zip appveyor DownloadFile https://archive.apache.org/dist/apr/apr-1.6.3-win32-src.zip
+  - 7z x apr-1.6.3-win32-src.zip
+  - mkdir build-cmake
+  - cd build-cmake
+  - mkdir apr
+  - cd apr
+  - cmake -G "NMake Makefiles" 
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% 
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+        -DMIN_WINDOWS_VER=0x0600 
+        -DAPR_HAVE_IPV6=ON 
+        -DAPR_INSTALL_PRIVATE_H=ON 
+        -DAPR_BUILD_TESTAPR=OFF 
+        -DAPU_HAVE_ODBC=OFF 
+        -DINSTALL_PDB=OFF ..\..\apr-1.6.3
+  - nmake
+  - nmake install
+
+  - cd %APPVEYOR_BUILD_FOLDER%
+
+  - if not exist apr-util-1.6.1-win32-src.zip appveyor DownloadFile https://archive.apache.org/dist/apr/apr-util-1.6.1-win32-src.zip
+  - 7z x apr-util-1.6.1-win32-src.zip
+  - mkdir build-cmake\apr-util
+  - cd build-cmake\apr-util
+  - cmake -G "NMake Makefiles" 
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% 
+        -DOPENSSL_ROOT_DIR=%SDK_PREFIX% 
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+        -DAPU_HAVE_CRYPTO=ON 
+        -DAPU_HAVE_ODBC=OFF 
+        -DAPR_HAS_LDAP=OFF 
+        -DAPR_BUILD_TESTAPR=OFF 
+        -DINSTALL_PDB=OFF ..\..\apr-util-1.6.1
+  - nmake
+  - nmake install
+
+  - cd %APPVEYOR_BUILD_FOLDER%
+
+  - set PCRE_VERSION=8.38
+  - set PCRE=pcre-%PCRE_VERSION%
+  - if not exist %PCRE%.zip appveyor DownloadFile "http://zoo-project.org/dl/%PCRE%.zip"
+  - 7z x %PCRE%.zip > nul
+  - mkdir build-cmake\pcre
+  - cd build-cmake\pcre
+  - cmake -G "NMake Makefiles" 
+        -DCMAKE_INSTALL_PREFIX=%SDK_PREFIX% 
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo 
+        -DBUILD_SHARED_LIBS=ON 
+        -DPCRE_BUILD_TESTS=OFF 
+        -DPCRE_BUILD_PCRECPP=OFF 
+        -DPCRE_BUILD_PCREGREP=OFF 
+        -DPCRE_SUPPORT_PCREGREP_JIT=OFF 
+        -DPCRE_SUPPORT_UTF=ON 
+        -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON 
+        -DPCRE_NEWLINE=CRLF 
+        -DINSTALL_MSVC_PDB=OFF ..\..\%PCRE%
+  - nmake
+  - nmake install
+
+  - copy %SDK_PREFIX%\lib\libfcgi.lib %SDK_PREFIX%\lib\fcgi.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\apr-1.lib %SDK_PREFIX%\lib\apr-1-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\libapr-1.lib %SDK_PREFIX%\lib\apr-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\aprutil-1.lib %SDK_PREFIX%\lib\aprutil-1-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\libaprutil-1.lib %SDK_PREFIX%\lib\aprutil-1.lib /Y > nul
+  - xcopy %REGEX_DIR%\*.h %SDK_PREFIX%\include\ /O /X /E /H /K /Y > nul
+
+  - cd %APPVEYOR_BUILD_FOLDER%
+
+  - mkdir build
+  - cd build
+  - cmake -G "%VS_FULL%" 
+        -DWITH_APACHE=OFF 
+        -DWITH_FCGI=ON 
+        -DWITH_PCRE=ON 
+        -DWITH_TIFF=OFF 
+        -DCMAKE_PREFIX_PATH=%SDK_PREFIX% ..
+  - cmake --build . --config Release
+
+  - copy %SDK_PREFIX%\lib\apr-1-1.lib %SDK_PREFIX%\lib\apr-1.lib /Y > nul
+  - copy %SDK_PREFIX%\lib\aprutil-1-1.lib %SDK_PREFIX%\lib\aprutil-1.lib /Y > nul
+  - copy %SDK_PREFIX%\bin\libapr-1.dll %SDK_PREFIX%\bin\apr-1.dll /Y > nul
+  - copy %SDK_PREFIX%\bin\libaprutil-1.dll %SDK_PREFIX%\bin\aprutil-1.dll /Y > nul
+  - copy %SDK_PREFIX%\bin\libfcgi.dll %SDK_PREFIX%\bin\fcgi.dll /Y > nul
+  - copy Release\*dll %SDK_PREFIX%\bin\ /Y > nul
+  - copy Release\*lib %SDK_PREFIX%\lib\ /Y > nul
+  - copy cgi\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
+  - copy util\Release\*exe %SDK_PREFIX%\bin\ /Y > nul
+
+after_build:
+  - cd %SDK_PREFIX%\bin
+  - 7z a %APPVEYOR_BUILD_FOLDER%\mapcache.zip libapr*.dll apr*.dll pcre.dll pcreposix.dll mapcache.dll 
+        mapcache.fcgi.exe mapcache_seed.exe %APPVEYOR_BUILD_FOLDER%\mapcache.xml
+
+test_script:
+  - cd %SDK_PREFIX%\bin
+  - set MAPCACHE_CONFIG_FILE=mapcache.xml
+  - set PATH_INFO="/"
+  - set REQUEST_METHOD=GET
+  - set QUERY_STRING="SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
+  - rem mapcache.fcgi.exe
+  - rem mapcache_seed.exe
+
+deploy: off
+
+artifacts:
+  - path: mapcache.zip
+    name: mapcache
+    type: zip

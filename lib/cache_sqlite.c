@@ -296,11 +296,19 @@ static void _bind_sqlite_params(mapcache_context *ctx, void *vstmt, mapcache_cac
   paramidx = sqlite3_bind_parameter_index(stmt, ":x");
   if (paramidx) sqlite3_bind_int(stmt, paramidx, tile->x);
 
+  paramidx = sqlite3_bind_parameter_index(stmt, ":inv_x");
+  if (paramidx)
+    sqlite3_bind_int(stmt, paramidx, tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1);
+
   /* tile->y */
   paramidx = sqlite3_bind_parameter_index(stmt, ":y");
   if (paramidx) sqlite3_bind_int(stmt, paramidx, tile->y);
 
-  /* tile->y */
+  paramidx = sqlite3_bind_parameter_index(stmt, ":inv_y");
+  if (paramidx)
+    sqlite3_bind_int(stmt, paramidx, tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1);
+
+  /* tile->z */
   paramidx = sqlite3_bind_parameter_index(stmt, ":z");
   if (paramidx) sqlite3_bind_int(stmt, paramidx, tile->z);
 
