@@ -512,7 +512,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   }
 
   /* compute the content-type */
-  ctx->log(ctx,MAPCACHE_DEBUG,"SDL: setting content type (2)");
   if(format && format->mime_type) {
     apr_table_set(response->headers,"Content-Type",format->mime_type);
   } else {
