@@ -30,6 +30,12 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 
+int mapcache_imageio_is_raw_tileset(mapcache_tileset *tileset) 
+{
+  if(!tileset || !tileset->format || tileset->format->type != GC_RAW) return MAPCACHE_FALSE;
+  return MAPCACHE_TRUE;
+}
+
 static mapcache_buffer* _mapcache_imageio_raw_create_empty(mapcache_context *ctx, mapcache_image_format *format,
 							   size_t width, size_t height, unsigned int color)
 {

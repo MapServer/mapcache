@@ -1409,6 +1409,7 @@ struct mapcache_image_format_raw {
 };
 
 mapcache_image_format* mapcache_imageio_create_raw_format(apr_pool_t *pool, char *name, char *extension, char *mime_type); 
+int mapcache_imageio_is_raw_tileset(mapcache_tileset *tileset);
 
 /**\class mapcache_image_format_png_q
  * \brief Quantized PNG format
