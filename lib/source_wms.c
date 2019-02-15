@@ -56,6 +56,7 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *pso
   mapcache_source_wms *wms = (mapcache_source_wms*)psource;
   mapcache_http *http;
   apr_table_t *params = apr_table_clone(ctx->pool,wms->wms_default_params);
+
   apr_table_setn(params,"BBOX",apr_psprintf(ctx->pool,"%f,%f,%f,%f",
                  map->extent.minx,map->extent.miny,map->extent.maxx,map->extent.maxy));
   apr_table_setn(params,"WIDTH",apr_psprintf(ctx->pool,"%d",map->width));
@@ -92,7 +93,7 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *pso
   mapcache_http_do_request(ctx,http,map->encoded_data,NULL,NULL);
   GC_CHECK_ERROR(ctx);
 
-  if(!mapcache_imageio_is_valid_format(ctx,map->encoded_data)) {
+  if(!mapcache_imageio_is_raw_tileset(map->tileset) && !mapcache_imageio_is_valid_format(ctx,map->encoded_data)) {
     char *returned_data = apr_pstrndup(ctx->pool,(char*)map->encoded_data->buf,map->encoded_data->size);
     ctx->set_error(ctx, 502, "wms request for tileset %s returned an unsupported format:\n%s",
                    map->tileset->name, returned_data);

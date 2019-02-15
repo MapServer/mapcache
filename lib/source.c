@@ -30,8 +30,6 @@
 #include "mapcache.h"
 #include <apr_time.h>
 
-
-
 void mapcache_source_init(mapcache_context *ctx, mapcache_source *source)
 {
   mapcache_extent tmp_extent = {-1,-1,-1,-1};
@@ -40,7 +38,6 @@ void mapcache_source_init(mapcache_context *ctx, mapcache_source *source)
   source->retry_count = 1;
   source->retry_delay = 0.1;
 }
-
 
 void mapcache_source_render_map(mapcache_context *ctx, mapcache_source *source, mapcache_map *map) {
   int i;

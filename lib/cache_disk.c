@@ -532,14 +532,13 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
     ctx->set_error(ctx, 500,  "failed to remove file %s: %s",filename, apr_strerror(ret,errmsg,120));
   }
 
-
 #ifdef HAVE_SYMLINK
   if(cache->symlink_blank) {
-    if(!tile->raw_image) {
+    if(tile->tileset->format->type != GC_RAW && !tile->raw_image) {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
     }
-    if(mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+    if(tile->tileset->format->type != GC_RAW && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
       char *blankname;
       int retry_count_create_symlink = 0;
       char *blankname_rel = NULL;
@@ -620,7 +619,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
       return;
     }
   }
-#endif /*HAVE_SYMLINK*/
+#endif /* HAVE_SYMLINK */
 
   /* go the normal way: either we haven't configured blank tile detection, or the tile was not blank */
 

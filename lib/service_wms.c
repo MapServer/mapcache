@@ -264,6 +264,11 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     int i;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
+    if(mapcache_imageio_is_raw_tileset(tileset)) {
+      tileindex_index = apr_hash_next(tileindex_index);
+      continue; /* WMS is not supported for raw layers */
+    }
+
     layerxml = ezxml_add_child(toplayer,"Layer",0);
     ezxml_set_attr(layerxml, "cascaded", "1");
     ezxml_set_attr(layerxml, "queryable", (tileset->source && tileset->source->info_formats)?"1":"0");
@@ -611,7 +616,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
         key = apr_strtok(layers, ",", &last); /* extract first layer */
       }
       main_tileset = mapcache_configuration_get_tileset(config,key);
-      if(!main_tileset) {
+      if(!main_tileset || mapcache_imageio_is_raw_tileset(main_tileset)) {
         errcode = 404;
         errmsg = apr_psprintf(ctx->pool,"received wms request with invalid layer %s", key);
         goto proxies;
@@ -710,7 +715,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
            * this step is not done for the first tileset as we have already performed it
            */
           tileset = mapcache_configuration_get_tileset(config,key);
-          if (!tileset) {
+          if (!tileset || mapcache_imageio_is_raw_tileset(tileset)) {
             errcode = 404;
             errmsg = apr_psprintf(ctx->pool,"received wms request with invalid layer %s", key);
             goto proxies;
@@ -810,7 +815,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
       goto proxies;
     } else {
       mapcache_tileset *tileset = mapcache_configuration_get_tileset(config,str);
-      if(!tileset) {
+      if(!tileset || mapcache_imageio_is_raw_tileset(tileset)) {
         errcode = 404;
         errmsg = apr_psprintf(ctx->pool,"received wms getfeatureinfo request with invalid layer %s", str);
         goto proxies;

@@ -77,7 +77,6 @@ mapcache_http_response *mapcache_http_response_create(apr_pool_t *pool)
 
 void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int ntiles)
 {
-
   apr_thread_t **threads;
   apr_threadattr_t *thread_attrs;
   int nthreads;
@@ -98,7 +97,6 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
     }
     return;
   }
-
 
   /* allocate a thread struct for each tile. Not all will be used */
   thread_tiles = (_thread_tile*)apr_pcalloc(ctx->pool,ntiles*sizeof(_thread_tile));
@@ -205,7 +203,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   format = NULL;
 
 #ifdef DEBUG
-  if(req_tile->ntiles ==0) {
+  if(req_tile->ntiles == 0) {
     ctx->set_error(ctx,500,"BUG: get_tile called with 0 tiles");
     return NULL;
   }
@@ -215,7 +213,6 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   if(ctx->supports_redirects && req_tile->ntiles == 1) {
     req_tile->tiles[0]->allow_redirect = 1;
   }
-
 
   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles);
   if(GC_HAS_ERROR(ctx))
@@ -295,7 +292,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 
   if(!response->data) {
-    /* we need to encode the raw image data*/
+    /* we need to encode the raw image data */
     if(base) {
       if(req_tile->image_request.format) {
         format = req_tile->image_request.format;
@@ -320,14 +317,28 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       response->data = mapcache_empty_png_decode(ctx,req_tile->tiles[0]->grid_link->grid->tile_sx, req_tile->tiles[0]->grid_link->grid->tile_sy, empty,&is_empty); /* is_empty is unchanged and left to 1 */
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
+  } else {
+    /* set format, not an image type (e.g. GC_RAW) */
+    if(req_tile->image_request.format) {
+      format = req_tile->image_request.format;
+    } else {
+      format = req_tile->tiles[0]->tileset->format;
+      if(!format) {
+        format = ctx->config->default_image_format; /* this one is always defined */
+      }
+    }
   }
 
   /* compute the content-type */
-  t = mapcache_imageio_header_sniff(ctx,response->data);
-  if(t == GC_PNG)
-    apr_table_set(response->headers,"Content-Type","image/png");
-  else if(t == GC_JPEG)
-    apr_table_set(response->headers,"Content-Type","image/jpeg");
+  if(format && format->type == GC_RAW) {
+    apr_table_set(response->headers,"Content-Type",format->mime_type);
+  } else {
+    t = mapcache_imageio_header_sniff(ctx,response->data);
+    if(t == GC_PNG)
+      apr_table_set(response->headers,"Content-Type","image/png");
+    else if(t == GC_JPEG)
+      apr_table_set(response->headers,"Content-Type","image/jpeg");
+  }
 
   /* compute expiry headers */
   if(expires) {
@@ -428,13 +439,13 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   mapcache_http_response *response;
   mapcache_map *basemap = NULL;
   char *timestr;
+
 #ifdef DEBUG
   if(req_map->nmaps ==0) {
     ctx->set_error(ctx,500,"BUG: get_map called with 0 maps");
     return NULL;
   }
 #endif
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ERROR) {
     ctx->set_error(ctx, 404, "full wms support disabled");
@@ -443,7 +454,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   format = NULL;
   response = mapcache_http_response_create(ctx->pool);
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
     basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);

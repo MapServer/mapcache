@@ -72,7 +72,6 @@ char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_met
 
 void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tileset *tileset)
 {
-
   /* check we have all we want */
   if(tileset->_cache == NULL) {
     /* TODO: we should allow tilesets with no caches */
@@ -119,6 +118,12 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
       ctx->set_error(ctx,400,"tileset \"%s\" has no <format> configured, but it is needed for metatiling",
                      tileset->name);
       return;
+    }
+  }
+
+  if(tileset->format && tileset->format->type == GC_RAW) {
+    if(tileset->metasize_x != 1 || tileset->metasize_y != 1 || tileset->metabuffer != 0) {
+      ctx->set_error(ctx, 400, "tileset \"%s\" references a RAW format type, metatiling is not supported for the \"%s\" format", tileset->name, tileset->format->name);
     }
   }
 }
@@ -394,6 +399,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   mapcache_grid *grid = tile->grid_link->grid;
   double res = grid->levels[tile->z]->resolution;
   double gbuffer,gwidth,gheight,fullgwidth,fullgheight;
+
   mt->map.tileset = tileset;
   mt->map.grid_link = tile->grid_link;
   mt->z = tile->z;
@@ -480,6 +486,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
   mapcache_tileset *tileset = mt->map.tileset;
+
   if(!tileset->source || tileset->read_only) {
     ctx->set_error(ctx,500,"tileset_render_metatile called on tileset with no source or that is read-only");
     return;
@@ -959,6 +966,7 @@ cleanup:
 
 void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
   int i,ret;
+
   assert(tile->dimensions);
   if(tile->tileset->store_dimension_assemblies) {
     for(i=0;i<tile->dimensions->nelts;i++) {
@@ -1043,7 +1051,6 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
     }
   }
 
-
   if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
     int isLocked = MAPCACHE_FALSE;
     void *lock;
@@ -1062,8 +1069,6 @@ static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ct
       mt = mapcache_tileset_metatile_get(ctx, tile);
       isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
       GC_CHECK_ERROR(ctx);
-
-
       if(isLocked == MAPCACHE_TRUE) {
          /* no other thread is doing the rendering, do it ourselves */
 #ifdef DEBUG

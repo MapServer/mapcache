@@ -520,6 +520,12 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       alpha_cutoff = atoi(cur_node->txt);
     }
     format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque, alpha_cutoff);
+  } else if(!strcasecmp(type,"RAW")) {
+    char *extension=NULL;
+    char *mime_type=NULL;
+    if ((cur_node = ezxml_child(node,"extension")) != NULL) extension = apr_pstrdup(ctx->pool, cur_node->txt);
+    if ((cur_node = ezxml_child(node,"mime_type")) != NULL) mime_type = apr_pstrdup(ctx->pool, cur_node->txt);
+    format = mapcache_imageio_create_raw_format(ctx->pool,name,extension,mime_type);
   } else {
     ctx->set_error(ctx, 400, "unknown format type %s for format \"%s\"", type, name);
     return;
@@ -528,7 +534,6 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     ctx->set_error(ctx, 400, "failed to parse format \"%s\"", name);
     return;
   }
-
 
   mapcache_configuration_add_image_format(config,format,name);
   return;
@@ -628,6 +633,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   ezxml_t cur_node;
   char* value;
   int havewgs84bbox=0;
+
   if(config->mode == MAPCACHE_MODE_NORMAL) {
     name = (char*)ezxml_attr(node,"name");
   } else {
@@ -741,7 +747,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       APR_ARRAY_PUSH(gridlink->intermediate_grids,mapcache_grid_link*) = intermediate_gridlink;
     }
 
-
     mapcache_grid_compute_limits(grid,extent,gridlink->grid_limits,tolerance);
 
     sTolerance = (char*)ezxml_attr(cur_node,"minzoom");
@@ -807,8 +812,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         }
       }
     }
-
-
 
     /* compute wgs84 bbox if it wasn't supplied already */
     if(!havewgs84bbox && !strcasecmp(grid->srs,"EPSG:4326")) {
@@ -892,7 +895,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     tileset->metasize_x = values[0];
     tileset->metasize_y = values[1];
   }
-
 
   if ((cur_node = ezxml_child(node,"watermark")) != NULL) {
     if(!*cur_node->txt) {
