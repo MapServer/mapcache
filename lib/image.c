@@ -280,12 +280,22 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
 
 void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
 {
+
   if(mt->map.tileset->format) {
     /* the tileset has a format defined, we will use it to encode the data */
     mapcache_image *tileimg;
     mapcache_image *metatile;
     int i,j;
     int sx,sy;
+
+    /*
+    ** No metatile support for raw format types...
+    */
+    if(mt->map.tileset->format->type == GC_RAW) {
+      mt->tiles[0].encoded_data = mt->map.encoded_data;
+      return;
+    }
+
     if(mt->map.raw_image) {
       metatile = mt->map.raw_image;
     } else {

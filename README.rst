@@ -31,7 +31,7 @@ License
 	 * Author:   Thomas Bonfort and the MapServer team.
 	 *
 	 ******************************************************************************
-	 * Copyright (c) 1996-2018 Regents of the University of Minnesota.
+	 * Copyright (c) 1996-2019 Regents of the University of Minnesota.
 	 *
 	 * Permission is hereby granted, free of charge, to any person obtaining a
 	 * copy of this software and associated documentation files (the "Software"),
