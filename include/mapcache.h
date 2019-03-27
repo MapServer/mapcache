@@ -1326,7 +1326,7 @@ MS_DLL_EXPORT int mapcache_util_extract_int_list(mapcache_context *ctx, const ch
                                    int *numbers_count);
 MS_DLL_EXPORT int mapcache_util_extract_double_list(mapcache_context *ctx, const char* args, const char *sep, double **numbers,
                                       int *numbers_count);
-char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
+MS_DLL_EXPORT char *mapcache_util_str_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 const char *replacement );
 char *mapcache_util_dbl_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 double replacement );
@@ -1346,7 +1346,7 @@ char* mapcache_util_quadkey_encode(mapcache_context *ctx, int x, int y, int z);
  * \return the original string if no matches were found, or the sanitized
  *         string allocated from the given pool
  */
-char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to);
+MS_DLL_EXPORT char* mapcache_util_str_sanitize(apr_pool_t *pool, const char *str, const char* from, char to);
 
 typedef enum {
   MAPCACHE_UTIL_XML_SECTION_TEXT,
@@ -1356,7 +1356,7 @@ typedef enum {
 
 char* mapcache_util_str_xml_escape(apr_pool_t *pool, const char *str, mapcache_util_xml_section_type xml_section_type);
 
-char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
+MS_DLL_EXPORT char* mapcache_util_get_tile_dimkey(mapcache_context *ctx, mapcache_tile *tile, char* sanitized_chars, char *sanitize_to);
 
 char* mapcache_util_get_tile_key(mapcache_context *ctx, mapcache_tile *tile, char *stemplate,
                                  char* sanitized_chars, char *sanitize_to);
@@ -1569,8 +1569,8 @@ void mapcache_tile_set_cached_dimension(mapcache_context *ctx, mapcache_tile *ti
 void mapcache_map_set_cached_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
 void mapcache_tile_set_requested_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);
 void mapcache_map_set_requested_dimension(mapcache_context *ctx, mapcache_map *map, const char *name, const char *value);
-void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
-void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+MS_DLL_EXPORT void mapcache_set_requested_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
+MS_DLL_EXPORT void mapcache_set_cached_dimension(mapcache_context *ctx, apr_array_header_t *dimensions, const char *name, const char *value);
 MS_DLL_EXPORT apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t *pool, apr_array_header_t *src);
 
 struct mapcache_dimension {
