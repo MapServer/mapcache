@@ -469,7 +469,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         ezxml_set_attr(resourceurl,"resourceType","FeatureInfo");
         ezxml_set_attr(resourceurl,"template",
                        apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
-                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",apr_psprintf(ctx->pool,"%d",i),NULL));
+                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}/{J}/{I}.",apr_psprintf(ctx->pool,"%d",i),NULL));
       }
     }
 
