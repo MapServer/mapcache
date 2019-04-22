@@ -1258,7 +1258,7 @@ int main(int argc, const char **argv)
            extent->miny < -91.0 ||
            extent->maxy > 91.0) {
           printf("\n********************************************************************************\n"
-                 "* WARNING!!!: you are seeding a grid in latlon degreees,\n"
+                 "* WARNING!!!: you are seeding a grid in latlon degrees,\n"
                  "* but your provided OGR intersection features span (%f,%f,%f,%f).\n"
                  "* this seems like an error, you should be providing OGR features that\n"
                  "* are in the same projection as the grid you want to seed\n"
@@ -1271,7 +1271,7 @@ int main(int argc, const char **argv)
            extent->miny > -91.0 &&
            extent->maxy < 91.0) {
           printf("\n********************************************************************************\n"
-                 "* WARNING!!!: you are seeding a grid that is not in latlon degreees,\n"
+                 "* WARNING!!!: you are seeding a grid that is not in latlon degrees,\n"
                  "* but your provided OGR intersection features span (%f,%f,%f,%f) which seem to be in degrees.\n"
                  "* this seems like an error, you should be providing OGR features that\n"
                  "* are in the same projection as the grid you want to seed\n"
