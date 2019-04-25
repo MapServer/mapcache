@@ -37,6 +37,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <float.h>
+#include <unistd.h>
 
 #include <apr_general.h>
 #include <apr_getopt.h>
