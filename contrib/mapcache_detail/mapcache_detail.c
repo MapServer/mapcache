@@ -37,7 +37,11 @@
 #include <stdint.h>
 #include <math.h>
 #include <float.h>
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
 
 #include <apr_general.h>
 #include <apr_getopt.h>
