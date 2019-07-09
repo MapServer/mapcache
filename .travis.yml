@@ -2,19 +2,19 @@ matrix:
   fast_finish: true
   include:
     - os: linux
-      dist: trusty
+      dist: xenial
       language: c
       sudo: required
       env:
-        - DISTRO=trusty
+        - DISTRO=xenial
         - BUILD_TYPE=maximum
 
     - os: linux
-      dist: trusty
+      dist: xenial
       language: c
       sudo: required
       env:
-        - DISTRO=trusty
+        - DISTRO=xenial
         - BUILD_TYPE=minimum
 
     - os: linux
@@ -29,7 +29,7 @@ language: c
 before_install:
   - sudo mv /etc/apt/sources.list.d/pgdg* /tmp
   - sudo apt-get purge -y libgdal* libgeos* libspatialite*
-  - sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-testing
+  - sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
   - sudo apt-get update
   - sudo apt-get install cmake libspatialite-dev libfcgi-dev libproj-dev libgeos-dev libgdal-dev libtiff-dev libgeotiff-dev apache2-dev libpcre3-dev libsqlite3-dev libdb-dev
 # For testing
@@ -42,7 +42,7 @@ script:
   - make -j3
   - sudo make install
 # Only test with Apache 2.4
-  - if test "$DISTRO" = "trusty" -a "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
+  - if test "$DISTRO" = "xenial" -a "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
 
 
 #notifications:
