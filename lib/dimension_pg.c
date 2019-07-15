@@ -104,6 +104,7 @@ static void _mapcache_dimension_postgresql_bind_parameters(mapcache_context *ctx
 
   paramidx = VOIDP2INT(apr_hash_get(param_indexes,":dim",APR_HASH_KEY_STRING));
   if (paramidx) {
+    paramidx-=1;
     (*paramValues)[paramidx] = dim_value;
     (*paramLengths)[paramidx] = strlen(dim_value);
     (*paramFormats)[paramidx] = 0;
