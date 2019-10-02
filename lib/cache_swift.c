@@ -3,10 +3,10 @@
  *
  * Project:  MapServer
  * Purpose:  MapCache tile caching support file: swift cache backend.
- * Author:   Michael Downey and the MapServer team.
+ * Author:   Fabian Shindler <fabian.schindler@eox.at>
  *
  ******************************************************************************
- * Copyright (c) 1996-2013 Regents of the University of Minnesota.
+ * Copyright (c) 1996-2019 EOX IT Services GmbH
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -76,27 +76,32 @@ void mapcache_swift_authenticate(mapcache_context *ctx, mapcache_cache_swift *ca
     keystone_err = keystone_authenticate(conn->keystone_context, cache->auth_url, cache->tenant, cache->username, cache->password);
     if (keystone_err != KSERR_SUCCESS) {
         ctx->set_error(ctx, 500, "failed to keystone_authenticate()");
+        return;
     }
 
     token = (char *)keystone_get_auth_token(conn->keystone_context);
     if (token == NULL) {
         ctx->set_error(ctx, 500, "failed to keystone_get_auth_token()");
+        return;
     }
 
     swift_err = swift_set_auth_token(conn->swift_context, token);
     if (swift_err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "failed to swift_set_auth_token()");
+        return;
     }
 
     // TODO: get version and endpoint type
     url = (char *)keystone_get_service_url(conn->keystone_context, OS_SERVICE_SWIFT, 1, OS_ENDPOINT_URL_PRIVATE);
     if (token == NULL) {
         ctx->set_error(ctx, 500, "failed to keystone_get_service_url()");
+        return;
     }
 
     swift_err = swift_set_url(conn->swift_context, url);
     if (swift_err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "failed to swift_set_url()");
+        return;
     }
 }
 
@@ -163,7 +168,7 @@ static int _mapcache_cache_swift_has_tile(mapcache_context *ctx, mapcache_cache 
     struct swift_connection *conn;
     enum swift_error err;
     int exists;
-    int error = MAPCACHE_FALSE;
+    int rv = MAPCACHE_FALSE;
     char *container;
     char *key;
 
@@ -188,33 +193,33 @@ static int _mapcache_cache_swift_has_tile(mapcache_context *ctx, mapcache_cache 
     err = swift_set_container(conn->swift_context, container);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set container %s: %d", container, err);
+        goto cleanup;
     }
     err = swift_set_object(conn->swift_context, key);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set object %s: %d", key, err);
+        goto cleanup;
     }
 
-    /* retry loop */
-    for (int i = 0; i < 1; ++i) {
-        err = swift_has(conn->swift_context, &exists);
-        if (err == SCERR_AUTH_FAILED) {
-            mapcache_swift_authenticate(ctx, cache, conn);
-            if (GC_HAS_ERROR(ctx)) {
-                break;
-            }
-            continue;
-        } 
-        else {
-            if (err == SCERR_SUCCESS && exists) {
-                error = MAPCACHE_TRUE;
-            }
-            break;
+    err = swift_has(conn->swift_context, &exists);
+    if (err == SCERR_AUTH_FAILED) {
+        /* re-authenticate and retry */
+        mapcache_swift_authenticate(ctx, cache, conn);
+        if (GC_HAS_ERROR(ctx)) {
+            goto cleanup;
         }
+        err = swift_has(conn->swift_context, &exists);
     }
 
-    mapcache_connection_pool_release_connection(ctx, pc);
+    if (err == SCERR_SUCCESS && exists) {
+        rv = MAPCACHE_TRUE;
+    } else {
+        rv = MAPCACHE_FALSE;
+    }
 
-    return error;
+cleanup:
+    mapcache_connection_pool_release_connection(ctx, pc);
+    return rv;
 }
 
 static void _mapcache_cache_swift_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
@@ -246,29 +251,27 @@ static void _mapcache_cache_swift_delete(mapcache_context *ctx, mapcache_cache *
     err = swift_set_container(conn->swift_context, container);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set container %s: %d", container, err);
+        goto cleanup;
     }
     err = swift_set_object(conn->swift_context, key);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set object %s: %d", key, err);
+        goto cleanup;
     }
 
-    /* retry loop */
-    for (int i = 0; i < 1; ++i) {
-        err = swift_delete_object(conn->swift_context);
-        if (err == SCERR_AUTH_FAILED) {
-            mapcache_swift_authenticate(ctx, cache, conn);
-            if (GC_HAS_ERROR(ctx)) {
-                break;
-            }
-            continue;
-        } 
-        else if (err != SCERR_SUCCESS) {
-            ctx->set_error(ctx, 500, "swift: failed to delete object %s: %d", key, err);
+    err = swift_delete_object(conn->swift_context);
+    if (err == SCERR_AUTH_FAILED) {
+        mapcache_swift_authenticate(ctx, cache, conn);
+        if (GC_HAS_ERROR(ctx)) {
+            goto cleanup;
         }
+        err = swift_delete_object(conn->swift_context);
+    } else if (err != SCERR_SUCCESS) {
+        ctx->set_error(ctx, 500, "swift: failed to delete object %s: %d", key, err);
     }
 
+cleanup:
     mapcache_connection_pool_release_connection(ctx, pc);
-
     return;
 }
 
@@ -284,13 +287,15 @@ static int _mapcache_cache_swift_get(mapcache_context *ctx, mapcache_cache *pcac
     mapcache_cache_swift *cache = (mapcache_cache_swift*) pcache;
     struct swift_connection *conn;
     enum swift_error err;
-    int error = MAPCACHE_FALSE;
+    int rv = MAPCACHE_FAILURE;
     char *container;
     char *key;
+    size_t size;
+    void *data = NULL;
 
     key = mapcache_util_get_tile_key(ctx, tile, cache->key_template, " \r\n\t\f\e\a\b", "#");
     if (GC_HAS_ERROR(ctx)) {
-        return MAPCACHE_FALSE;
+        return MAPCACHE_FAILURE;
     }
 
     if(strchr(cache->container_template,'{')) {
@@ -302,45 +307,45 @@ static int _mapcache_cache_swift_get(mapcache_context *ctx, mapcache_cache *pcac
     pc = _swift_get_connection(ctx, cache, tile);
 
     if (GC_HAS_ERROR(ctx)) {
-        return MAPCACHE_FALSE;
+        return MAPCACHE_FAILURE;
     }
     conn = pc->connection;
 
     err = swift_set_container(conn->swift_context, container);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set container %s: %d", container, err);
+        goto cleanup;
     }
     err = swift_set_object(conn->swift_context, key);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set object %s: %d", key, err);
+        goto cleanup;
     }
 
-    /* retry loop */
-    for (int i = 0; i < 1; ++i) {
-        size_t size;
-        void *data;
-
-        err = swift_get_data(conn->swift_context, &size, &data);
-        if (err == SCERR_AUTH_FAILED) {
-            mapcache_swift_authenticate(ctx, cache, conn);
-            if (GC_HAS_ERROR(ctx)) {
-                break;
-            }
-            continue;
-        } 
-        else if (err != SCERR_SUCCESS) {
-            ctx->set_error(ctx, 500, "swift: failed to get object data %s: %d", key, err);
-        } else {
-            tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
-            mapcache_buffer_append(tile->encoded_data, size, data);
-            free(data);
+    err = swift_get_data(conn->swift_context, &size, &data);
+    if (err == SCERR_AUTH_FAILED) {
+        mapcache_swift_authenticate(ctx, cache, conn);
+        if (GC_HAS_ERROR(ctx)) {
+            goto cleanup;
         }
-        break;
+        err = swift_get_data(conn->swift_context, &size, &data);
+    }
+    
+    if (err == SCERR_SUCCESS) {
+        rv = MAPCACHE_SUCCESS;
+    } else {
+        ctx->set_error(ctx, 500, "swift: failed to get object data %s: %d", key, err);
+        rv = MAPCACHE_FAILURE;
+        goto cleanup;
     }
 
-    mapcache_connection_pool_release_connection(ctx, pc);
+    tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
+    mapcache_buffer_append(tile->encoded_data, size, data);
 
-    return error;
+cleanup:
+    conn->swift_context->allocator(data, 0);
+    mapcache_connection_pool_release_connection(ctx, pc);
+    return rv;
 }
 
 /**
@@ -355,7 +360,6 @@ static void _mapcache_cache_swift_set(mapcache_context *ctx, mapcache_cache *pca
     mapcache_cache_swift *cache = (mapcache_cache_swift*) pcache;
     struct swift_connection *conn;
     enum swift_error err;
-    int error = MAPCACHE_FALSE;
     char *container;
     char *key;
 
@@ -385,34 +389,29 @@ static void _mapcache_cache_swift_set(mapcache_context *ctx, mapcache_cache *pca
     err = swift_set_container(conn->swift_context, container);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set container %s: %d", container, err);
+        goto cleanup;
     }
     err = swift_set_object(conn->swift_context, key);
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "swift: failed to set object %s: %d", key, err);
+        goto cleanup;
     }
 
-    /* retry loop */
-    for (int i = 0; i < 1; ++i) {
-        err = swift_put_data(conn->swift_context, tile->encoded_data->buf, tile->encoded_data->size);
-        if (err == SCERR_AUTH_FAILED) {
-            mapcache_swift_authenticate(ctx, cache, conn);
-            if (GC_HAS_ERROR(ctx)) {
-                break;
-            }
-            continue;
-        } 
-        else if (err != SCERR_SUCCESS) {
-            ctx->set_error(ctx, 500, "swift: failed to set object data %s: %d", key, err);
+    err = swift_put_data(conn->swift_context, tile->encoded_data->buf, tile->encoded_data->size);
+    if (err == SCERR_AUTH_FAILED) {
+        mapcache_swift_authenticate(ctx, cache, conn);
+        if (GC_HAS_ERROR(ctx)) {
+            goto cleanup;
         }
-        break;
+        err = swift_put_data(conn->swift_context, tile->encoded_data->buf, tile->encoded_data->size);
+    } 
+
+    if (err != SCERR_SUCCESS) {
+        ctx->set_error(ctx, 500, "failed to store tile %s to cache %s due to error %d.", key, cache->cache.name, err);
     }
 
+cleanup:
     mapcache_connection_pool_release_connection(ctx, pc);
-
-    if (err != SCERR_SUCCESS)
-    {
-        ctx->set_error(ctx, 500, "failed to store tile %s to cache %s due to error %d.", key, cache->cache.name, error);
-    }
 }
 
 /**
@@ -476,8 +475,6 @@ static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx,
  * \private \memberof mapcache_cache_swift
  */
 static void _mapcache_cache_swift_configuration_post_config(mapcache_context *ctx, mapcache_cache *cache, mapcache_cfg *cfg) {
-    // riack_init();
-    // TODO?
 }
 
 /**

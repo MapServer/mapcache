@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "swift-client.h"
 
@@ -41,17 +42,6 @@ default_curl_error_callback(const char *curl_funcname, CURLcode curl_err)
 	assert(curl_funcname != NULL);
 	fprintf(stderr, "%s failed: libcurl error code %ld: %s\n", curl_funcname, (long) curl_err, curl_easy_strerror(curl_err));
 }
-
-/**
- * Default handler for libiconv errors.
- */
-// static void
-// default_iconv_error_callback(const char *iconv_funcname, int iconv_errno)
-// {
-// 	assert(iconv_funcname != NULL);
-// 	errno = iconv_errno;
-// 	perror(iconv_funcname);
-// }
 
 /**
  * Default memory [re-/de-]allocator.
@@ -115,17 +105,9 @@ swift_start(swift_context_t *context)
 	if (NULL == context->curl_error) {
 		context->curl_error = default_curl_error_callback;
 	}
-	// if (NULL == context->iconv_error) {
-	// 	context->iconv_error = default_iconv_error_callback;
-	// }
 	if (NULL == context->allocator) {
 		context->allocator = default_allocator;
 	}
-	// context->pvt.iconv = iconv_open("UTF-8", "WCHAR_T");
-	// if ((iconv_t) -1 == context->pvt.iconv) {
-	// 	context->iconv_error("iconv_open", errno);
-	// 	return SCERR_INIT_FAILED;
-	// }
 	context->pvt.curl = curl_easy_init();
 	if (NULL == context->pvt.curl) {
 		/* NOTE: No error code from libcurl, so we assume/invent CURLE_FAILED_INIT */
@@ -161,9 +143,6 @@ swift_end(swift_context_t *context)
 	if (context->pvt.object != NULL) {
 		context->pvt.object = context->allocator(context->pvt.object, 0);
 	}
-	// if (iconv_close(context->pvt.iconv) < 0) {
-	// 	context->iconv_error("iconv_close", errno);
-	// }
 }
 
 /**
@@ -205,54 +184,6 @@ swift_set_debug(swift_context_t *context, unsigned int enable_debugging)
 
 	return SCERR_SUCCESS;
 }
-
-/**
- * Given a wide string in in, convert it to UTF-8,
- * then URL encode the UTF-8 bytes,
- * then store the result in out.
- */
-// static enum swift_error
-// utf8_and_url_encode(swift_context_t *context, const wchar_t *in, char **out)
-// {
-// 	char *url_encoded, *iconv_in, *iconv_out;
-// 	size_t in_len, utf8_in_len, iconv_in_len, iconv_out_len;
-
-// 	assert(context != NULL);
-// 	assert(in != NULL);
-// 	assert(out != NULL);
-
-// 	/* Convert the wchar_t input to UTF-8 and write the result to out */
-// 	in_len = wcslen(in);
-// 	utf8_in_len = in_len * UTF8_SEQUENCE_MAXLEN; /* Assuming worst-case UTF-8 expansion */
-// 	*out = context->allocator(*out, utf8_in_len);
-// 	if (NULL == *out) {
-// 		return SCERR_ALLOC_FAILED;
-// 	}
-// 	iconv_in_len = in_len * sizeof(wchar_t); /* iconv counts in bytes not chars */
-// 	iconv_out_len = utf8_in_len;
-// 	iconv_in = (char *) in;
-// 	iconv_out = *out;
-// 	if ((size_t) -1 == iconv(context->pvt.iconv, &iconv_in, &iconv_in_len, &iconv_out, &iconv_out_len)) {
-// 		/* This should be impossible, as all wchar_t values should be expressible in UTF-8 */
-// 		context->iconv_error("iconv", errno);
-// 		return SCERR_INVARG;
-// 	}
-// 	/* Create a URL-encoded copy of out in memory newly-allocated by libcurl */
-// 	url_encoded = curl_easy_escape(context->pvt.curl, *out, in_len);
-// 	if (NULL == url_encoded) {
-// 		return SCERR_ALLOC_FAILED;
-// 	}
-// 	/* Copy the URL-encoded value into out, over-writing its previous UTF-8 value */
-// 	*out = context->allocator(*out, strlen(url_encoded) + 1 /* '\0' */);
-// 	if (NULL == *out) {
-// 		return SCERR_ALLOC_FAILED;
-// 	}
-// 	strcpy(*out, url_encoded);
-// 	/* Free the URL-encoded copy created by libcurl */
-// 	curl_free(url_encoded);
-
-// 	return SCERR_SUCCESS;
-// }
 
 /**
  * Set the current Swift server URL. This must not contain any path information.
@@ -329,30 +260,6 @@ swift_set_auth_token(swift_context_t *context, const char *auth_token)
 
 	return SCERR_SUCCESS;
 }
-
-// /**
-//  * Set the name of the current Swift container.
-//  */
-// enum swift_error
-// swift_set_container(swift_context_t *context, wchar_t *container_name)
-// {
-// 	assert(context != NULL);
-// 	assert(container_name != NULL);
-// 	return utf8_and_url_encode(context, container_name, &context->pvt.container);
-// }
-
-// /**
-//  * Set the name of the current Swift object.
-//  */
-// enum swift_error
-// swift_set_object(swift_context_t *context, wchar_t *object_name)
-// {
-// 	assert(context != NULL);
-// 	assert(object_name != NULL);
-// 	return utf8_and_url_encode(context, object_name, &context->pvt.object);
-// }
-
-
 
 /**
  * Set the name of the current Swift container.
@@ -707,6 +614,7 @@ swift_get_file(swift_context_t *context, const char *filename)
 }
 
 struct write_buffer {
+	struct swift_context *context;
 	void *ptr;
 	size_t size;
 };
@@ -716,7 +624,7 @@ write_data_to_buffer(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
 	struct write_buffer *buffer = (struct write_buffer*) userdata;
 	size_t bytesize = size * nmemb;
-	buffer->ptr = realloc(buffer->ptr, buffer->size + bytesize);
+	buffer->ptr = buffer->context->allocator(buffer->ptr, buffer->size + bytesize);
 	memcpy(buffer->ptr + buffer->size, ptr, bytesize);
 	buffer->size += bytesize;
 	return bytesize;
@@ -728,7 +636,7 @@ enum swift_error
 swift_get_data(swift_context_t *context, size_t *size, void **data)
 {
 	enum swift_error swift_err;
-	struct write_buffer buffer = { NULL, 0 };
+	struct write_buffer buffer = { context, NULL, 0 };
 
 	assert(context != NULL);
 	assert(data != NULL);
@@ -746,85 +654,13 @@ swift_get_data(swift_context_t *context, size_t *size, void **data)
 }
 
 /**
- * Add Swift metadata headers to a request.
- * tuple_count specifies the number of {name, value} tuples to be set.
- * names and values must be arrays, each of length tuple_count, specifying the names and values respectively.
- * */
-// static enum swift_error
-// add_metadata_headers(struct swift_context *context, struct curl_slist **headers, size_t metadata_count, const wchar_t **metadata_names, const wchar_t **metadata_values)
-// {
-// 	char *header, *iconv_in, *iconv_out;
-// 	size_t iconv_in_len, iconv_out_len;
-
-// 	assert(context != NULL);
-// 	assert((0 == metadata_count) || (metadata_names != NULL));
-// 	assert((0 == metadata_count) || (metadata_values != NULL));
-
-// 	header = NULL;
-// 	while (metadata_count--) {
-// 		header = context->allocator(
-// 			header,
-// 			strlen(SWIFT_METADATA_PREFIX)
-// 			+ wcslen(metadata_names[metadata_count]) * UTF8_SEQUENCE_MAXLEN /* Assume worst-case expansion */
-// 			+ 2 /* ": " */
-// 			+ wcslen(metadata_values[metadata_count]) * UTF8_SEQUENCE_MAXLEN /* Assume worst-case expansion */
-// 			+ 1 /* '\0' */
-// 		);
-// 		if (NULL == header) {
-// 			curl_slist_free_all(*headers);
-// 			context->allocator(header, 0);
-// 			return SCERR_ALLOC_FAILED;
-// 		}
-// 		strcpy(header, SWIFT_METADATA_PREFIX);
-// 		/* NOTE: OpenStack Swift docs don't mention converting name and value to UTF-8, but we do it anyway */
-// 		iconv_in = (char *) metadata_names[metadata_count];
-// 		iconv_in_len = (wcslen(metadata_names[metadata_count]) + 1) * sizeof(wchar_t); /* iconv counts in bytes not chars */
-// 		iconv_out = &header[strlen(header)];
-// 		iconv_out_len = wcslen(metadata_names[metadata_count]) * UTF8_SEQUENCE_MAXLEN + 1 /* '\0' */;
-// 		if ((size_t) -1 == iconv(context->pvt.iconv, &iconv_in, &iconv_in_len, &iconv_out, &iconv_out_len)) {
-// 			/* This should be impossible, as all wchar_t values should be expressible in UTF-8 */
-// 			context->iconv_error("iconv", errno);
-// 			curl_slist_free_all(*headers);
-// 			context->allocator(header, 0);
-// 			return SCERR_INVARG;
-// 		}
-// 		strcat(header, ": ");
-// 		iconv_in = (char *) metadata_values[metadata_count];
-// 		iconv_in_len = (wcslen(metadata_values[metadata_count]) + 1) * sizeof(wchar_t); /* iconv counts in bytes not chars */
-// 		iconv_out = &header[strlen(header)];
-// 		iconv_out_len = wcslen(metadata_values[metadata_count]) * UTF8_SEQUENCE_MAXLEN + 1 /* '\0' */;
-// 		if ((size_t) -1 == iconv(context->pvt.iconv, &iconv_in, &iconv_in_len, &iconv_out, &iconv_out_len)) {
-// 			/* This should be impossible, as all wchar_t values should be expressible in UTF-8 */
-// 			context->iconv_error("iconv", errno);
-// 			curl_slist_free_all(*headers);
-// 			context->allocator(header, 0);
-// 			return SCERR_INVARG;
-// 		}
-// 		*headers = curl_slist_append(*headers, header);
-// 	}
-// 	context->allocator(header, 0);
-
-// 	return SCERR_SUCCESS;
-// }
-
-/**
  * Create a Swift container with the current container name.
  */
 enum swift_error
 swift_create_container(swift_context_t *context, size_t metadata_count, const wchar_t **metadata_names, const wchar_t **metadata_values)
 {
-	enum swift_error sc_err;
-	struct curl_slist *headers = NULL;
-
 	assert(context != NULL);
 	assert(context->pvt.auth_token != NULL);
-	// assert((0 == metadata_count) || (metadata_names != NULL));
-	// assert((0 == metadata_count) || (metadata_values != NULL));
-
-	// sc_err = add_metadata_headers(context, &headers, metadata_count, metadata_names, metadata_values);
-	// if (SCERR_SUCCESS != sc_err) {
-	// 	return sc_err;
-	// }
 
 	return swift_request(context, CREATE_CONTAINER, NULL, empty_request, NULL, ignore_response, NULL);
 }
@@ -850,18 +686,10 @@ swift_delete_container(swift_context_t *context)
 enum swift_error
 swift_put(swift_context_t *context, supply_data_func_t supply_data_callback, void *callback_arg)
 {
-	enum swift_error sc_err;
 	struct curl_slist *headers = NULL;
 
 	assert(context != NULL);
 	assert(context->pvt.auth_token != NULL);
-	// assert((0 == metadata_count) || (metadata_names != NULL));
-	// assert((0 == metadata_count) || (metadata_values != NULL));
-
-	// sc_err = add_metadata_headers(context, &headers, metadata_count, metadata_names, metadata_values);
-	// if (SCERR_SUCCESS != sc_err) {
-	// 	return sc_err;
-	// }
 
 	return swift_request(context, PUT_OBJECT, headers, supply_data_callback, callback_arg, ignore_response, NULL);
 }
@@ -888,8 +716,6 @@ swift_put_file(swift_context_t *context, const char *filename)
 
 	assert(context != NULL);
 	assert(filename != NULL);
-	// assert((0 == metadata_count) || (metadata_names != NULL));
-	// assert((0 == metadata_count) || (metadata_values != NULL));
 
 	stream = fopen(filename, "rb");
 	if (NULL == stream) {
@@ -939,8 +765,6 @@ swift_put_data(swift_context_t *context, const void *ptr, size_t size)
 	struct data_from_mem_args args;
 
 	assert(context != NULL);
-	// assert((0 == metadata_count) || (metadata_names != NULL));
-	// assert((0 == metadata_count) || (metadata_values != NULL));
 
 	args.ptr = ptr;
 	args.nleft = size;
@@ -956,21 +780,13 @@ swift_put_data(swift_context_t *context, const void *ptr, size_t size)
 enum swift_error
 swift_set_metadata(swift_context_t *context, size_t metadata_count, const wchar_t **metadata_names, const wchar_t **metadata_values)
 {
-	enum swift_error sc_err;
 	struct curl_slist *headers = NULL;
 
 	assert(context != NULL);
-	// assert((0 == metadata_count) || (metadata_names != NULL));
-	// assert((0 == metadata_count) || (metadata_values != NULL));
 
 	if (0 == metadata_count) {
 		return SCERR_SUCCESS; /* Nothing to do */
 	}
-
-	// sc_err = add_metadata_headers(context, &headers, metadata_count, metadata_names, metadata_values);
-	// if (SCERR_SUCCESS != sc_err) {
-	// 	return sc_err;
-	// }
 
 	return swift_request(context, SET_OBJECT_METADATA, headers, empty_request, NULL, ignore_response, NULL);
 }
