@@ -325,6 +325,7 @@ typedef enum {
   ,MAPCACHE_CACHE_COMPOSITE
   ,MAPCACHE_CACHE_COUCHBASE
   ,MAPCACHE_CACHE_RIAK
+  ,MAPCACHE_CACHE_SWIFT
 } mapcache_cache_type;
 
 /** \interface mapcache_cache
@@ -405,6 +406,11 @@ mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx);
  * \memberof mapcache_cache_riak
  */
 mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx);
+
+/**
+ * \memberof mapcache_cache_swift
+ */
+mapcache_cache* mapcache_cache_swift_create(mapcache_context *ctx);
 
 /** @} */
 
