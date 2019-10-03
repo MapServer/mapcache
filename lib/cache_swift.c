@@ -55,6 +55,7 @@ struct mapcache_cache_swift {
    char *password;
    char *key_template;
    char *container_template;
+   int debug;
 };
 
 struct swift_conn_params {
@@ -127,6 +128,23 @@ void mapcache_swift_connection_constructor(mapcache_context *ctx, void **conn_, 
         keystone_end(conn->keystone_context);
         ctx->set_error(ctx, 500, "failed to swift_start()");
         return;
+    }
+
+    if (cache->debug) {
+        keystone_err = keystone_set_debug(conn->keystone_context, cache->debug);
+        if (keystone_err != KSERR_SUCCESS) {
+            keystone_end(conn->keystone_context);
+            swift_end(conn->swift_context);
+            ctx->set_error(ctx, 500, "failed to keystone_set_debug()");
+            return;
+        }
+        swift_err = swift_set_debug(conn->swift_context, cache->debug);
+        if (swift_err != SCERR_SUCCESS) {
+            keystone_end(conn->keystone_context);
+            swift_end(conn->swift_context);
+            ctx->set_error(ctx, 500, "failed to swift_set_debug()");
+            return;
+        }
     }
 
     mapcache_swift_authenticate(ctx, cache, conn);
@@ -418,7 +436,7 @@ cleanup:
  * \private \memberof mapcache_cache_swift
  */
 static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *pcache, mapcache_cfg *config) {
-    ezxml_t xauth_url,xtenant,xusername,xpassword,xcontainer,xkey;
+    ezxml_t xauth_url,xtenant,xusername,xpassword,xcontainer,xkey,xdebug;
     mapcache_cache_swift *cache = (mapcache_cache_swift *)pcache;
 
     xauth_url = ezxml_child(node, "auth_url");
@@ -427,6 +445,7 @@ static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx,
     xpassword = ezxml_child(node, "password");
     xcontainer = ezxml_child(node, "container");
     xkey = ezxml_child(node, "key");
+    xdebug = ezxml_child(node, "debug");
 
     if (!xauth_url || !xauth_url->txt || ! *xauth_url->txt) {
         ctx->set_error(ctx, 400, "cache %s: no <auth_url>", pcache->name);
@@ -468,6 +487,10 @@ static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx,
         return;
     } else {
         cache->key_template = apr_pstrdup(ctx->pool, xkey->txt);
+    }
+
+    if (xdebug && xdebug->txt && *xdebug->txt) {
+        cache->debug = strcasecmp(xdebug->txt, "true") == 0;
     }
 }
 
