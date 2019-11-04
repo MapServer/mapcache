@@ -43,22 +43,6 @@ struct mapcache_dimension_elasticsearch {
 };
 
 
-// Hook cJSON memory allocation on APR pool mechanism
-static apr_pool_t * _pool_for_cJSON_malloc_hook;
-static void * _malloc_for_cJSON(size_t size) {
-  return apr_palloc(_pool_for_cJSON_malloc_hook,size);
-}
-static void _free_for_cJSON(void *ptr) { }
-static void _create_json_pool(apr_pool_t * parent_pool) {
-  cJSON_Hooks hooks = { _malloc_for_cJSON, _free_for_cJSON };
-  apr_pool_create(&_pool_for_cJSON_malloc_hook,parent_pool);
-  cJSON_InitHooks(&hooks);
-}
-static void _destroy_json_pool() {
-  apr_pool_destroy(_pool_for_cJSON_malloc_hook);
-}
-
-
 static void _mapcache_dimension_elasticsearch_parse_xml(mapcache_context *ctx, mapcache_dimension *dim, ezxml_t node)
 {
   mapcache_dimension_elasticsearch *dimension;
@@ -113,14 +97,12 @@ static char * _mapcache_dimension_elasticsearch_bind_parameters(mapcache_context
   if (value) {
     // Sanitize dimension value for safe insertion in JSON request
     cJSON * json_str;
-    _create_json_pool(ctx->pool);
     json_str = cJSON_CreateString(value);
     val = cJSON_Print(json_str);
     if (val) {
       // Discard double quotes while copying
       val = apr_pstrndup(ctx->pool,val+1,strlen(val)-2);
     }
-    _destroy_json_pool();
   }
   res = mapcache_util_str_replace_all(ctx->pool,req,":dim",val);
 
@@ -163,8 +145,6 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
   }
   mapcache_buffer_append(buffer,1,"");
   resp = (char*)buffer->buf;
-
-  _create_json_pool(ctx->pool);
 
   // Parse response format: this should be a list of keys or integers
   json_fmt = cJSON_Parse(response_format);
@@ -230,7 +210,6 @@ static apr_array_header_t * _mapcache_dimension_elasticsearch_do_query(mapcache_
   }
 
 cleanup:
-  _destroy_json_pool();
   return table;
 }
 
