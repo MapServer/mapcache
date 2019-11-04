@@ -697,6 +697,10 @@ static const command_rec mod_mapcache_cmds[] = {
   { NULL }
 } ;
 
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(mapcache);
+#endif
+
 module AP_MODULE_DECLARE_DATA mapcache_module = {
   STANDARD20_MODULE_STUFF,
   NULL,
