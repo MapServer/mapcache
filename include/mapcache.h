@@ -1163,7 +1163,8 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
                                     mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
                                     mapcache_tile ***tiles,
-                                    mapcache_grid_link **effectively_used_grid_link);
+                                    mapcache_grid_link **effectively_used_grid_link,
+                                    apr_array_header_t *dimensions);
 
 mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapcache_tileset *tileset,
     mapcache_grid_link *grid_link,
@@ -1563,6 +1564,7 @@ struct mapcache_requested_dimension {
   mapcache_dimension *dimension;
   char *requested_value;
   char *cached_value;
+  apr_array_header_t *cached_entries_for_value;
 };
 
 void mapcache_tile_set_cached_dimension(mapcache_context *ctx, mapcache_tile *tile, const char *name, const char *value);

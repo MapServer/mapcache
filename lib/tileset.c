@@ -209,7 +209,8 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
                                     mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
                                     mapcache_tile ***tiles,
-                                    mapcache_grid_link **effectively_used_grid_link)
+                                    mapcache_grid_link **effectively_used_grid_link,
+                                    apr_array_header_t *dimensions)
 {
   double resolution;
   int level;
@@ -219,6 +220,19 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
   *effectively_used_grid_link = mapcache_grid_get_closest_wms_level(ctx,grid_link,resolution,&level);
+
+  // Get dimensions values
+  if (dimensions)
+  {
+    int j;
+    for (j=0 ; j<dimensions->nelts ; j++)
+    {
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(dimensions,j,mapcache_requested_dimension*);
+      rdim->cached_entries_for_value =
+        mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+            tileset,bbox,(*effectively_used_grid_link)->grid);
+    }
+  }
 
   /* we don't want to assemble tiles that have already been reassembled from a lower level */
   if((*effectively_used_grid_link)->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > (*effectively_used_grid_link)->max_cached_zoom) {
@@ -567,6 +581,7 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
       mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
       rdim->requested_value = dimension->default_value;
       rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
       rdim->dimension = dimension;
       APR_ARRAY_PUSH(tile->dimensions,mapcache_requested_dimension*) = rdim;
     }
@@ -617,6 +632,7 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
       mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
       rdim->requested_value = dimension->default_value;
       rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
       rdim->dimension = dimension;
       APR_ARRAY_PUSH(map->dimensions,mapcache_requested_dimension*) = rdim;
     }
@@ -641,6 +657,7 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
       mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
       rdim->requested_value = dimension->default_value;
       rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
       rdim->dimension = dimension;
       APR_ARRAY_PUSH(fi->map.dimensions,mapcache_requested_dimension*) = rdim;
     }
@@ -819,8 +836,13 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
 
   for(i=0;i<tile->dimensions->nelts; i++) {
     mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-    apr_array_header_t *single_subdimension = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
-                                                                                     tile->tileset, &extent, tile->grid_link->grid);
+    apr_array_header_t *single_subdimension;
+    if (rdim->cached_entries_for_value) {
+      single_subdimension = rdim->cached_entries_for_value;
+    } else {
+      single_subdimension = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+          tile->tileset, &extent, tile->grid_link->grid);
+    }
     if(GC_HAS_ERROR(ctx)) /* invalid dimension given */
       goto cleanup;
 #ifdef DEBUG
