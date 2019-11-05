@@ -903,8 +903,8 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
         if(GC_HAS_ERROR(ctx))
           goto cleanup;
       }
-      if((subtile->encoded_data && mapcache_imageio_header_sniff(ctx,subtile->encoded_data) == GC_JPEG)||
-         (subtile->raw_image && subtile->raw_image->has_alpha == MC_ALPHA_NO)) {
+      if ((mapcache_imageio_alpha_sniff(ctx,subtile->encoded_data) == MC_ALPHA_NO) ||
+          (subtile->raw_image && subtile->raw_image->has_alpha == MC_ALPHA_NO)) {
         /* the returned image is fully opaque, we don't need to get/decode/merge any further subtiles */
         if(assembled_image)
           assembled_image->has_alpha = MC_ALPHA_NO;
