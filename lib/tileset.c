@@ -221,22 +221,25 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   resolution = mapcache_grid_get_resolution(bbox, width, height);
   *effectively_used_grid_link = mapcache_grid_get_closest_wms_level(ctx,grid_link,resolution,&level);
 
-  // Get dimensions values
+  /* we don't want to assemble tiles that have already been reassembled from a lower level */
+  if((*effectively_used_grid_link)->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > (*effectively_used_grid_link)->max_cached_zoom) {
+    level = (*effectively_used_grid_link)->max_cached_zoom;
+  }
+
+  // Get dimensions values for whole map if required by <wms_single_query> configuration
   if (dimensions)
   {
     int j;
     for (j=0 ; j<dimensions->nelts ; j++)
     {
       mapcache_requested_dimension *rdim = APR_ARRAY_IDX(dimensions,j,mapcache_requested_dimension*);
-      rdim->cached_entries_for_value =
-        mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
-            tileset,bbox,(*effectively_used_grid_link)->grid);
+      mapcache_dimension *dim = rdim->dimension;
+      if (dim->wms_single_query_minzoom != -1 && level >= dim->wms_single_query_minzoom) {
+        rdim->cached_entries_for_value =
+          mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+              tileset,bbox,(*effectively_used_grid_link)->grid);
+      }
     }
-  }
-
-  /* we don't want to assemble tiles that have already been reassembled from a lower level */
-  if((*effectively_used_grid_link)->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > (*effectively_used_grid_link)->max_cached_zoom) {
-    level = (*effectively_used_grid_link)->max_cached_zoom;
   }
 
   mapcache_grid_get_xy(ctx,(*effectively_used_grid_link)->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
