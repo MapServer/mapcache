@@ -71,10 +71,10 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *pso
     for(i=0; i<map->dimensions->nelts; i++) {
       mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
       /* set both DIM_key=val and key=val KVP params */
-      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
+      apr_table_setn(params,rdim->dimension->name,rdim->requested_value);
       if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
         char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
-        apr_table_setn(params,dim_name,rdim->cached_value);
+        apr_table_setn(params,dim_name,rdim->requested_value);
       }
     }
   }
@@ -125,10 +125,10 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_source *source, 
     for(i=0; i<map->dimensions->nelts; i++) {
       mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
       /* set both DIM_key=val and key=val KVP params */
-      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
+      apr_table_setn(params,rdim->dimension->name,rdim->requested_value);
       if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
         char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
-        apr_table_setn(params,dim_name,rdim->cached_value);
+        apr_table_setn(params,dim_name,rdim->requested_value);
       }
     }
   }
