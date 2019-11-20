@@ -73,7 +73,7 @@ void mapcache_source_query_info(mapcache_context *ctx, mapcache_source *source, 
 #endif
   for(i=0;i<=source->retry_count;i++) {
     if(i) { /* not our first try */
-      ctx->log(ctx, MAPCACHE_INFO, "source (%s) render_map retry %d of %d. previous try returned error: %s",
+      ctx->log(ctx, MAPCACHE_INFO, "source (%s) query_info retry %d of %d. previous try returned error: %s",
                source->name, i, source->retry_count, ctx->get_error_message(ctx));
       ctx->clear_errors(ctx);
       if(source->retry_delay > 0) {
