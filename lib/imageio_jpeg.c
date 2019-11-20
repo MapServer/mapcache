@@ -243,6 +243,7 @@ void _mapcache_imageio_jpeg_decode_to_image(mapcache_context *r, mapcache_buffer
     return;
   }
 
+  img->has_alpha = MC_ALPHA_NO;
   jpeg_read_header(&cinfo, TRUE);
   jpeg_start_decompress(&cinfo);
   img->w = cinfo.output_width;

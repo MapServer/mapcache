@@ -58,6 +58,43 @@ mapcache_image_format_type mapcache_imageio_header_sniff(mapcache_context *ctx, 
   }
 }
 
+mapcache_image_alpha_type mapcache_imageio_alpha_sniff(mapcache_context *ctx, mapcache_buffer *buffer)
+{
+  const unsigned char * b = buffer->buf;
+  mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,buffer);
+  mapcache_image_alpha_type alpha_type;
+
+  switch (t) {
+    case GC_JPEG:
+      // JPEG files are opaque
+      alpha_type = MC_ALPHA_NO;
+      break;
+    case GC_PNG:
+      if (buffer->size >= 26) {
+        // Check color type of PNG file in IHDR chunk
+        if ( (b[12]|32)=='i' && (b[13]|32)=='h' && (b[14]|32)=='d' && (b[15]|32)=='r' ) {
+          switch (b[25]) {
+            case 4:
+            case 6:
+              // Gray or RGB with alpha
+              alpha_type = MC_ALPHA_YES;
+              break;
+            default:
+              // Other colortypes have no alpha channel
+              alpha_type = MC_ALPHA_NO;
+          }
+        }
+      } else {
+        alpha_type = MC_ALPHA_UNKNOWN;
+      }
+      break;
+    default:
+      alpha_type = MC_ALPHA_UNKNOWN;
+      break;
+  }
+  return alpha_type;
+}
+
 mapcache_image* mapcache_imageio_decode(mapcache_context *ctx, mapcache_buffer *buffer)
 {
   mapcache_image_format_type type = mapcache_imageio_header_sniff(ctx,buffer);

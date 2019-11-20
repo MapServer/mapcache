@@ -1535,6 +1535,11 @@ void _mapcache_imageio_jpeg_decode_to_image(mapcache_context *ctx, mapcache_buff
 mapcache_image_format_type mapcache_imageio_header_sniff(mapcache_context *ctx, mapcache_buffer *buffer);
 
 /**
+ * \brief lookup the first few bytes of a buffer to check for alpha channel
+ */
+mapcache_image_alpha_type mapcache_imageio_alpha_sniff(mapcache_context *ctx, mapcache_buffer *buffer);
+
+/**
  * \brief checks if the given buffer is a recognized image format
  */
 int mapcache_imageio_is_valid_format(mapcache_context *ctx, mapcache_buffer *buffer);

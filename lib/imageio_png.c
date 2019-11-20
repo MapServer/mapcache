@@ -408,6 +408,7 @@ void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffe
     unsigned char pixel[4];
     uint8_t  alpha;
     unsigned char *pixptr = row_pointers[i];
+    img->has_alpha = MC_ALPHA_NO;
     for(j=0; j<img->w; j++) {
 
       memcpy (pixel, pixptr, sizeof (uint32_t));
@@ -417,10 +418,12 @@ void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffe
         pixptr[1] = pixel[1];
         pixptr[2] = pixel[0];
       } else if (alpha == 0) {
+        img->has_alpha = MC_ALPHA_YES;
         pixptr[0] = 0;
         pixptr[1] = 0;
         pixptr[2] = 0;
       } else {
+        img->has_alpha = MC_ALPHA_YES;
         PREMULTIPLY(pixptr[0],pixel[2],alpha);
         PREMULTIPLY(pixptr[1],pixel[1],alpha);
         PREMULTIPLY(pixptr[2],pixel[0],alpha);
