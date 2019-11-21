@@ -63,7 +63,7 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
-  ezxml_t wms_single_query_node;
+  ezxml_t wms_querybymap_node;
   apr_array_header_t *dimensions = apr_array_make(ctx->pool,1,sizeof(mapcache_dimension*));
   for(dimension_node = ezxml_child(node,"dimension"); dimension_node; dimension_node = dimension_node->next) {
     char *name = (char*)ezxml_attr(dimension_node,"name");
@@ -121,23 +121,23 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       return;
     }
     
-    dimension->wms_single_query_minzoom = -1;
-    wms_single_query_node = ezxml_child(dimension_node,"wms_single_query");
-    if (wms_single_query_node && wms_single_query_node->txt) {
-      if (!strcasecmp(wms_single_query_node->txt,"true")) {
-        const char * minzoom = ezxml_attr(wms_single_query_node,"minzoom");
-        dimension->wms_single_query_minzoom = 0;
+    dimension->wms_querybymap_minzoom = -1;
+    wms_querybymap_node = ezxml_child(dimension_node,"wms_querybymap");
+    if (wms_querybymap_node && wms_querybymap_node->txt) {
+      if (!strcasecmp(wms_querybymap_node->txt,"true")) {
+        const char * minzoom = ezxml_attr(wms_querybymap_node,"minzoom");
+        dimension->wms_querybymap_minzoom = 0;
         if (minzoom && *minzoom) {
           char *endptr;
-          dimension->wms_single_query_minzoom = strtol(minzoom,&endptr,10);
-          if (*endptr != 0 || dimension->wms_single_query_minzoom < 0) {
-            ctx->set_error(ctx, 400, "failed to parse minzoom \"%s\" for <wms_single_query>"
+          dimension->wms_querybymap_minzoom = strtol(minzoom,&endptr,10);
+          if (*endptr != 0 || dimension->wms_querybymap_minzoom < 0) {
+            ctx->set_error(ctx, 400, "failed to parse minzoom \"%s\" for <wms_querybymap>"
                 "expecting an integer starting from 0",minzoom);
             return;
           }
         }
-      } else if (strcasecmp(wms_single_query_node->txt,"false")) {
-        ctx->set_error(ctx,400,"failed to parse <wms_single_query> (%s), expecting \"true\" or \"false\"",wms_single_query_node->txt);
+      } else if (strcasecmp(wms_querybymap_node->txt,"false")) {
+        ctx->set_error(ctx,400,"failed to parse <wms_querybymap> (%s), expecting \"true\" or \"false\"",wms_querybymap_node->txt);
         return;
       }
     }

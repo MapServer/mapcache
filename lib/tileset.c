@@ -226,7 +226,7 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
     level = (*effectively_used_grid_link)->max_cached_zoom;
   }
 
-  // Get dimensions values for whole map if required by <wms_single_query> configuration
+  // Get dimensions values for whole map if required by <wms_querybymap> configuration
   if (dimensions)
   {
     int j;
@@ -234,7 +234,7 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
     {
       mapcache_requested_dimension *rdim = APR_ARRAY_IDX(dimensions,j,mapcache_requested_dimension*);
       mapcache_dimension *dim = rdim->dimension;
-      if (dim->wms_single_query_minzoom != -1 && level >= dim->wms_single_query_minzoom) {
+      if (dim->wms_querybymap_minzoom != -1 && level >= dim->wms_querybymap_minzoom) {
         rdim->cached_entries_for_value =
           mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
               tileset,bbox,(*effectively_used_grid_link)->grid);
