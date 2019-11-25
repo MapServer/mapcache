@@ -906,7 +906,8 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
   /* note that subtiles[0].tile == tile */
 #if APR_HAS_THREADS                                                                                               
-  {                                                                                                               
+  if (tile->tileset->assembly_threaded_fetching_maxzoom != -1
+      && tile->z <= tile->tileset->assembly_threaded_fetching_maxzoom) {
     apr_thread_t **threads;                                                                                       
     apr_threadattr_t *thread_attrs;                                                                               
     int nthreads;                                                                                                 
