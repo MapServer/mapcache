@@ -379,7 +379,7 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
     int j;
     for(j=0; j<nmaptiles[i]; j++) {
       tiles[ntiles] = maptiles[i][j];
-      tiles[ntiles]->dimensions = maps[i]->dimensions;
+      tiles[ntiles]->dimensions = mapcache_requested_dimensions_clone(ctx->pool, maps[i]->dimensions);
       ntiles++;
     }
   }
