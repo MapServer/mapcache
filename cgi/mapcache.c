@@ -210,7 +210,7 @@ static void load_config(mapcache_context *ctx, char *filename)
     apr_pool_destroy(config_pool);
   }
   config_pool = tmp_config_pool;
-  mapcache_connection_pool_create(&ctx->connection_pool, config_pool);
+  mapcache_connection_pool_create(cfg, &ctx->connection_pool, config_pool);
 
   return;
 

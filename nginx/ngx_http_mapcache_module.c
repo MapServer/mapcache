@@ -300,7 +300,7 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no mapcache <service>s configured/enabled, no point in continuing.");
     return NGX_CONF_ERROR;
   }
-  mapcache_connection_pool_create(&ctx->connection_pool,ctx->pool);
+  mapcache_connection_pool_create(ctx->config, &ctx->connection_pool,ctx->pool);
   ctx->config->non_blocking = 1;
 
   ngx_http_core_loc_conf_t  *clcf;

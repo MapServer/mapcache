@@ -694,7 +694,7 @@ int main(int argc, char * argv[])
   mapcache_context_init(&ctx);
   ctx.config = mapcache_configuration_create(ctx.pool);
   ctx.log = mapcache_log;
-  mapcache_connection_pool_create(&ctx.connection_pool, ctx.pool);
+  mapcache_connection_pool_create(ctx.config, &ctx.connection_pool, ctx.pool);
 
 
   /////////////////////////////////////////////////////////////////////////////
