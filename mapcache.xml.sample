@@ -1047,6 +1047,20 @@
    <!-- use multiple threads when fetching multiple tiles (used for wms tile assembling -->
    <threaded_fetching>true</threaded_fetching>
    
+
+   <!--
+        Parameters for fine tuning connection_pool component, used for
+        connections to SQLite caches
+        - max_connections: maximum number of open connections at the same time
+          (default: 1024)
+        - time_to_live_us: maximum amount of time in microseconds an unused
+          connection is valid (default 60s)
+   -->
+   <connection_pool>
+     <max_connections>2000</max_connections>
+     <time_to_live_us>1000000</time_to_live_us>
+   </connection_pool>
+
    
    <!-- fastcgi only -->
    <log_level>info</log_level> <!-- logging verbosity -->
