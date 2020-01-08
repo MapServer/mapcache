@@ -1230,6 +1230,28 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     }
   }
 
+  config->cp_hmax = 1024;
+  config->cp_ttl = 60*1000*1000;
+  if((node = ezxml_child(doc,"connection_pool")) != NULL) {
+    ezxml_t cp_param_node;
+    char *endptr;
+    if ((cp_param_node = ezxml_child(node,"max_connections")) != NULL) {
+      config->cp_hmax = (int)strtol(cp_param_node->txt,&endptr,10);
+      if (*endptr != 0 || config->cp_hmax < 0) {
+        ctx->set_error(ctx, 400, "failed to parse max_connections %s "
+            "(expecting a positive integer)", cp_param_node->txt);
+        return;
+      }
+    }
+    if ((cp_param_node = ezxml_child(node,"time_to_live_us")) != NULL) {
+      config->cp_ttl = (int)strtol(cp_param_node->txt,&endptr,10);
+      if (*endptr != 0 || config->cp_ttl < 0) {
+        ctx->set_error(ctx, 400, "failed to parse time_to_live_us %s "
+            "(expecting a positive integer)", cp_param_node->txt);
+        return;
+      }
+    }
+  }
 
 cleanup:
   ezxml_free(doc);

@@ -875,6 +875,12 @@ struct mapcache_cfg {
   /* return 404 on potentially blocking operations (proxying, source getmaps,
    locks on metatile waiting, ... Used for nginx module */
   int non_blocking;
+
+  // Parameters for connection_pool:
+  // - cp_hmax defines the maximum number of open connections at the same time
+  // - cp_ttl defines the maximum amount of time in microseconds an unused connection is valid
+  int cp_hmax;
+  int cp_ttl;
 };
 
 /**
@@ -1643,7 +1649,7 @@ struct mapcache_pooled_connection {
 typedef void (*mapcache_connection_constructor)(mapcache_context *ctx, void **connection, void *params);
 typedef void (*mapcache_connection_destructor)(void *connection);
 
-MS_DLL_EXPORT apr_status_t mapcache_connection_pool_create(mapcache_connection_pool **cp, apr_pool_t *server_pool);
+MS_DLL_EXPORT apr_status_t mapcache_connection_pool_create(mapcache_cfg *cfg, mapcache_connection_pool **cp, apr_pool_t *server_pool);
 mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_context *ctx, char *key,
         mapcache_connection_constructor constructor,
         mapcache_connection_destructor destructor,
