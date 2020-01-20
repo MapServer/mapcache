@@ -158,6 +158,31 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     }
   }
   
+  tileset->assembly_threaded_fetching_maxzoom = -1;
+  dimension_node = ezxml_child(node,"assembly_threaded_fetching");
+  if (dimension_node) {
+    if (dimension_node && dimension_node->txt) {
+      if (!strcmp(dimension_node->txt,"true")) {
+        int maxzoom = INT_MAX;
+        char * smaxzoom = (char*)ezxml_attr(dimension_node,"maxzoom");;
+        if (smaxzoom && *smaxzoom) {
+          char *endptr;
+          maxzoom = (int)strtol(smaxzoom,&endptr,10);
+          if(*endptr != 0 || maxzoom < 0) {
+            ctx->set_error(ctx, 400, "failed to parse assembly_threaded_fetching"
+                " maxzoom %s (expecting a positive integer)", smaxzoom);
+            return;
+          }
+        }
+        tileset->assembly_threaded_fetching_maxzoom = maxzoom;
+      } else if (strcmp(dimension_node->txt,"false")) {
+        ctx->set_error(ctx,400,"failed to parse <assembly_threaded_fetching>"
+            " (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+        return;
+      }
+    }
+  }
+
   /* should we create subdimensions from source if not found in cache.
   e.g. if dimension=mosaic returns dimension=val1,val2,val3 should we 
   query the wms source with dimension=val1 , dimension=val2 and/or

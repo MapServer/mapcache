@@ -1149,6 +1149,12 @@ struct mapcache_tileset {
   mapcache_dimension_assembly_type dimension_assembly_type;
 
   /**
+   * Maximum zoom level for activating multithreaded subtile retrieval
+   * -1 means 'not activated'
+   */
+  int assembly_threaded_fetching_maxzoom;
+
+  /**
    * image to be used as a watermark
    */
   mapcache_image *watermark;

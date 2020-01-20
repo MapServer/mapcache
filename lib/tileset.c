@@ -795,10 +795,41 @@ int mapcache_tileset_tile_get_readonly(mapcache_context *ctx, mapcache_tile *til
 
 typedef struct {
   mapcache_tile *tile;
-  int cache_status;
+  int isFetched;
 } mapcache_subtile;
 
 static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ctx, mapcache_tile *tile, int read_only);
+
+#if APR_HAS_THREADS                                                                      
+/* use a thread pool if using 1.3.12 or higher apu */                                    
+#include "apu_version.h"                                                                 
+#if (APU_MAJOR_VERSION <= 1 && APU_MINOR_VERSION <= 3)                                   
+#define USE_THREADPOOL 0                                                                 
+#include <apr_thread_proc.h>                                                             
+#else                                                                                    
+#define USE_THREADPOOL 1                                                                 
+#include <apr_thread_pool.h>                                                             
+#endif                                                                                   
+                                                                                         
+typedef struct {                                                                         
+  mapcache_subtile *subtile;                                                             
+  mapcache_tile *tile;                                                                   
+  mapcache_context *ctx;                                                                 
+} _thread_subtile;                                                                       
+static void* APR_THREAD_FUNC _thread_get_subtile(apr_thread_t *thread, void *data)       
+{                                                                                        
+  _thread_subtile * t = (_thread_subtile *)data;                                         
+  /* creates the tile from the source, takes care of metatiling */                       
+  mapcache_tileset_tile_get_without_subdimensions(t->ctx, t->subtile->tile,              
+      (t->tile->tileset->subdimension_read_only||!t->tile->tileset->source)?1:0);        
+  t->subtile->isFetched = MAPCACHE_TRUE;                                                 
+#if !USE_THREADPOOL                                                                      
+  apr_thread_exit(thread, APR_SUCCESS);                                                  
+#endif                                                                                   
+  return NULL;                                                                           
+}                                                                                        
+#endif // APR_HAS_THREADS                                                                
+                                                                                         
 
 void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
   apr_array_header_t *subtiles;
@@ -813,6 +844,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
    */
   subtiles = apr_array_make(ctx->pool,1,sizeof(mapcache_subtile));
   st.tile = tile;
+  st.isFetched = MAPCACHE_FALSE;
   APR_ARRAY_PUSH(subtiles,mapcache_subtile) = st;
   mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
   if(GC_HAS_ERROR(ctx)) goto cleanup;
@@ -856,6 +888,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
         /* clone the existing subtiles if we have more than one sub-dimension to assemble for the the current dimension */
         for(k=1;k<single_subdimension->nelts;k++) {
           st.tile = mapcache_tileset_tile_clone(ctx->pool,APR_ARRAY_IDX(subtiles,j,mapcache_subtile).tile);
+          st.isFetched = MAPCACHE_FALSE;
           APR_ARRAY_PUSH(subtiles,mapcache_subtile)=st;
         }
       }
@@ -872,10 +905,51 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
 
   /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
   /* note that subtiles[0].tile == tile */
+#if APR_HAS_THREADS                                                                                               
+  if (tile->tileset->assembly_threaded_fetching_maxzoom != -1
+      && tile->z <= tile->tileset->assembly_threaded_fetching_maxzoom) {
+    apr_thread_t **threads;                                                                                       
+    apr_threadattr_t *thread_attrs;                                                                               
+    int nthreads;                                                                                                 
+    _thread_subtile * thread_subtiles;                                                                            
+
+    nthreads = 0;                                                                                                 
+    apr_threadattr_create(&thread_attrs, ctx->pool);                                                              
+    thread_subtiles = (_thread_subtile*)apr_pcalloc(ctx->pool,subtiles->nelts*sizeof(_thread_subtile));           
+    threads = (apr_thread_t**)apr_pcalloc(ctx->pool,subtiles->nelts*sizeof(apr_thread_t*));                       
+    for(i=subtiles->nelts-1; i>=0; i--) {                                                                         
+      int rv;                                                                                                     
+      thread_subtiles[i].subtile = &(APR_ARRAY_IDX(subtiles,i,mapcache_subtile));                                 
+      thread_subtiles[i].tile = tile;                                                                             
+      thread_subtiles[i].ctx = ctx->clone(ctx);                                                                   
+      rv = apr_thread_create(&threads[i], thread_attrs, _thread_get_subtile,                                      
+          (void*)&(thread_subtiles[i]), thread_subtiles[i].ctx->pool);                                            
+      if (rv != APR_SUCCESS) {                                                                                    
+        // In case of failure creating a thread, the subtile will be fetched in the main loop below
+        break;                                                                             
+      }                                                                                    
+      nthreads++;                                                                          
+    }                                                                                      
+    for(i=0 ; i<nthreads ; i++) {                                                          
+      int rv;                                                                              
+      apr_thread_join(&rv, threads[i]);                                                    
+      if(rv != APR_SUCCESS) {                                                              
+        ctx->set_error(ctx,500, "thread %d of %d failed on exit\n",i,nthreads);            
+      }                                                                                    
+      if(GC_HAS_ERROR(thread_subtiles[i].ctx)) {                                           
+        /* transfer error message from child thread to main context */                     
+        ctx->set_error(ctx,thread_subtiles[i].ctx->get_error(thread_subtiles[i].ctx),      
+            thread_subtiles[i].ctx->get_error_message(thread_subtiles[i].ctx));            
+      }                                                                                    
+    }                                                                                      
+  }
+#endif // APR_HAS_THREADS
 
   for(i=subtiles->nelts-1; i>=0; i--) {
     mapcache_tile *subtile = APR_ARRAY_IDX(subtiles,i,mapcache_subtile).tile;
-    mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */
+    if (!APR_ARRAY_IDX(subtiles,i,mapcache_subtile).isFetched) {
+      mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */
+    }
     if(GC_HAS_ERROR(ctx))
       goto cleanup;
     if(!subtile->nodata) {
