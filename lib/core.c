@@ -369,7 +369,8 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
   for(i=0; i<nmaps; i++) {
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
                                    &maps[i]->extent, maps[i]->width, maps[i]->height,
-                                   &(nmaptiles[i]), &(maptiles[i]), &(effectively_used_grid_links[i]));
+                                   &(nmaptiles[i]), &(maptiles[i]), &(effectively_used_grid_links[i]),
+                                   maps[i]->dimensions);
     if(GC_HAS_ERROR(ctx)) return NULL;
     ntiles += nmaptiles[i];
   }
