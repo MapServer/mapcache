@@ -398,7 +398,7 @@ char * str_replace_all(apr_pool_t *pool, const char *string,
 char * dbfilename(apr_pool_t * pool, char * template,
                   mapcache_tileset * tileset, mapcache_grid * grid,
                   apr_array_header_t * dimensions, apr_hash_t * fmt, int z,
-                  int dbx, int dby, int xcount, int ycount)
+                  int dbx, int dby, int xcount, int ycount, int top)
 {
   int tilx = dbx * xcount;
   int tily = dby * ycount;
@@ -466,6 +466,26 @@ char * dbfilename(apr_pool_t * pool, char * template,
         apr_psprintf(pool, curfmt, tily));
     curfmt = apr_hash_get(fmt, "inv_div_y", APR_HASH_KEY_STRING);
     path = str_replace_all(pool, path, "{inv_div_y}",
+        apr_psprintf(pool, curfmt, dby));
+  }
+
+  // Z top
+  if (top > 0) {
+    char * curfmt;
+    curfmt = apr_hash_get(fmt, "top", APR_HASH_KEY_STRING);
+    path = str_replace_all(pool, path, "{top}",
+        apr_psprintf(pool, curfmt, top));
+    curfmt = apr_hash_get(fmt, "top_x", APR_HASH_KEY_STRING);
+    path = str_replace_all(pool, path, "{top_x}",
+        apr_psprintf(pool, curfmt, dbx));
+    curfmt = apr_hash_get(fmt, "inv_top_x", APR_HASH_KEY_STRING);
+    path = str_replace_all(pool, path, "{inv_top_x}",
+        apr_psprintf(pool, curfmt, dbx));
+    curfmt = apr_hash_get(fmt, "top_y", APR_HASH_KEY_STRING);
+    path = str_replace_all(pool, path, "{top_y}",
+        apr_psprintf(pool, curfmt, dby));
+    curfmt = apr_hash_get(fmt, "inv_top_y", APR_HASH_KEY_STRING);
+    path = str_replace_all(pool, path, "{inv_top_y}",
         apr_psprintf(pool, curfmt, dby));
   }
 
@@ -659,7 +679,7 @@ int main(int argc, char * argv[])
     int minzoom, maxzoom;
     char * dbfile;
     apr_hash_t * formats;
-    int xcount, ycount;
+    int xcount, ycount, top;
   } *cache;
   apr_array_header_t * caches = NULL;
   int i, ix, iy, iz;
@@ -1067,6 +1087,11 @@ int main(int argc, char * argv[])
     apr_hash_set(c->formats, "div_y",     APR_HASH_KEY_STRING, "(not set)");
     apr_hash_set(c->formats, "inv_div_x", APR_HASH_KEY_STRING, "(not set)");
     apr_hash_set(c->formats, "inv_div_y", APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "top",       APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "top_x",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "top_y",     APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_top_x", APR_HASH_KEY_STRING, "(not set)");
+    apr_hash_set(c->formats, "inv_top_y", APR_HASH_KEY_STRING, "(not set)");
     for (hi = apr_hash_first(ctx.pool, c->formats)
         ; hi
         ; hi = apr_hash_next(hi))
@@ -1089,6 +1114,13 @@ int main(int argc, char * argv[])
     text = NULL;
     if (node) text = node->txt;
     if (text) c->ycount = (int)strtol(text, NULL, 10);
+
+    // Read top
+    c->top = -1;
+    node = ezxml_child(c->node, "top");
+    text = NULL;
+    if (node) text = node->txt;
+    if (text) c->top = (int)strtol(text, NULL, 10);
   }
 
 
@@ -1266,10 +1298,31 @@ int main(int argc, char * argv[])
         &(til_region_bbox.maxx), &(til_region_bbox.maxy));
 
     dbx_has_inv = strstr(cache->dbfile,"{inv_x}")
-      || strstr(cache->dbfile,"{inv_div_x}");
+      || strstr(cache->dbfile,"{inv_div_x}")
+      || strstr(cache->dbfile,"{inv_top_x}");
     dby_has_inv = strstr(cache->dbfile,"{inv_y}")
-      || strstr(cache->dbfile,"{inv_div_y}");
-    if ((cache->xcount > 0) && (cache->ycount > 0)) {
+      || strstr(cache->dbfile,"{inv_div_y}")
+      || strstr(cache->dbfile,"{inv_top_y}");
+    if (cache->top > 0) {
+      mapcache_grid_get_xy(&ctx, grid, region_bbox.minx, region_bbox.miny,
+          cache->top, &(til_region_bbox.minx), &(til_region_bbox.miny));
+      mapcache_grid_get_xy(&ctx, grid, region_bbox.maxx, region_bbox.maxy,
+          cache->top, &(til_region_bbox.maxx), &(til_region_bbox.maxy));
+      if (dbx_has_inv) {
+        db_region_bbox.minx = grid->levels[cache->top]->maxx - til_region_bbox.maxx;
+        db_region_bbox.maxx = grid->levels[cache->top]->maxx - til_region_bbox.minx;
+      } else {
+        db_region_bbox.minx = til_region_bbox.minx;
+        db_region_bbox.maxx = til_region_bbox.maxx;
+      }
+      if (dby_has_inv) {
+        db_region_bbox.miny = grid->levels[cache->top]->maxy - til_region_bbox.maxy;
+        db_region_bbox.maxy = grid->levels[cache->top]->maxy - til_region_bbox.miny;
+      } else {
+        db_region_bbox.miny = til_region_bbox.miny;
+        db_region_bbox.maxy = til_region_bbox.maxy;
+      }
+    } else if ((cache->xcount > 0) && (cache->ycount > 0)) {
       if (dbx_has_inv) {
         int inv_minx = grid->levels[iz]->maxx - til_region_bbox.minx;
         int inv_maxx = grid->levels[iz]->maxx - til_region_bbox.maxx;
@@ -1332,7 +1385,7 @@ int main(int argc, char * argv[])
           double progz = (double)(iz - minzoom) * incz;
           double progx = (double)(ix - db_region_bbox.minx) * incx;
           double progy = (double)(iy - db_region_bbox.miny) * incy;
-          fprintf(stderr, "\033[2K In progress (z:%d x:%d y:%d): %.3f%% done\r",
+          fprintf(stderr, "\033[2K In progress (z:%d x:%d y:%d): %.3f%% done\n",
               iz, ix, iy, (progz + progx + progy) * 100.0);
           fflush(stderr);
         }
@@ -1340,7 +1393,7 @@ int main(int argc, char * argv[])
         // Retrieve DB file name and check for its existence (read access)
         file_name = dbfilename(ctx.pool, cache->dbfile, tileset, grid,
             dimensions, cache->formats, iz, ix, iy, cache->xcount,
-            cache->ycount);
+            cache->ycount, cache->top);
 
         // Unless this has already been done on this file,
         // Retrieve file size and count cached tiles regardless the region of
@@ -1379,7 +1432,22 @@ int main(int argc, char * argv[])
         }
 
         // Compute file bounding box expressed in tiles
-        if ((cache->xcount > 0) && (cache->ycount > 0)) {
+        if (cache->top > 0) {
+          if (dbx_has_inv) {
+            til_file_bbox.minx = grid->levels[cache->top]->maxx-1 - ix;
+            til_file_bbox.maxx = grid->levels[cache->top]->maxx-1 - ix;
+          } else {
+            til_file_bbox.minx = ix;
+            til_file_bbox.maxx = ix;
+          }
+          if (dby_has_inv) {
+            til_file_bbox.miny = grid->levels[cache->top]->maxy-1 - iy;
+            til_file_bbox.maxy = grid->levels[cache->top]->maxy-1 - iy;
+          } else {
+            til_file_bbox.miny = iy;
+            til_file_bbox.maxy = iy;
+          }
+        } else if ((cache->xcount > 0) && (cache->ycount > 0)) {
           if (dbx_has_inv) {
             til_file_bbox.maxx = grid->levels[iz]->maxx-1 - ix * cache->xcount;
             til_file_bbox.minx = til_file_bbox.maxx + cache->xcount + 1;
