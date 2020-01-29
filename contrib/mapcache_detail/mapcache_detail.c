@@ -1309,15 +1309,15 @@ int main(int argc, char * argv[])
       mapcache_grid_get_xy(&ctx, grid, region_bbox.maxx, region_bbox.maxy,
           cache->top, &(til_region_bbox.maxx), &(til_region_bbox.maxy));
       if (dbx_has_inv) {
-        db_region_bbox.minx = grid->levels[cache->top]->maxx - til_region_bbox.maxx;
-        db_region_bbox.maxx = grid->levels[cache->top]->maxx - til_region_bbox.minx;
+        db_region_bbox.minx = grid->levels[cache->top]->maxx-1 - til_region_bbox.maxx;
+        db_region_bbox.maxx = grid->levels[cache->top]->maxx-1 - til_region_bbox.minx;
       } else {
         db_region_bbox.minx = til_region_bbox.minx;
         db_region_bbox.maxx = til_region_bbox.maxx;
       }
       if (dby_has_inv) {
-        db_region_bbox.miny = grid->levels[cache->top]->maxy - til_region_bbox.maxy;
-        db_region_bbox.maxy = grid->levels[cache->top]->maxy - til_region_bbox.miny;
+        db_region_bbox.miny = grid->levels[cache->top]->maxy-1 - til_region_bbox.maxy;
+        db_region_bbox.maxy = grid->levels[cache->top]->maxy-1 - til_region_bbox.miny;
       } else {
         db_region_bbox.miny = til_region_bbox.miny;
         db_region_bbox.maxy = til_region_bbox.maxy;
@@ -1360,6 +1360,7 @@ int main(int argc, char * argv[])
         apr_finfo_t fileinfo;
         mapcache_extent_i til_file_bbox;
         mapcache_extent file_bbox;
+        int file_zoom_level;
         mapcache_extent temp_bbox;
         mapcache_extent region_in_file_bbox;
 #ifdef USE_CLIPPERS
@@ -1433,21 +1434,23 @@ int main(int argc, char * argv[])
 
         // Compute file bounding box expressed in tiles
         if (cache->top > 0) {
+          file_zoom_level = cache->top;
           if (dbx_has_inv) {
-            til_file_bbox.minx = grid->levels[cache->top]->maxx-1 - ix;
-            til_file_bbox.maxx = grid->levels[cache->top]->maxx-1 - ix;
+            til_file_bbox.minx = grid->levels[file_zoom_level]->maxx-1 - ix;
+            til_file_bbox.maxx = til_file_bbox.minx;
           } else {
             til_file_bbox.minx = ix;
-            til_file_bbox.maxx = ix;
+            til_file_bbox.maxx = til_file_bbox.minx;
           }
           if (dby_has_inv) {
-            til_file_bbox.miny = grid->levels[cache->top]->maxy-1 - iy;
-            til_file_bbox.maxy = grid->levels[cache->top]->maxy-1 - iy;
+            til_file_bbox.miny = grid->levels[file_zoom_level]->maxy-1 - iy;
+            til_file_bbox.maxy = til_file_bbox.miny;
           } else {
             til_file_bbox.miny = iy;
-            til_file_bbox.maxy = iy;
+            til_file_bbox.maxy = til_file_bbox.miny;
           }
         } else if ((cache->xcount > 0) && (cache->ycount > 0)) {
+          file_zoom_level = iz;
           if (dbx_has_inv) {
             til_file_bbox.maxx = grid->levels[iz]->maxx-1 - ix * cache->xcount;
             til_file_bbox.minx = til_file_bbox.maxx + cache->xcount + 1;
@@ -1471,6 +1474,7 @@ int main(int argc, char * argv[])
             til_file_bbox.maxy = grid->levels[iz]->maxy - 1;
           }
         } else {
+          file_zoom_level = iz;
           til_file_bbox.minx = 0;
           til_file_bbox.miny = 0;
           til_file_bbox.maxx = grid->levels[iz]->maxx - 1;
@@ -1480,12 +1484,12 @@ int main(int argc, char * argv[])
         // Compute file bounding box expressed in grid units for the current
         // zoom level
         mapcache_grid_get_tile_extent(&ctx, grid, til_file_bbox.minx,
-            til_file_bbox.miny, iz, &temp_bbox);
+            til_file_bbox.miny, file_zoom_level, &temp_bbox);
         if (GC_HAS_ERROR(&ctx)) goto failure;
         file_bbox.minx = temp_bbox.minx;
         file_bbox.miny = temp_bbox.miny;
         mapcache_grid_get_tile_extent(&ctx, grid, til_file_bbox.maxx,
-            til_file_bbox.maxy, iz, &temp_bbox);
+            til_file_bbox.maxy, file_zoom_level, &temp_bbox);
         if (GC_HAS_ERROR(&ctx)) goto failure;
         file_bbox.maxx = temp_bbox.maxx;
         file_bbox.maxy = temp_bbox.maxy;
