@@ -1394,7 +1394,7 @@ int main(int argc, char * argv[])
           double progz = (double)(iz - minzoom) * incz;
           double progx = (double)(ix - db_region_bbox.minx) * incx;
           double progy = (double)(iy - db_region_bbox.miny) * incy;
-          fprintf(stderr, "\033[2K In progress (z:%d x:%d y:%d): %.3f%% done\n",
+          fprintf(stderr, "\033[2K In progress (z:%d x:%d y:%d): %.3f%% done\r",
               iz, ix, iy, (progz + progx + progy) * 100.0);
           fflush(stderr);
         }
