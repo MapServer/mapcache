@@ -139,7 +139,7 @@ static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapca
   }
 #endif
   else {
-    ctx->set_error(ctx,400,"failed to validate requested value for dimension (%s)",dim->name);
+    ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
   }
   return values;
 }
@@ -165,7 +165,7 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
   if(child_node && child_node->txt && *child_node->txt) {
     dimension->regex_string = apr_pstrdup(ctx->pool,child_node->txt);
   } else {
-    ctx->set_error(ctx,400,"failed to parse dimension regex: no <regex> child supplied");
+    ctx->set_error(ctx,400,"failed to parse %s regex: no <regex> child supplied",dim->class_name);
     return;
   }
 #ifdef USE_PCRE
@@ -174,8 +174,8 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     int pcre_offset;
     dimension->pcregex = pcre_compile(dimension->regex_string,0,&pcre_err, &pcre_offset,0);
     if(!dimension->pcregex) {
-      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-                     dimension->regex_string,dim->name,pcre_err);
+      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for %s \"%s\": %s",
+                     dimension->regex_string,dim->class_name,dim->name,pcre_err);
       return;
     }
   }
@@ -185,8 +185,8 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     if(rc) {
       char errmsg[200];
       regerror(rc,dimension->regex,errmsg,200);
-      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for dimension \"%s\": %s",
-                     dimension->regex_string,dim->name,errmsg);
+      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for %s \"%s\": %s",
+                     dimension->regex_string,dim->class_name,dim->name,errmsg);
       return;
     }
   }
@@ -215,7 +215,7 @@ static apr_array_header_t* _mapcache_dimension_values_get_entries_for_value(mapc
     }
   }
   if(i == dimension->values->nelts) {
-    ctx->set_error(ctx,400,"failed to validate requested value for dimension (%s)",dim->name);
+    ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
   }
   return values;
 }
@@ -241,13 +241,13 @@ static void _mapcache_dimension_values_parse_xml(mapcache_context *ctx, mapcache
   dimension = (mapcache_dimension_values*)dim;
   
   if(!child_node) {
-    ctx->set_error(ctx,400,"failed to parse dimension values: no <value> children supplied");
+    ctx->set_error(ctx,400,"failed to parse %s values: no <value> children supplied",dim->class_name);
     return;
   }
   for(; child_node; child_node = child_node->next) {
     const char* entry = child_node->txt;
     if(!entry || !*entry) {
-      ctx->set_error(ctx,400,"failed to parse dimension values: empty <value>");
+      ctx->set_error(ctx,400,"failed to parse %s values: empty <value>",dim->class_name);
       return;
     }
     APR_ARRAY_PUSH(dimension->values,char*) = apr_pstrdup(ctx->pool,entry);
@@ -280,6 +280,7 @@ mapcache_dimension* mapcache_dimension_values_create(mapcache_context *ctx, apr_
 {
   mapcache_dimension_values *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_values));
   dimension->dimension.type = MAPCACHE_DIMENSION_VALUES;
+  dimension->dimension.class_name = "dimension";
   dimension->values = apr_array_make(pool,1,sizeof(char*));
   dimension->dimension._get_entries_for_value = _mapcache_dimension_values_get_entries_for_value;
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_values_parse_xml;
@@ -292,6 +293,7 @@ mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_p
 {
   mapcache_dimension_regex *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_regex));
   dimension->dimension.type = MAPCACHE_DIMENSION_REGEX;
+  dimension->dimension.class_name = "dimension";
 #ifndef USE_PCRE
   dimension->regex = (regex_t*)apr_pcalloc(pool, sizeof(regex_t));
 #endif

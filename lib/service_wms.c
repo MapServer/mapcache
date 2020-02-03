@@ -1033,6 +1033,7 @@ void _configuration_parse_wms_xml(mapcache_context *ctx, ezxml_t node, mapcache_
           ctx->set_error(ctx,400,"unknown <param> type \"%s\". expecting \"values\" or \"regex\".",type);
           return;
         }
+        dimension->class_name = "param";
       } else {
         ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
         return;
