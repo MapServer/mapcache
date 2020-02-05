@@ -2,7 +2,8 @@
 
 ms_version=$1
 
-echo "release steps for mapcache version $ms_version (mapcache-$ms_version.tar.gz)"
+echo ""
+echo "# Release steps for mapcache version $ms_version (mapcache-$ms_version.tar.gz)"
 echo ""
 
 ms_version_suffix=`echo $ms_version | cut -s -d- -f2`
@@ -23,9 +24,9 @@ if [ ! -z $ms_version_suffix ]; then
 fi
 
 echo "#"
-echo "# make sure:"
+echo "# Make sure:"
 echo "# - you are on branch-$ms_version_major-$ms_version_minor"
-echo "# - you have edited HISTORY.TXT with changes related to this release"
+echo "# - you have edited MIGRATION_GUIDE.txt with changes related to this release"
 echo "#"
 echo ""
 
@@ -47,8 +48,8 @@ echo "scp /tmp/mapcache-$ms_version.tar.gz download.osgeo.org:/osgeo/download/ma
 
 echo ""
 echo "#"
-echo "#optionally update doc site, these commands need tweaking before being ran"
+echo "# Optionally update doc site, these commands need tweaking before being ran"
 echo "#"
 
-echo "/path/to/docs/scripts/changelog.sh rel-previous-tag..$tagname >> /path/to/docs/en/development/changelog/changelog-$ms_version_major-$ms_version_minor.txt"
+echo "/path/to/mapcache/release-notes.sh rel-previous-tag..$tagname >> /path/to/docs/en/development/changelog/changelog-$ms_version_major-$ms_version_minor.txt"
 
