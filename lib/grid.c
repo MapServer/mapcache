@@ -150,40 +150,44 @@ const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid)
   return (const char*)grid->srs;
 }
 
+void mapcache_grid_compute_limits_at_level(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits_ptr, int tolerance, int zoom_level)
+{
+  double epsilon = 0.0000001;
+  mapcache_grid_level *level = grid->levels[zoom_level];
+  double unitheight = grid->tile_sy * level->resolution;
+  double unitwidth = grid->tile_sx * level->resolution;
+
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      limits_ptr->minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+      limits_ptr->maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+      limits_ptr->miny = floor((extent->miny - grid->extent.miny) / unitheight + epsilon) - tolerance;
+      limits_ptr->maxy = ceil((extent->maxy - grid->extent.miny) / unitheight - epsilon) + tolerance;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      limits_ptr->minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+      limits_ptr->maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+      limits_ptr->miny = floor((grid->extent.maxy - extent->maxy) / unitheight + epsilon) - tolerance;
+      //limits_ptr->maxy = level->maxy - floor((extent->miny - grid->extent.miny) / unitheight + epsilon) + tolerance;
+      limits_ptr->maxy = ceil((grid->extent.maxy - extent->miny) / unitheight - epsilon) + tolerance;
+      //printf("%d: %d %d %d %d\n",i,limits_ptr->minx,limits_ptr->miny,limits_ptr->maxx,limits_ptr->maxy);
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+      break; /* not implemented */
+  }
+  // to avoid requesting out-of-range tiles
+  if (limits_ptr->minx < 0) limits_ptr->minx = 0;
+  if (limits_ptr->maxx > level->maxx) limits_ptr->maxx = level->maxx;
+  if (limits_ptr->miny < 0) limits_ptr->miny = 0;
+  if (limits_ptr->maxy > level->maxy) limits_ptr->maxy = level->maxy;
+}
+
 void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance)
 {
   int i;
-  double epsilon = 0.0000001;
   for(i=0; i<grid->nlevels; i++) {
-    mapcache_grid_level *level = grid->levels[i];
-    double unitheight = grid->tile_sy * level->resolution;
-    double unitwidth = grid->tile_sx * level->resolution;
-
-    switch(grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
-        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
-        limits[i].miny = floor((extent->miny - grid->extent.miny) / unitheight + epsilon) - tolerance;
-        limits[i].maxy = ceil((extent->maxy - grid->extent.miny) / unitheight - epsilon) + tolerance;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
-        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
-        limits[i].miny = floor((grid->extent.maxy - extent->maxy) / unitheight + epsilon) - tolerance;
-        //limits[i].maxy = level->maxy - floor((extent->miny - grid->extent.miny) / unitheight + epsilon) + tolerance;
-        limits[i].maxy = ceil((grid->extent.maxy - extent->miny) / unitheight - epsilon) + tolerance;
-        //printf("%d: %d %d %d %d\n",i,limits[i].minx,limits[i].miny,limits[i].maxx,limits[i].maxy);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        break; /* not implemented */
-    }
-    // to avoid requesting out-of-range tiles
-    if (limits[i].minx < 0) limits[i].minx = 0;
-    if (limits[i].maxx > level->maxx) limits[i].maxx = level->maxx;
-    if (limits[i].miny < 0) limits[i].miny = 0;
-    if (limits[i].maxy > level->maxy) limits[i].maxy = level->maxy;
-
+    mapcache_grid_compute_limits_at_level(grid, extent, &limits[i], tolerance, i);
   }
 }
 

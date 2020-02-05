@@ -223,6 +223,108 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
   }
 }
 
+void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
+{
+  char *name;
+  mapcache_ruleset *ruleset;
+  ezxml_t cur_node;
+  int i;
+
+  name = (char*)ezxml_attr(node,"name");
+
+  if(!name || !strlen(name)) {
+    ctx->set_error(ctx, 400, "mandatory attribute \"name\" not found in <ruleset>");
+    return;
+  } else {
+    name = apr_pstrdup(ctx->pool, name);
+    /* check we don't already have a ruleset defined with this name */
+    if(mapcache_configuration_get_ruleset(config, name)) {
+      ctx->set_error(ctx, 400, "duplicate ruleset with name \"%s\"",name);
+      return;
+    }
+  }
+
+  ruleset = mapcache_ruleset_create(ctx->pool);
+  ruleset->name = name;
+
+  /* parse rules, <rule> */
+  for(cur_node = ezxml_child(node,"rule"), i = 0; cur_node; cur_node = cur_node->next, i++) {
+    int *zoom, nzoom, j;
+    char* zoom_attr = (char*)ezxml_attr(cur_node, "zoom_level");
+    ezxml_t visibility = ezxml_child(cur_node, "visibility");
+    mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
+
+    /* parse zoom_level attribute */
+    if(zoom_attr && *zoom_attr) {
+      char *value = apr_pstrdup(ctx->pool, zoom_attr);
+      if(MAPCACHE_SUCCESS != mapcache_util_extract_int_list(ctx, value, NULL, &zoom, &nzoom) || nzoom < 1) {
+        ctx->set_error(ctx, 400, "failed to parse zoom_level array %s in ruleset %s, rule %d. "
+                      "(expecting space separated integers, eg <rule zoom_level=\"0 1 2\">)",
+                       value, ruleset->name, i+1);
+        return;
+      }
+    } else {
+        ctx->set_error(ctx, 400, "zoom_level not set in rule %d", i+1);
+        return;
+    }
+
+    /* parse visibility, <visibility> */
+    if(visibility) {
+      char *hidden_color = (char*)ezxml_attr(visibility, "hidden_color");
+      ezxml_t extent_node;
+
+      if (hidden_color && *hidden_color) {
+        /* parse color, base 16 */
+        rule->hidden_color = (unsigned int)strtol(hidden_color, NULL, 16);
+
+        if (strlen(hidden_color) <= 6) {
+            /* if color is set, but no alpha value. Assume no transparency. */
+            rule->hidden_color += 0xff000000;
+        }
+      }
+
+      /* parse extents, <extent> */
+      for (extent_node = ezxml_child(visibility,"extent"); extent_node; extent_node = extent_node->next) {
+        double *values;
+        int nvalues;
+        char *value = apr_pstrdup(ctx->pool,extent_node->txt);
+        mapcache_extent extent = {0,0,0,0};
+        mapcache_extent *pextent;
+
+        if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, value, NULL, &values, &nvalues) ||
+            nvalues != 4) {
+          ctx->set_error(ctx, 400, "failed to parse extent array %s in ruleset %s, rule %d. "
+                         "(expecting 4 space separated numbers, got %d (%f %f %f %f)"
+                         "eg <extent>-180 -90 180 90</extent>)",
+                         value,ruleset->name,i+1,nvalues,values[0],values[1],values[2],values[3]);
+          return;
+        }
+
+        extent.minx = values[0];
+        extent.miny = values[1];
+        extent.maxx = values[2];
+        extent.maxy = values[3];
+        pextent =  (mapcache_extent*)apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+        *pextent = extent;
+        APR_ARRAY_PUSH(rule->visible_extents, mapcache_extent*) = pextent;
+      }
+    }
+
+    /* add this rule for given zoom_levels */
+    for(j = 0; j < nzoom; j++) {
+      mapcache_rule *clone_rule = mapcache_ruleset_rule_clone(ctx->pool, rule);
+      /* check for duplicate rule for this zoom level */
+      if(mapcache_ruleset_rule_find(ruleset->rules, zoom[j]) != NULL) {
+        ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", zoom[j]);
+        return;
+      }
+      clone_rule->zoom_level = zoom[j];
+      APR_ARRAY_PUSH(ruleset->rules, mapcache_rule*) = clone_rule;
+    }
+  }
+  mapcache_configuration_add_ruleset(config,ruleset,ruleset->name);
+}
+
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 {
   char *name;
@@ -729,12 +831,24 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     havewgs84bbox = 1;
   }
 
+  if ((cur_node = ezxml_child(node,"format")) != NULL) {
+    mapcache_image_format *format = mapcache_configuration_get_image_format(config,cur_node->txt);
+    if(!format) {
+      ctx->set_error(ctx, 400, "tileset \"%s\" references format \"%s\","
+                     " but it is not configured",name,cur_node->txt);
+      return;
+    }
+    tileset->format = format;
+  }
+
   for(cur_node = ezxml_child(node,"grid"); cur_node; cur_node = cur_node->next) {
     mapcache_grid *grid;
     mapcache_grid_link *gridlink;
-    char *restrictedExtent = NULL, *sTolerance = NULL;
+    mapcache_ruleset *ruleset = NULL;
+    char *restrictedExtent = NULL, *sTolerance = NULL, *ruleset_name = NULL;
     mapcache_extent *extent;
     int tolerance;
+    int i;
 
     if (tileset->grid_links == NULL) {
       tileset->grid_links = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
@@ -752,6 +866,17 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
     gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
     gridlink->intermediate_grids = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
+    gridlink->rules = apr_array_make(ctx->pool,0,sizeof(mapcache_rule*));
+
+    ruleset_name = (char*)ezxml_attr(cur_node,"ruleset");
+    if(ruleset_name) {
+      ruleset = mapcache_configuration_get_ruleset(config, ruleset_name);
+      if(!ruleset) {
+        ctx->set_error(ctx, 400, "grid  \"%s\" in tileset \"%s\" references ruleset \"%s\","
+                     " but it is not configured", cur_node->txt, name, ruleset_name);
+        return;
+      }
+    }
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
@@ -794,6 +919,55 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
 
     mapcache_grid_compute_limits(grid,extent,gridlink->grid_limits,tolerance);
+
+    // setup zoom level rules if configured
+    if(ruleset) {
+      mapcache_buffer *last_hidden_tile = NULL;
+      unsigned int last_hidden_color;
+
+      // prepare one rule per zoom level. if rule is missing it will be NULL
+      for(i = 0; i < grid->nlevels; i++) {
+        mapcache_rule *rule = mapcache_ruleset_rule_find(ruleset->rules, i);
+
+        if(rule) {
+          mapcache_rule *rule_clone = mapcache_ruleset_rule_clone(ctx->pool, rule);
+
+          if(rule->visible_extents) {
+            int j;
+
+            // create blank tile in configured format to return when outside visible extent
+            // try to reuse last tile if possible
+            if(last_hidden_tile == NULL || last_hidden_color != rule->hidden_color) {
+              if(tileset->format) {
+                last_hidden_tile = tileset->format->create_empty_image(ctx, tileset->format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              } else {
+                last_hidden_tile = config->default_image_format->create_empty_image(ctx, config->default_image_format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              }
+
+              if(GC_HAS_ERROR(ctx)) {
+                return;
+              }
+
+              last_hidden_color = rule->hidden_color;
+            }
+
+            rule_clone->hidden_tile = last_hidden_tile;
+
+            // compute limits for extents
+            for(j = 0; j < rule->visible_extents->nelts; j++) {
+              mapcache_extent *visible_extent = APR_ARRAY_IDX(rule->visible_extents, j, mapcache_extent*);
+              mapcache_extent_i *visible_limit = apr_pcalloc(ctx->pool, sizeof(mapcache_extent_i));
+              mapcache_grid_compute_limits_at_level(grid,visible_extent,visible_limit,tolerance,i);
+              APR_ARRAY_PUSH(rule_clone->visible_limits, mapcache_extent_i*) = visible_limit;
+            }
+          }
+          APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = rule_clone;
+        } else {
+          // no rule for zoom level
+          APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = NULL;
+        }
+      }
+    }
 
     sTolerance = (char*)ezxml_attr(cur_node,"minzoom");
     if(sTolerance) {
@@ -987,16 +1161,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
   }
 
-  if ((cur_node = ezxml_child(node,"format")) != NULL) {
-    mapcache_image_format *format = mapcache_configuration_get_image_format(config,cur_node->txt);
-    if(!format) {
-      ctx->set_error(ctx, 400, "tileset \"%s\" references format \"%s\","
-                     " but it is not configured",name,cur_node->txt);
-      return;
-    }
-    tileset->format = format;
-  }
-
   mapcache_tileset_configuration_check(ctx,tileset);
   GC_CHECK_ERROR(ctx);
   mapcache_configuration_add_tileset(config,tileset,name);
@@ -1118,6 +1282,11 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
 
   for(node = ezxml_child(doc,"cache"); node; node = node->next) {
     parseCache(ctx, node, config);
+    if(GC_HAS_ERROR(ctx)) goto cleanup;
+  }
+
+  for(node = ezxml_child(doc,"ruleset"); node; node = node->next) {
+    parseRuleset(ctx, node, config);
     if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 

@@ -30,9 +30,18 @@
 
 int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
   int i,rv;
+  mapcache_rule *rule = mapcache_ruleset_rule_get(tile->grid_link->rules, tile->z);
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_get on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->grid_link->grid->name,tile->z,tile->x, tile->y);
 #endif
+
+  /* if tile is outside visible limits, return a blank tile */
+  if (mapcache_ruleset_is_visible_tile(rule, tile) == MAPCACHE_FALSE) {
+    tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
+    mapcache_buffer_append(tile->encoded_data, rule->hidden_tile->size, rule->hidden_tile->buf);
+    return MAPCACHE_SUCCESS;
+  }
+
   for(i=0;i<=cache->retry_count;i++) {
     if(i) {
       ctx->log(ctx,MAPCACHE_INFO,"cache (%s) get retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
@@ -79,9 +88,17 @@ void mapcache_cache_tile_delete(mapcache_context *ctx, mapcache_cache *cache, ma
 
 int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile) {
   int i,rv;
+  mapcache_rule *rule = mapcache_ruleset_rule_get(tile->grid_link->rules, tile->z);
 #ifdef DEBUG
   ctx->log(ctx,MAPCACHE_DEBUG,"calling tile_exists on cache (%s): (tileset=%s, grid=%s, z=%d, x=%d, y=%d",cache->name,tile->tileset->name,tile->grid_link->grid->name,tile->z,tile->x, tile->y);
 #endif
+
+  /* if tile is outside visible limits return TRUE
+     a blank tile will be returned on subsequent get call on cache */
+  if (mapcache_ruleset_is_visible_tile(rule, tile) == MAPCACHE_FALSE) {
+    return MAPCACHE_TRUE;
+  }
+
   for(i=0;i<=cache->retry_count;i++) {
     if(i) {
       ctx->log(ctx,MAPCACHE_INFO,"cache (%s) exists retry %d of %d. previous try returned error: %s",cache->name,i,cache->retry_count,ctx->get_error_message(ctx));
