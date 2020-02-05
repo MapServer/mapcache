@@ -1693,6 +1693,7 @@ MS_DLL_EXPORT apr_array_header_t *mapcache_requested_dimensions_clone(apr_pool_t
 
 struct mapcache_dimension {
   mapcache_dimension_type type;
+  const char *class_name;
   int isTime;
   int wms_querybymap_minzoom;
   char *name;
