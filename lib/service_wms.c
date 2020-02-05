@@ -861,6 +861,7 @@ proxies:
         mapcache_dimension *match_param = APR_ARRAY_IDX(rule->match_params,j,mapcache_dimension*);
         const char *value = apr_table_get(params,match_param->name);
         if(!value || match_param->get_entries_for_value(ctx,match_param,value,NULL,NULL,NULL)->nelts == 0) {
+          ctx->clear_errors(ctx);
           /* the parameter was not supplied, or did not validate: we don't apply this rule */
           got_a_match = 0;
           break;
