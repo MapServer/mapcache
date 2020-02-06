@@ -71,8 +71,10 @@ struct mapcache_cache_sqlite {
   void (*bind_stmt)(mapcache_context *ctx, void *stmt, mapcache_cache_sqlite *cache, mapcache_tile *tile);
   int n_prepared_statements;
   int detect_blank;
-  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt;
+  char *x_fmt,*y_fmt,*z_fmt,*inv_x_fmt,*inv_y_fmt,*div_x_fmt,*div_y_fmt,*inv_div_x_fmt,*inv_div_y_fmt,
+       *top_fmt,*top_x_fmt,*top_y_fmt,*inv_top_x_fmt,*inv_top_y_fmt;
   int count_x, count_y;
+  int top;
 };
 
 
@@ -276,6 +278,34 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
         *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
                 apr_psprintf(ctx->pool,dcache->inv_y_fmt,(tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1)/dcache->count_y*dcache->count_y));
       
+    }
+
+    if (dcache->top > 0) {
+      while(strstr(*path,"{top}"))
+        *path = mapcache_util_str_replace(ctx->pool,*path, "{top}",
+                apr_psprintf(ctx->pool,dcache->top_fmt,dcache->top));
+      while(strstr(*path,"{top_x}"))
+        *path = mapcache_util_str_replace(ctx->pool,*path, "{top_x}",
+                apr_psprintf(ctx->pool,dcache->top_x_fmt,
+                tile->x * tile->grid_link->grid->levels[dcache->top]->maxx
+                        / tile->grid_link->grid->levels[tile->z]->maxx));
+      while(strstr(*path,"{top_y}"))
+        *path = mapcache_util_str_replace(ctx->pool,*path, "{top_y}",
+                apr_psprintf(ctx->pool,dcache->top_y_fmt,
+                tile->y * tile->grid_link->grid->levels[dcache->top]->maxy
+                        / tile->grid_link->grid->levels[tile->z]->maxy));
+      while(strstr(*path,"{inv_top_x}"))
+        *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_top_x}",
+                apr_psprintf(ctx->pool,dcache->inv_top_x_fmt,
+                tile->grid_link->grid->levels[dcache->top]->maxx - 1
+                - tile->x * tile->grid_link->grid->levels[dcache->top]->maxx
+                          / tile->grid_link->grid->levels[tile->z]->maxx));
+      while(strstr(*path,"{inv_top_y}"))
+        *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_top_y}",
+                apr_psprintf(ctx->pool,dcache->inv_top_y_fmt,
+                tile->grid_link->grid->levels[dcache->top]->maxy - 1
+                - tile->y * tile->grid_link->grid->levels[dcache->top]->maxy
+                          / tile->grid_link->grid->levels[tile->z]->maxy));
     }
   }
 
@@ -876,6 +906,26 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
     if(fmt && *fmt) {
       cache->inv_div_y_fmt = apr_pstrdup(ctx->pool,fmt);
     }
+    fmt = (char*)ezxml_attr(cur_node,"top_fmt");
+    if(fmt && *fmt) {
+      cache->top_fmt = apr_pstrdup(ctx->pool,fmt);
+    }
+    fmt = (char*)ezxml_attr(cur_node,"top_x_fmt");
+    if(fmt && *fmt) {
+      cache->top_x_fmt = apr_pstrdup(ctx->pool,fmt);
+    }
+    fmt = (char*)ezxml_attr(cur_node,"top_y_fmt");
+    if(fmt && *fmt) {
+      cache->top_y_fmt = apr_pstrdup(ctx->pool,fmt);
+    }
+    fmt = (char*)ezxml_attr(cur_node,"inv_top_x_fmt");
+    if(fmt && *fmt) {
+      cache->inv_top_x_fmt = apr_pstrdup(ctx->pool,fmt);
+    }
+    fmt = (char*)ezxml_attr(cur_node,"inv_top_y_fmt");
+    if(fmt && *fmt) {
+      cache->inv_top_y_fmt = apr_pstrdup(ctx->pool,fmt);
+    }
   }
   
   cache->detect_blank = 0;
@@ -936,6 +986,16 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
     cache->count_y = (int)strtol(cur_node->txt,&endptr,10);
     if(*endptr != 0) {
       ctx->set_error(ctx,400,"failed to parse ycount value %s for sqlite cache %s", cur_node->txt,cache->cache.name);
+      return;
+    }
+  }
+
+  cur_node = ezxml_child(node,"top");
+  if(cur_node && cur_node->txt && *cur_node->txt) {
+    char *endptr;
+    cache->top = (int)strtol(cur_node->txt,&endptr,10);
+    if(*endptr != 0) {
+      ctx->set_error(ctx,400,"failed to parse top value %s for sqlite cache %s", cur_node->txt,cache->cache.name);
       return;
     }
   }
@@ -1018,8 +1078,11 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx)
   cache->x_fmt = cache->y_fmt = cache->z_fmt
           = cache->inv_x_fmt = cache->inv_y_fmt
           = cache->div_x_fmt = cache->div_y_fmt
-          = cache->inv_div_x_fmt = cache->inv_div_y_fmt = apr_pstrdup(ctx->pool,"%d");
+          = cache->inv_div_x_fmt = cache->inv_div_y_fmt
+          = cache->top_fmt = cache->top_x_fmt = cache->top_y_fmt
+          = cache->inv_top_x_fmt = cache->inv_top_y_fmt = apr_pstrdup(ctx->pool,"%d");
   cache->count_x = cache->count_y = -1;
+  cache->top = -1;
   return (mapcache_cache*)cache;
 }
 
