@@ -1,3 +1,10 @@
+Migrating from Mapcache 1.8 to 1.10
+===================================
+
+* No backward compatibility issue is expected.
+  See [MapCache 1.10 Changelog](https://mapserver.org/development/changelog/mapcache/changelog-1-10.html)
+  for a list of bug fixes and new features.
+
 Migrating from Mapcache 1.6 to 1.8
 ===================================
 
