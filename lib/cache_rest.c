@@ -187,9 +187,9 @@ size_t buffer_write_callback(void *ptr, size_t size, size_t nmemb, void *data)
   return mapcache_buffer_append(buffer, realsize, ptr);
 }
 
-static void _set_headers(mapcache_context *ctx, CURL *curl, apr_table_t *headers) {
+static struct curl_slist* _set_headers(mapcache_context *ctx, CURL *curl, apr_table_t *headers) {
   if(!headers) {
-    return;
+    return NULL;
   } else {
     struct curl_slist *curl_headers=NULL;
     const apr_array_header_t *array = apr_table_elts(headers);
@@ -203,6 +203,7 @@ static void _set_headers(mapcache_context *ctx, CURL *curl, apr_table_t *headers
       }
     }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_headers);
+    return curl_headers;
   }
 }
 
@@ -210,6 +211,7 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
   CURLcode res;
   buffer_struct data;
   mapcache_buffer *response;
+  struct curl_slist *curl_header_data;
 
   data.buffer = buffer;
   data.offset = 0;
@@ -238,7 +240,7 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
 
   /* don't use an Expect: 100 Continue header */
   apr_table_set(headers, "Expect", "");
-  _set_headers(ctx, curl, headers);
+  curl_header_data = _set_headers(ctx, curl, headers);
 
   /* specify target URL, and note that this URL should include a file
    *        name, not only a directory */
@@ -272,14 +274,16 @@ static void _put_request(mapcache_context *ctx, CURL *curl, mapcache_buffer *buf
     }
   }
 
+  curl_slist_free_all(curl_header_data);
 }
 
 static int _head_request(mapcache_context *ctx, CURL *curl, char *url, apr_table_t *headers) {
 
   CURLcode res;
   long http_code;
-  
-  _set_headers(ctx, curl, headers);
+  struct curl_slist *curl_header_data;
+
+  curl_header_data = _set_headers(ctx, curl, headers);
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
@@ -299,6 +303,8 @@ static int _head_request(mapcache_context *ctx, CURL *curl, char *url, apr_table
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
+  curl_slist_free_all(curl_header_data);
+
   return (int)http_code;
 }
 
@@ -306,8 +312,9 @@ static int _delete_request(mapcache_context *ctx, CURL *curl, char *url, apr_tab
 
   CURLcode res;
   long http_code;
+  struct curl_slist *curl_header_data;
 
-  _set_headers(ctx, curl, headers);
+  curl_header_data = _set_headers(ctx, curl, headers);
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
@@ -328,6 +335,8 @@ static int _delete_request(mapcache_context *ctx, CURL *curl, char *url, apr_tab
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
   }
 
+  curl_slist_free_all(curl_header_data);
+
   return (int)http_code;
 }
 
@@ -336,8 +345,9 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, CURL *curl, char *ur
   CURLcode res;
   mapcache_buffer *data = NULL;
   long http_code;
+  struct curl_slist *curl_header_data;
 
-  _set_headers(ctx, curl, headers);
+  curl_header_data = _set_headers(ctx, curl, headers);
 
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 
@@ -383,6 +393,8 @@ static mapcache_buffer* _get_request(mapcache_context *ctx, CURL *curl, char *ur
       data = NULL; /* not an error */
     }
   }
+
+  curl_slist_free_all(curl_header_data);
 
   return data;
 }
@@ -1019,7 +1031,7 @@ static int _mapcache_cache_rest_has_tile(mapcache_context *ctx, mapcache_cache *
   int status;
   mapcache_pooled_connection *pc;
   CURL *curl;
-  
+
   _mapcache_cache_rest_tile_url(ctx, tile, &rcache->rest, &rcache->rest.has_tile, &url);
   headers = _mapcache_cache_rest_headers(ctx, tile, &rcache->rest, &rcache->rest.has_tile);
 
@@ -1122,7 +1134,7 @@ static int _mapcache_cache_rest_get(mapcache_context *ctx, mapcache_cache *pcach
   if(rcache->rest.get_tile.add_headers) {
     rcache->rest.get_tile.add_headers(ctx,rcache,tile,url,headers);
   }
-  
+
   pc = _rest_get_connection(ctx, rcache, tile);
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FAILURE;
@@ -1250,7 +1262,7 @@ static void _mapcache_cache_rest_configuration_parse_xml(mapcache_context *ctx, 
   } else {
     dcache->connection_timeout = 30;
   }
-  
+
   if ((cur_node = ezxml_child(node,"timeout")) != NULL) {
     char *endptr;
     dcache->timeout = (int)strtol(cur_node->txt,&endptr,10);
