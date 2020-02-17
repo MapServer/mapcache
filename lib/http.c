@@ -169,6 +169,7 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
     ctx->set_error(ctx, 502, "curl failed to request url %s : %s", req->url, error_msg);
   }
   /* cleanup curl stuff */
+  curl_slist_free_all(curl_headers);
   curl_easy_cleanup(curl_handle);
 }
 
@@ -195,11 +196,11 @@ char to_hex(char code) {
 char *url_encode(apr_pool_t *p, const char *str) {
   char *buf = apr_pcalloc(p, strlen(str) * 3 + 1), *pbuf = buf;
   while (*str) {
-    if (isalnum(*str) || *str == '-' || *str == '_' || *str == '.' || *str == '~') 
+    if (isalnum(*str) || *str == '-' || *str == '_' || *str == '.' || *str == '~')
       *pbuf++ = *str;
-    else if (*str == ' ') 
+    else if (*str == ' ')
       *pbuf++ = '+';
-    else 
+    else
       *pbuf++ = '%', *pbuf++ = to_hex(*str >> 4), *pbuf++ = to_hex(*str & 15);
     str++;
   }
@@ -388,7 +389,7 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
   } else {
     req->connection_timeout = 30;
   }
-  
+
   if ((http_node = ezxml_child(node,"timeout")) != NULL) {
     char *endptr;
     req->timeout = (int)strtol(http_node->txt,&endptr,10);
