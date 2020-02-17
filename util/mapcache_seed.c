@@ -80,11 +80,13 @@ int nprocesses=0;
 int quiet = 0;
 int verbose = 0;
 int force = 0;
+int non_interactive = 0;
 int sig_int_received = 0;
 int error_detected = 0;
 double percent_failed_allowed = 1.0;
 int n_metatiles_tot = 0;
 int n_nodata_tot = 0;
+int n_skipped_tot = 0;
 int rate_limit = 0;
 FILE *failed_log = NULL, *retry_log = NULL;
 #define FAIL_BACKLOG_COUNT 1000
@@ -127,6 +129,7 @@ struct seed_status {
   s_status status;
   int x,y,z;
   int nodata;
+  int skipped;
   char *msg;
 };
 
@@ -263,6 +266,7 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
   { "tileset", 't', TRUE, "tileset to seed" },
   { "verbose", 'v', FALSE, "show debug log messages" },
+  { "non-interactive", 'b', FALSE, "print progress messages on new lines"},
 #ifdef USE_CLIPPERS
   { "ogr-where", 'w', TRUE, "filter to apply on layer features"},
 #endif
@@ -496,8 +500,23 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
     if(rate_limit > 0)
       rate_limit_sleep();
     push_queue(cmd);
+  } else if (action == MAPCACHE_CMD_SKIP) {
+    apr_status_t ret;
+    struct seed_status *st = calloc(1,sizeof(struct seed_status));
+    int retries=0;
+    st->x=tile->x;
+    st->y=tile->y;
+    st->z=tile->z;
+    st->nodata = 0;
+    st->skipped = 1;
+    st->status = MAPCACHE_STATUS_OK;
+    ret = apr_queue_push(log_queue,(void*)st);
+    while( ret == APR_EINTR && retries < 10) {
+      retries++;
+      ret = apr_queue_push(log_queue,(void*)st);
+    }
   }
-  
+
   if(action == MAPCACHE_CMD_STOP_RECURSION)
     return;
 
@@ -619,6 +638,21 @@ void feed_worker()
         if(rate_limit > 0)
           rate_limit_sleep();
         push_queue(cmd);
+      } else if (action == MAPCACHE_CMD_SKIP) {
+        apr_status_t ret;
+        struct seed_status *st = calloc(1,sizeof(struct seed_status));
+        int retries=0;
+        st->x=tile->x;
+        st->y=tile->y;
+        st->z=tile->z;
+        st->nodata = 0;
+        st->skipped = 1;
+        st->status = MAPCACHE_STATUS_OK;
+        ret = apr_queue_push(log_queue,(void*)st);
+        while( ret == APR_EINTR && retries < 10) {
+          retries++;
+          ret = apr_queue_push(log_queue,(void*)st);
+        }
       }
 
       //compute next x,y,z
@@ -725,6 +759,7 @@ void seed_worker()
       st->y=tile->y;
       st->z=tile->z;
       st->nodata = tile->nodata;
+      st->skipped = 0;
       if(seed_ctx.get_error(&seed_ctx)) {
         st->status = MAPCACHE_STATUS_FAIL;
         st->msg = strdup(seed_ctx.get_error_message(&seed_ctx));
@@ -793,7 +828,11 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
       return NULL;
     if(st->status == MAPCACHE_STATUS_OK) {
       failed[cur]=0;
-      n_metatiles_tot++;
+      if (st->skipped) {
+        n_skipped_tot++;
+      } else {
+        n_metatiles_tot++;
+      }
       if(st->nodata) {
         n_nodata_tot++;
       }
@@ -802,9 +841,16 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
         mapcache_gettimeofday(&now,NULL);
         now_time = now.tv_sec + now.tv_usec / 1000000.0;
         if((now_time - last_time) > 1.0) {
-          printf("                                                                                               \r");
-          printf("seeded %d tiles, now at z%d x%d y%d\r",n_metatiles_tot*tileset->metasize_x*tileset->metasize_y, st->z,st->x,st->y);
-          fflush(stdout);
+          int seeded_count = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+          int skipped_count = n_skipped_tot*tileset->metasize_x*tileset->metasize_y;
+          if (non_interactive) {
+            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\n",seeded_count,skipped_count,st->z,st->x,st->y);
+          } else {
+            printf("                                                                                               \r");
+            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\r",seeded_count,skipped_count,st->z,st->x,st->y);
+            fflush(stdout);
+          }
+
           last_time = now_time;
         }
       }
@@ -963,6 +1009,9 @@ int main(int argc, const char **argv)
         break;
       case 'v':
         verbose = 1;
+        break;
+      case 'b':
+        non_interactive = 1;
         break;
       case 'c':
         configfile = optarg;
@@ -1409,7 +1458,7 @@ int main(int argc, const char **argv)
   if(nthreads >= 1 && nprocesses >= 1) {
     return usage(argv[0],"cannot set both nthreads and nprocesses");
   }
-  
+
   {
   /* start the logging thread */
     //create the queue where the seeding statuses will be put
@@ -1420,7 +1469,7 @@ int main(int argc, const char **argv)
     apr_threadattr_create(&log_thread_attrs, ctx.pool);
     apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
   }
-  
+
   if(nprocesses > 1) {
 #ifdef USE_FORK
     key_t key;
