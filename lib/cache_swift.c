@@ -56,6 +56,7 @@ struct mapcache_cache_swift {
    char *key_template;
    char *container_template;
    int debug;
+   enum keystone_auth_version auth_version;
 };
 
 struct swift_conn_params {
@@ -122,7 +123,14 @@ void mapcache_swift_connection_constructor(mapcache_context *ctx, void **conn_, 
         ctx->set_error(ctx, 500, "failed to keystone_start()");
         return;
     }
-    
+
+    keystone_err = keystone_set_auth_version(conn->keystone_context, cache->auth_version);
+    if (keystone_err != KSERR_SUCCESS) {
+        keystone_end(conn->keystone_context);
+        ctx->set_error(ctx, 500, "failed to keystone_set_auth_version()");
+        return;
+    }
+
     swift_err = swift_start(conn->swift_context);
     if (swift_err != SCERR_SUCCESS) {
         keystone_end(conn->keystone_context);
@@ -348,7 +356,7 @@ static int _mapcache_cache_swift_get(mapcache_context *ctx, mapcache_cache *pcac
         }
         err = swift_get_data(conn->swift_context, &size, &data);
     }
-    
+
     if (err == SCERR_SUCCESS) {
         rv = MAPCACHE_SUCCESS;
     } else {
@@ -422,7 +430,7 @@ static void _mapcache_cache_swift_set(mapcache_context *ctx, mapcache_cache *pca
             goto cleanup;
         }
         err = swift_put_data(conn->swift_context, tile->encoded_data->buf, tile->encoded_data->size);
-    } 
+    }
 
     if (err != SCERR_SUCCESS) {
         ctx->set_error(ctx, 500, "failed to store tile %s to cache %s due to error %d.", key, cache->cache.name, err);
@@ -436,10 +444,11 @@ cleanup:
  * \private \memberof mapcache_cache_swift
  */
 static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_cache *pcache, mapcache_cfg *config) {
-    ezxml_t xauth_url,xtenant,xusername,xpassword,xcontainer,xkey,xdebug;
+    ezxml_t xauth_url,xauth_version,xtenant,xusername,xpassword,xcontainer,xkey,xdebug;
     mapcache_cache_swift *cache = (mapcache_cache_swift *)pcache;
 
     xauth_url = ezxml_child(node, "auth_url");
+    xauth_version = ezxml_child(node, "auth_version");
     xtenant = ezxml_child(node, "tenant");
     xusername = ezxml_child(node, "username");
     xpassword = ezxml_child(node, "password");
@@ -452,6 +461,19 @@ static void _mapcache_cache_swift_configuration_parse_xml(mapcache_context *ctx,
         return;
     } else {
         cache->auth_url = apr_pstrdup(ctx->pool, xauth_url->txt);
+    }
+
+    if (!xauth_version || !xauth_version->txt || ! *xauth_version->txt) {
+        cache->auth_version = KS_AUTH_V1;
+    } else {
+        if (strcasecmp(xauth_version->txt, "1") == 0 || strcasecmp(xauth_version->txt, "v1") == 0) {
+            cache->auth_version = KS_AUTH_V1;
+        } else if (strcasecmp(xauth_version->txt, "3") == 0 || strcasecmp(xauth_version->txt, "v3") == 0) {
+            cache->auth_version = KS_AUTH_V3;
+        } else {
+            ctx->set_error(ctx, 400, "cache %s: invalid <auth_version>", pcache->name);
+            return;
+        }
     }
 
     if (!xtenant || !xtenant->txt || ! *xtenant->txt) {
