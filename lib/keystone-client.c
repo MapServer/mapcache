@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "keystone-client.h"
 
@@ -162,6 +163,7 @@ keystone_start(keystone_context_t *context)
 	if (!context->allocator) {
 		context->allocator = default_allocator;
 	}
+	context->pvt.version = KS_AUTH_V1;
 	context->pvt.curl = curl_easy_init();
 	if (NULL == context->pvt.curl) {
 		/* NOTE: No error code from libcurl, so we assume/invent CURLE_FAILED_INIT */
@@ -522,14 +524,8 @@ endpoint_url(keystone_context_t *context, struct json_object *endpoint, enum ope
 	return url_val;
 }
 
-/**
- * Given a desired service type and version and type of URL, find a service of the given type in Keystone's catalog of services,
- * then find an endpoint of that service with the given API version, then return its URL of the given type.
- * Return NULL if the service cannot be found, or if no endpoint of the given version can be found,
- * or if the service endpoint of the given version has no URL of the given type.
- */
 const char *
-keystone_get_service_url(keystone_context_t *context, enum openstack_service desired_service_type, unsigned int desired_api_version, enum openstack_service_endpoint_url_type endpoint_url_type)
+get_service_url_v1(keystone_context_t *context, enum openstack_service desired_service_type, unsigned int desired_api_version, enum openstack_service_endpoint_url_type endpoint_url_type)
 {
 	struct json_object *service;
 	const char *url;
@@ -548,22 +544,144 @@ keystone_get_service_url(keystone_context_t *context, enum openstack_service des
 	} else {
 		url = NULL;
 	}
+	return url;
+}
 
+const char *
+get_service_url_v3(keystone_context_t *context, enum openstack_service desired_service_type, enum openstack_service_endpoint_url_type endpoint_url_type)
+{
+	struct json_object *service;
+	const char *url = NULL;
+
+	assert(context != NULL);
+	assert(endpoint_url_type < ELEMENTSOF(openstack_service_endpoint_url_type_friendly_names));
+	assert(openstack_service_endpoint_url_type_friendly_names[(unsigned int) endpoint_url_type] != NULL);
+
+	service = find_service_by_type(context, context->pvt.services, desired_service_type);
+	if (service) {
+		int num_endpoints;
+		const char *endpoint_type_name;
+		struct json_object *endpoints;
+
+		if (!json_object_object_get_ex(service, "endpoints", &endpoints)) {
+			context->keystone_error("response.token.catalog[n] lacks an 'endpoints' key", KSERR_PARSE);
+			return NULL;
+		}
+		if (!json_object_is_type(endpoints, json_type_array)) {
+			context->keystone_error("response.token.catalog[n].endpoints is not an array", KSERR_PARSE);
+			return NULL;
+		}
+
+		endpoint_type_name = openstack_service_endpoint_url_type_friendly_names[(unsigned int) endpoint_url_type];
+		num_endpoints = json_object_array_length(endpoints);
+		for (int i = 0; i < num_endpoints; ++i) {
+			struct json_object *endpoint;
+			struct json_object *interface;
+			struct json_object *json_url;
+
+			endpoint = json_object_array_get_idx(endpoints, i);
+
+			/* just skip over endpoints of different shape */
+			if (!json_object_is_type(endpoint, json_type_object)) {
+				continue;
+			}
+			if (!json_object_object_get_ex(endpoint, "interface", &interface)) {
+				continue;
+			}
+			if (!json_object_is_type(interface, json_type_string)) {
+				continue;
+			}
+
+			if (strcasecmp(json_object_get_string(interface), endpoint_type_name) != 0) {
+				continue;
+			}
+
+			/* If we have found a fitting endpoint, it must be of the correct shape */
+			if(!json_object_object_get_ex(endpoint, "url", &json_url)) {
+				context->keystone_error("response.token.catalog[n].endpoints[n] lacks an 'url' key", KSERR_PARSE);
+				return NULL;
+			}
+			if (!json_object_is_type(json_url, json_type_string)) {
+				context->keystone_error("response.token.catalog[n].endpoints[n].url is not a string", KSERR_PARSE);
+				return NULL;
+			}
+			url = json_object_get_string(json_url);
+			break;
+		}
+	}
 	return url;
 }
 
 /**
- * Retrieve the authentication token and service catalog from a now-complete Keystone JSON response,
- * and store them in the Keystone context structure for later use.
+ * Given a desired service type and version and type of URL, find a service of the given type in Keystone's catalog of services,
+ * then find an endpoint of that service with the given API version, then return its URL of the given type.
+ * Return NULL if the service cannot be found, or if no endpoint of the given version can be found,
+ * or if the service endpoint of the given version has no URL of the given type.
  */
-static enum keystone_error
-process_keystone_json(keystone_context_t *context, struct json_object *response)
+const char *
+keystone_get_service_url(keystone_context_t *context, enum openstack_service desired_service_type, unsigned int desired_api_version, enum openstack_service_endpoint_url_type endpoint_url_type)
 {
-	struct json_object *access, *token, *id;
+	const char *url;
+
+	if (context->pvt.version == KS_AUTH_V1) {
+		url = get_service_url_v1(context, desired_service_type, desired_api_version, endpoint_url_type);
+	}
+	else if (context->pvt.version == KS_AUTH_V3) {
+		url = get_service_url_v3(context, desired_service_type, endpoint_url_type);
+	}
+	else {
+		url = NULL;
+	}
+	return url;
+}
+
+
+size_t process_keystone_response_headers(char *buffer, size_t size, size_t nitems, void *userdata)
+{
+	keystone_context_t *context = (keystone_context_t *) userdata;
+	char *token_start;
+	char *token_end;
+	size_t token_length;
 
 	if (context->pvt.debug) {
-		json_object_to_file_ext("/dev/stderr", response, JSON_C_TO_STRING_PRETTY);
+		fwrite(buffer, size, nitems, stderr);
 	}
+
+	/* In keystone v3 the token is in the header fields under X-Subject-Token */
+	if (context->pvt.version == KS_AUTH_V3) {
+		const char *line = buffer;
+		if (strncasecmp(line, "X-Subject-Token", sizeof("X-Subject-Token") - 1) == 0) {
+			/* get to value of header */
+			token_start = line + sizeof("X-Subject-Token");
+			/* skip over whitespace at beginning of header */
+			while (isspace(*token_start)) {
+				++token_start;
+			}
+			/* get end of token value */
+			token_end = strstr(line, "\r\n");
+			if (token_start < token_end) {
+				/* calculate length of token and copy it to the context */
+				token_length = token_end - token_start;
+				context->pvt.auth_token = context->allocator(
+					context->pvt.auth_token,
+					token_length + 1 /* '\0' */
+				);
+				if (NULL == context->pvt.auth_token) {
+					return KSERR_ALLOC_FAILED; /* Allocation failed */
+				}
+				strncpy(context->pvt.auth_token, token_start, token_length);
+				context->pvt.auth_token[token_length] = '\0';
+			}
+		}
+	}
+
+	return nitems * size;
+}
+
+static enum keystone_error
+process_keystone_json_v1(keystone_context_t *context, struct json_object *response)
+{
+	struct json_object *access, *token, *id;
 	if (!json_object_is_type(response, json_type_object)) {
 		context->keystone_error("response is not an object", KSERR_PARSE);
 		return KSERR_PARSE; /* Not the expected JSON object */
@@ -603,15 +721,64 @@ process_keystone_json(keystone_context_t *context, struct json_object *response)
 		context->keystone_error("response.access.token.id is not a string", KSERR_PARSE);
 		return KSERR_PARSE; /* Not the expected JSON string */
 	}
+
 	context->pvt.auth_token = context->allocator(
 		context->pvt.auth_token,
-		json_object_get_string_len(id)
-		+ 1 /* '\0' */
+		json_object_get_string_len(id) + 1 /* '\0' */
 	);
 	if (NULL == context->pvt.auth_token) {
-		return KSERR_PARSE; /* Allocation failed */
+		return KSERR_ALLOC_FAILED; /* Allocation failed */
 	}
 	strcpy(context->pvt.auth_token, json_object_get_string(id));
+	return KSERR_SUCCESS;
+}
+
+static enum keystone_error
+process_keystone_json_v3(keystone_context_t *context, struct json_object *response)
+{
+	struct json_object *token;
+	if (!json_object_is_type(response, json_type_object)) {
+		context->keystone_error("response is not an object", KSERR_PARSE);
+		return KSERR_PARSE; /* Not the expected JSON object */
+	}
+	/* Everything is in an "access" sub-object */
+	if (!json_object_object_get_ex(response, "token", &token)) {
+		context->keystone_error("response lacks 'token' key", KSERR_PARSE);
+		return KSERR_PARSE; /* Lacking the expected key */
+	}
+	if (!json_object_is_type(token, json_type_object)) {
+		context->keystone_error("response.token is not an object", KSERR_PARSE);
+		return KSERR_PARSE; /* Not the expected JSON object */
+	}
+	/* Service catalog */
+	if (!json_object_object_get_ex(token, "catalog", &context->pvt.services)) {
+		context->keystone_error("response.token lacks 'catalog' key", KSERR_PARSE);
+		return KSERR_PARSE;
+	}
+	if (!json_object_is_type(context->pvt.services, json_type_array)) {
+		context->keystone_error("response.token.catalog not an array", KSERR_PARSE);
+		return KSERR_PARSE;
+	}
+	return KSERR_SUCCESS;
+}
+
+/**
+ * Retrieve the authentication token and service catalog from a now-complete Keystone JSON response,
+ * and store them in the Keystone context structure for later use.
+ */
+static enum keystone_error
+process_keystone_json(keystone_context_t *context, struct json_object *response)
+{
+	if (context->pvt.debug) {
+		json_object_to_file_ext("/dev/stderr", response, JSON_C_TO_STRING_PRETTY);
+	}
+
+	if (context->pvt.version == KS_AUTH_V1) {
+		process_keystone_json_v1(context, response);
+	}
+	else if (context->pvt.version == KS_AUTH_V3) {
+		process_keystone_json_v3(context, response);
+	}
 
 	return KSERR_SUCCESS;
 }
@@ -650,43 +817,23 @@ process_keystone_response(void *ptr, size_t size, size_t nmemb, void *userdata)
 }
 
 /**
- * Authenticate against a Keystone authentication service with the given tenant and user names and password.
- * This yields an authorisation token, which is then used to access all Swift services.
+ * Sets the authorization version.
  */
 enum keystone_error
-keystone_authenticate(keystone_context_t *context, const char *url, const char *tenant_name, const char *username, const char *password)
+keystone_set_auth_version(keystone_context_t *context, enum keystone_auth_version version)
 {
+	/* TODO: error check*/
+	context->pvt.version = version;
+	return KSERR_SUCCESS;
+}
+
+/**
+ * Perform the actual authentication. Needs the payload to be set in the context.
+ */
+enum keystone_error
+authenticate_perform(keystone_context_t *context, const char *url, size_t body_len) {
 	CURLcode curl_err;
 	struct curl_slist *headers = NULL;
-	size_t body_len;
-
-	assert(context != NULL);
-	assert(context->pvt.curl != NULL);
-	assert(url != NULL);
-	assert(tenant_name != NULL);
-	assert(username != NULL);
-	assert(password != NULL);
-
-	body_len =
-		strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_USERNAME)
-		+ strlen(username)
-		+ strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_PASSWORD)
-		+ strlen(password)
-		+ strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_TENANT)
-		+ strlen(tenant_name)
-		+ strlen(KEYSTONE_AUTH_PAYLOAD_END)
-	;
-
-	/* Create or reset the JSON tokeniser */
-	if (NULL == context->pvt.json_tokeniser) {
-		context->pvt.json_tokeniser = json_tokener_new();
-		if (NULL == context->pvt.json_tokeniser) {
-			context->keystone_error("json_tokener_new failed", KSERR_INIT_FAILED);
-			return KSERR_INIT_FAILED;
-		}
-	} else {
-		json_tokener_reset(context->pvt.json_tokeniser);
-	}
 
 	curl_err = curl_easy_setopt(context->pvt.curl, CURLOPT_URL, url);
 	if (CURLE_OK != curl_err) {
@@ -706,26 +853,6 @@ keystone_authenticate(keystone_context_t *context, const char *url, const char *
 	/* Append pseudo-header defeating libcurl's default addition of an "Expect: 100-continue" header. */
 	headers = curl_slist_append(headers, "Expect:");
 
-	/* Generate POST request body containing the authentication credentials */
-	context->pvt.auth_payload = context->allocator(
-		context->pvt.auth_payload,
-		body_len
-		+ 1 /* '\0' */
-	);
-	if (NULL == context->pvt.auth_payload) {
-		curl_slist_free_all(headers);
-		return KSERR_ALLOC_FAILED;
-	}
-	sprintf(context->pvt.auth_payload, "%s%s%s%s%s%s%s",
-		KEYSTONE_AUTH_PAYLOAD_BEFORE_USERNAME,
-		username,
-		KEYSTONE_AUTH_PAYLOAD_BEFORE_PASSWORD,
-		password,
-		KEYSTONE_AUTH_PAYLOAD_BEFORE_TENANT,
-		tenant_name,
-		KEYSTONE_AUTH_PAYLOAD_END
-	);
-
 	if (context->pvt.debug) {
 		fputs(context->pvt.auth_payload, stderr);
 	}
@@ -736,6 +863,10 @@ keystone_authenticate(keystone_context_t *context, const char *url, const char *
 		context->curl_error("curl_easy_setopt", curl_err);
 		curl_slist_free_all(headers);
 		return KSERR_URL_FAILED;
+	}
+
+	if (body_len == 0 && context->pvt.auth_payload != NULL) {
+		body_len = strlen(context->pvt.auth_payload);
 	}
 
 	curl_err = curl_easy_setopt(context->pvt.curl, CURLOPT_POSTFIELDSIZE, body_len);
@@ -749,6 +880,20 @@ keystone_authenticate(keystone_context_t *context, const char *url, const char *
 	headers = curl_slist_append(headers, "Accept: " KEYSTONE_AUTH_RESPONSE_FORMAT);
 
 	curl_err = curl_easy_setopt(context->pvt.curl, CURLOPT_HTTPHEADER, headers);
+	if (CURLE_OK != curl_err) {
+		context->curl_error("curl_easy_setopt", curl_err);
+		curl_slist_free_all(headers);
+		return KSERR_URL_FAILED;
+	}
+
+	curl_err = curl_easy_setopt(context->pvt.curl, CURLOPT_HEADERFUNCTION, process_keystone_response_headers);
+	if (CURLE_OK != curl_err) {
+		context->curl_error("curl_easy_setopt", curl_err);
+		curl_slist_free_all(headers);
+		return KSERR_URL_FAILED;
+	}
+
+	curl_err = curl_easy_setopt(context->pvt.curl, CURLOPT_HEADERDATA, context);
 	if (CURLE_OK != curl_err) {
 		context->curl_error("curl_easy_setopt", curl_err);
 		curl_slist_free_all(headers);
@@ -784,6 +929,294 @@ keystone_authenticate(keystone_context_t *context, const char *url, const char *
 
 	return KSERR_SUCCESS;
 }
+
+
+/**
+ * Authenticate against a Keystone authentication service with the given tenant and user names and password.
+ * This yields an authorisation token, which is then used to access all Swift services.
+ */
+enum keystone_error
+authenticate_v1(keystone_context_t *context, const char *url, const char *tenant_name, const char *username, const char *password)
+{
+	size_t body_len;
+
+	assert(context != NULL);
+	assert(context->pvt.curl != NULL);
+	assert(url != NULL);
+	assert(tenant_name != NULL);
+	assert(username != NULL);
+	assert(password != NULL);
+
+	body_len =
+		strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_USERNAME)
+		+ strlen(username)
+		+ strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_PASSWORD)
+		+ strlen(password)
+		+ strlen(KEYSTONE_AUTH_PAYLOAD_BEFORE_TENANT)
+		+ strlen(tenant_name)
+		+ strlen(KEYSTONE_AUTH_PAYLOAD_END)
+	;
+
+	/* Create or reset the JSON tokeniser */
+	if (NULL == context->pvt.json_tokeniser) {
+		context->pvt.json_tokeniser = json_tokener_new();
+		if (NULL == context->pvt.json_tokeniser) {
+			context->keystone_error("json_tokener_new failed", KSERR_INIT_FAILED);
+			return KSERR_INIT_FAILED;
+		}
+	} else {
+		json_tokener_reset(context->pvt.json_tokeniser);
+	}
+
+	/* Generate POST request body containing the authentication credentials */
+	context->pvt.auth_payload = context->allocator(
+		context->pvt.auth_payload,
+		body_len
+		+ 1 /* '\0' */
+	);
+
+	if (NULL == context->pvt.auth_payload) {
+		return KSERR_ALLOC_FAILED;
+	}
+
+	sprintf(context->pvt.auth_payload, "%s%s%s%s%s%s%s",
+		KEYSTONE_AUTH_PAYLOAD_BEFORE_USERNAME,
+		username,
+		KEYSTONE_AUTH_PAYLOAD_BEFORE_PASSWORD,
+		password,
+		KEYSTONE_AUTH_PAYLOAD_BEFORE_TENANT,
+		tenant_name,
+		KEYSTONE_AUTH_PAYLOAD_END
+	);
+
+	/* set common */
+	return authenticate_perform(context, url, body_len);
+}
+
+
+enum keystone_error
+authenticate_v3_build_token_request(keystone_context_t *context, const char *tenant_name, const char *username, const char *password, size_t *body_len)
+{
+	enum keystone_error status = KSERR_SUCCESS;
+	const char *payload = NULL;
+	struct json_object* root = NULL;
+	struct json_object* auth = NULL;
+	struct json_object* auth_identity = NULL;
+	struct json_object* auth_identity_methods = NULL;
+	struct json_object* auth_identity_methods_password = NULL;
+	struct json_object* auth_identity_password = NULL;
+	struct json_object* auth_identity_password_user = NULL;
+	struct json_object* auth_identity_password_user_domain = NULL;
+	struct json_object* auth_scope = NULL;
+	struct json_object* auth_scope_project = NULL;
+	struct json_object* method = NULL;
+	struct json_object* pw = NULL;
+	struct json_object* un = NULL;
+	struct json_object* domain_id = NULL;
+	struct json_object* project_id = NULL;
+
+	*body_len = 0;
+
+	/*
+	{
+		"auth": {
+			"identity": {
+				"methods": [
+					"password"
+				],
+				"password": {
+					"user": {
+						"password": password,
+						"name": username,
+						"domain": {
+							"id": "default"
+						}
+					}
+				}
+			},
+			"scope": {
+				"project": {
+					"id": tenant_name
+				}
+			}
+		}
+	}
+	*/
+
+	if (!(root = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+
+	if (!(auth = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(root, "auth", auth, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_identity = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth, "identity", auth_identity, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_identity_methods = json_object_new_array())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity, "methods", auth_identity_methods, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(method = json_object_new_string("password"))) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_array_add(auth_identity_methods, method);
+
+	if (!(auth_identity_password = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity, "password", auth_identity_password, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_identity_password_user = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity_password, "user", auth_identity_password_user, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(pw = json_object_new_string(password))) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity_password_user, "password", pw, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(un = json_object_new_string(username))) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity_password_user, "name", un, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_identity_password_user_domain = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity_password_user, "domain", auth_identity_password_user_domain, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(domain_id = json_object_new_string("default"))) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_identity_password_user_domain, "id", domain_id, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_scope = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth, "scope", auth_scope, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(auth_scope_project = json_object_new_object())) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_scope, "project", auth_scope_project, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	if (!(project_id = json_object_new_string(tenant_name))) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+	json_object_object_add_ex(auth_scope_project, "id", project_id, JSON_C_OBJECT_KEY_IS_CONSTANT);
+
+	/* payload does not need to be freed */
+	payload = json_object_to_json_string_length(root, 0, body_len);
+
+	/* Generate POST request body containing the authentication credentials */
+	context->pvt.auth_payload = context->allocator(
+		context->pvt.auth_payload,
+		*body_len + 1 /* '\0' */
+	);
+
+	if (NULL == context->pvt.auth_payload) {
+		status = KSERR_ALLOC_FAILED;
+		goto cleanup;
+	}
+
+	strcpy(context->pvt.auth_payload, payload);
+
+cleanup:
+	json_object_put(root);
+	return status;
+}
+
+enum keystone_error
+authenticate_v3(keystone_context_t *context, const char *url, const char *tenant_name, const char *username, const char *password)
+{
+	char buf[512];
+	const char *version_string;
+	const char *slash;
+	size_t url_len;
+	size_t body_len;
+	enum keystone_error status;
+	assert(context != NULL);
+	assert(context->pvt.curl != NULL);
+	assert(url != NULL);
+	assert(tenant_name != NULL);
+	assert(username != NULL);
+	assert(password != NULL);
+
+	/* Create or reset the JSON tokeniser */
+	if (NULL == context->pvt.json_tokeniser) {
+		context->pvt.json_tokeniser = json_tokener_new();
+		if (NULL == context->pvt.json_tokeniser) {
+			context->keystone_error("json_tokener_new failed", KSERR_INIT_FAILED);
+			return KSERR_INIT_FAILED;
+		}
+	} else {
+		json_tokener_reset(context->pvt.json_tokeniser);
+	}
+
+	status = authenticate_v3_build_token_request(context, tenant_name, username, password, &body_len);
+
+	if (status != KSERR_SUCCESS) {
+		context->keystone_error("authenticate_v3_build_token_request failed", KSERR_INIT_FAILED);
+		return status;
+	}
+
+	url_len = strlen(url);
+
+	/* append slash if not ended with slash */
+	if (url[url_len - 1] == '/') {
+		slash = "";
+	} else {
+		slash = "/";
+	}
+
+	/* append "v3" if necessary */
+	if (strncmp(url + url_len - sizeof("v3/") + 1, "v3/", sizeof("v3/") - 1) == 0 || strncmp(url + url_len - sizeof("v3") + 1, "v3", sizeof("v3") - 1) == 0) {
+		version_string = "";
+	} else {
+		version_string = "v3/";
+	}
+	snprintf(buf, sizeof buf, "%s%s%sauth/tokens", url, slash, version_string);
+
+	/* send actual authentication request */
+	return authenticate_perform(context, buf, body_len);
+}
+
+/**
+ * Authenticate against a Keystone authentication service with the given tenant and user names and password.
+ * This yields an authorisation token, which is then used to access all Swift services.
+ */
+enum keystone_error keystone_authenticate(keystone_context_t *context, const char *url, const char *tenant_name, const char *username, const char *password)
+{
+	if (context->pvt.version == KS_AUTH_V1) {
+		return authenticate_v1(context, url, tenant_name, username, password);
+	}
+	else if (context->pvt.version == KS_AUTH_V3) {
+		return authenticate_v3(context, url, tenant_name, username, password);
+	}
+	return KSERR_INVARG;
+}
+
 
 /**
  * Return the previously-acquired Keystone authentication token, if any.

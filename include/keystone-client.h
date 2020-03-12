@@ -7,6 +7,15 @@
 #include <json-c/json.h>
 
 /**
+ * Keystone version to be used.
+ * Currently supported are V1 and V3.
+ */
+enum keystone_auth_version {
+	KS_AUTH_V1 = 1,
+	KS_AUTH_V3 = 3
+};
+
+/**
  * High-level types of errors which can occur while attempting to use Keystone.
  * More detail is available from lower-level libraries (such as curl and libjson)
  * using error callbacks specific to those libraries.
@@ -52,6 +61,7 @@ struct keystone_context_private {
 	unsigned int debug;
 	struct json_tokener *json_tokeniser; /* libjson0 library's JSON tokeniser */
 	struct json_object *services; /* service catalog JSON array */
+	enum keystone_auth_version version;
 	unsigned int verify_cert_trusted;  /* True if the peer's certificate must chain to a trusted CA, false otherwise */
 	unsigned int verify_cert_hostname; /* True if the peer's certificate's hostname must be correct, false otherwise */
 	char *auth_payload; /* Authentication POST payload, containing credentials */
@@ -176,6 +186,11 @@ enum keystone_error keystone_set_debug(keystone_context_t *context, unsigned int
 
 const char *service_name(unsigned int service);
 const char *endpoint_url_name(unsigned int endpoint);
+
+/**
+ * Set the auth version to be used. Default is v1.
+ */
+enum keystone_error keystone_set_auth_version(keystone_context_t *context, enum keystone_auth_version version);
 
 /**
  * Authenticate against a Keystone authentication service with the given tenant and user names and password.
