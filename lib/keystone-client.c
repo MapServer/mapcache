@@ -1052,19 +1052,19 @@ authenticate_v3_build_token_request(keystone_context_t *context, const char *ten
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(root, "auth", auth, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(root, "auth", auth);
 
 	if (!(auth_identity = json_object_new_object())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth, "identity", auth_identity, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth, "identity", auth_identity);
 
 	if (!(auth_identity_methods = json_object_new_array())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity, "methods", auth_identity_methods, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity, "methods", auth_identity_methods);
 
 	if (!(method = json_object_new_string("password"))) {
 		status = KSERR_ALLOC_FAILED;
@@ -1076,58 +1076,61 @@ authenticate_v3_build_token_request(keystone_context_t *context, const char *ten
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity, "password", auth_identity_password, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity, "password", auth_identity_password);
 
 	if (!(auth_identity_password_user = json_object_new_object())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity_password, "user", auth_identity_password_user, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity_password, "user", auth_identity_password_user);
 
 	if (!(pw = json_object_new_string(password))) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity_password_user, "password", pw, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity_password_user, "password", pw);
 
 	if (!(un = json_object_new_string(username))) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity_password_user, "name", un, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity_password_user, "name", un);
 
 	if (!(auth_identity_password_user_domain = json_object_new_object())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity_password_user, "domain", auth_identity_password_user_domain, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity_password_user, "domain", auth_identity_password_user_domain);
 
 	if (!(domain_id = json_object_new_string("default"))) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_identity_password_user_domain, "id", domain_id, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_identity_password_user_domain, "id", domain_id);
 
 	if (!(auth_scope = json_object_new_object())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth, "scope", auth_scope, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth, "scope", auth_scope);
 
 	if (!(auth_scope_project = json_object_new_object())) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_scope, "project", auth_scope_project, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_scope, "project", auth_scope_project);
 
 	if (!(project_id = json_object_new_string(tenant_name))) {
 		status = KSERR_ALLOC_FAILED;
 		goto cleanup;
 	}
-	json_object_object_add_ex(auth_scope_project, "id", project_id, JSON_C_OBJECT_KEY_IS_CONSTANT);
+	json_object_object_add(auth_scope_project, "id", project_id);
 
 	/* payload does not need to be freed */
-	payload = json_object_to_json_string_length(root, 0, body_len);
+	payload = json_object_to_json_string_ext(root, 0);
+	if (payload != NULL) {
+		*body_len = strlen(payload);
+	}
 
 	/* Generate POST request body containing the authentication credentials */
 	context->pvt.auth_payload = context->allocator(
