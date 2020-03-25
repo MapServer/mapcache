@@ -359,6 +359,10 @@ static int _mapcache_cache_swift_get(mapcache_context *ctx, mapcache_cache *pcac
 
     if (err == SCERR_SUCCESS) {
         rv = MAPCACHE_SUCCESS;
+    } else if (err == SCERR_NOT_FOUND) {
+        /* simply not found, but no error */
+        rv = MAPCACHE_FAILURE;
+        goto cleanup;
     } else {
         ctx->set_error(ctx, 500, "swift: failed to get object data %s: %d", key, err);
         rv = MAPCACHE_FAILURE;
