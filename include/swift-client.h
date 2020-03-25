@@ -19,7 +19,10 @@ enum swift_error {
 	SCERR_ALLOC_FAILED  = 3, /* Memory allocation failed */
 	SCERR_URL_FAILED    = 4, /* Network operation on a URL failed */
 	SCERR_FILEIO_FAILED = 5, /* I/O operation on a file failed */
-	SCERR_AUTH_FAILED   = 6  /* Authentication failure */
+	SCERR_AUTH_FAILED   = 6, /* Authentication failure */
+	SCERR_NOT_FOUND     = 7, /* The resource was not found */
+	SCERR_INVALID_REQ   = 8, /* An invalid request was sent */
+	SCERR_SERVER_ERROR  = 9  /* The server errored */
 };
 
 /* Operations supported by Swift */

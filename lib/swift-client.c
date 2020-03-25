@@ -309,6 +309,7 @@ make_url(swift_context_t *context, enum swift_operation operation)
 	assert(context->pvt.base_url_len);
 
 	switch (operation) {
+	case HAS_OBJECT:
 	case PUT_OBJECT:
 	case GET_OBJECT:
 	case SET_OBJECT_METADATA:
@@ -350,6 +351,7 @@ make_url(swift_context_t *context, enum swift_operation operation)
 			context->pvt.container
 		);
 		break;
+	case HAS_OBJECT:
 	case PUT_OBJECT:
 	case GET_OBJECT:
 	case SET_OBJECT_METADATA:
@@ -510,9 +512,15 @@ swift_request(swift_context_t *context, enum swift_operation operation, struct c
 		return SCERR_URL_FAILED;
 	} else {
 		long response_code;
-    	curl_easy_getinfo(context->pvt.curl, CURLINFO_RESPONSE_CODE, &response_code);
+		curl_easy_getinfo(context->pvt.curl, CURLINFO_RESPONSE_CODE, &response_code);
 		if (401 == response_code) {
 			return SCERR_AUTH_FAILED;
+		} else if (404 == response_code) {
+			return SCERR_NOT_FOUND;
+		} else if (response_code >= 400 && response_code < 500) {
+			return SCERR_INVALID_REQ;
+		} else if (response_code >= 500) {
+			return SCERR_SERVER_ERROR;
 		}
 	}
 
@@ -554,11 +562,7 @@ swift_has(swift_context_t *context, int *exists)
 	err = swift_request(context, HAS_OBJECT, NULL, empty_request, NULL, NULL, NULL);
 
 	if (err == SCERR_SUCCESS) {
-		long response_code;
-    	curl_easy_getinfo(context->pvt.curl, CURLINFO_RESPONSE_CODE, &response_code);
-		if (response_code >= 200 && response_code < 400) {
-			*exists = 1;
-		}
+		*exists = 1;
 	}
 	return err;
 }
@@ -615,7 +619,7 @@ swift_get_file(swift_context_t *context, const char *filename)
 
 struct write_buffer {
 	struct swift_context *context;
-	void *ptr;
+	char *ptr;
 	size_t size;
 };
 
@@ -624,9 +628,11 @@ write_data_to_buffer(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
 	struct write_buffer *buffer = (struct write_buffer*) userdata;
 	size_t bytesize = size * nmemb;
-	buffer->ptr = buffer->context->allocator(buffer->ptr, buffer->size + bytesize);
-	memcpy(buffer->ptr + buffer->size, ptr, bytesize);
+
+	buffer->ptr = buffer->context->allocator(buffer->ptr, buffer->size + bytesize + 1);
+	memcpy(&(buffer->ptr[buffer->size]), ptr, bytesize);
 	buffer->size += bytesize;
+	buffer->ptr[buffer->size] = 0;
 	return bytesize;
 }
 /**
@@ -636,10 +642,15 @@ enum swift_error
 swift_get_data(swift_context_t *context, size_t *size, void **data)
 {
 	enum swift_error swift_err;
-	struct write_buffer buffer = { context, NULL, 0 };
+	struct write_buffer buffer;
 
 	assert(context != NULL);
 	assert(data != NULL);
+
+	buffer.context = context;
+	buffer.ptr = NULL;
+	buffer.size = 0;
+
 	swift_err = swift_get(context, write_data_to_buffer, &buffer);
 	if (buffer.ptr == NULL) {
 		if (SCERR_SUCCESS == swift_err) {
