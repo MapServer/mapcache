@@ -357,24 +357,29 @@ static int _mapcache_cache_swift_get(mapcache_context *ctx, mapcache_cache *pcac
         err = swift_get_data(conn->swift_context, &size, &data);
     }
 
+    tile->encoded_data = NULL;
+
     if (err == SCERR_SUCCESS) {
         rv = MAPCACHE_SUCCESS;
+        tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
+        mapcache_buffer_append(tile->encoded_data, size, data);
     } else if (err == SCERR_NOT_FOUND) {
         /* simply not found, but no error */
-        rv = MAPCACHE_FAILURE;
-        goto cleanup;
+        rv = MAPCACHE_CACHE_MISS;
     } else {
         ctx->set_error(ctx, 500, "swift: failed to get object data %s: %d", key, err);
         rv = MAPCACHE_FAILURE;
-        goto cleanup;
     }
-
-    tile->encoded_data = mapcache_buffer_create(0, ctx->pool);
-    mapcache_buffer_append(tile->encoded_data, size, data);
 
 cleanup:
     conn->swift_context->allocator(data, 0);
-    mapcache_connection_pool_release_connection(ctx, pc);
+
+    if(GC_HAS_ERROR(ctx)) {
+        mapcache_connection_pool_invalidate_connection(ctx, pc);
+    } else {
+        mapcache_connection_pool_release_connection(ctx, pc);
+    }
+
     return rv;
 }
 
