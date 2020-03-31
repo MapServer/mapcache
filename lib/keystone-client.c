@@ -1,3 +1,7 @@
+/*
+ * Based on https://github.com/ukyg9e5r6k7gubiekd6/keystone-client
+ */
+
 #include <assert.h>
 #include <string.h>
 #include <errno.h>

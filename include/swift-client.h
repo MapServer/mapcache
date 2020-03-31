@@ -1,10 +1,12 @@
+/*
+ * Based on https://github.com/ukyg9e5r6k7gubiekd6/swift-client
+ */
+
 #ifndef SWIFT_CLIENT_H_
 #define SWIFT_CLIENT_H_
 
 #include <stdio.h>
-// #include <malloc.h>
 #include <wchar.h>
-// #include <iconv.h>
 #include <curl/curl.h>
 
 /**

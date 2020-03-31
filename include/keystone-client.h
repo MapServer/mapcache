@@ -1,8 +1,11 @@
+/*
+ * Based on https://github.com/ukyg9e5r6k7gubiekd6/keystone-client
+ */
+
 #ifndef KEYSTONE_CLIENT_H_
 #define KEYSTONE_CLIENT_H_
 
 #include <stdio.h>
-// #include <malloc.h>
 #include <curl/curl.h>
 #include <json-c/json.h>
 

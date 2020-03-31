@@ -1,3 +1,7 @@
+/*
+ * Based on https://github.com/ukyg9e5r6k7gubiekd6/swift-client
+ */
+
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -635,6 +639,7 @@ write_data_to_buffer(void *ptr, size_t size, size_t nmemb, void *userdata)
 	buffer->ptr[buffer->size] = 0;
 	return bytesize;
 }
+
 /**
  * Retrieve an object from Swift and place its data in the variable.
  */
