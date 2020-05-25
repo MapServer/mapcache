@@ -237,6 +237,7 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
         mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
         mapcache_dimension_type dimtype = entry->dimension->type;
         const char *dimval;
+        char *single_dim;
         if (dcache->allow_path_in_dim
             && (dimtype == MAPCACHE_DIMENSION_POSTGRESQL
               || dimtype == MAPCACHE_DIMENSION_SQLITE
@@ -252,7 +253,7 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
           // Forbid '.' and '/' in the dimension value
           dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
         }
-        char *single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+        single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",dimval,NULL);
         if(strstr(*path,single_dim)) {
           *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
