@@ -874,6 +874,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
 {
   ezxml_t cur_node;
   mapcache_cache_sqlite *cache;
+  char *attr;
   sqlite3_initialize();
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
   cache = (mapcache_cache_sqlite*) pcache;
@@ -885,14 +886,13 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
     ctx->set_error(ctx, 500, "sqlite config <dbname_template> not supported anymore, use a \"multi-sqlite3\" cache type");
     return;
   }
+  cache->allow_path_in_dim = 0;
+  attr = (char*)ezxml_attr(node,"allow_path_in_dim");
+  if(attr && *attr && !strcmp(attr,"yes")) {
+    cache->allow_path_in_dim = 1;
+  }
   if ((cur_node = ezxml_child(node, "dbfile")) != NULL) {
     char *fmt;
-    char *attr;
-    cache->allow_path_in_dim = 0;
-    attr = (char*)ezxml_attr(cur_node,"allow_path_in_dim");
-    if(attr && *attr && !strcmp(attr,"yes")) {
-      cache->allow_path_in_dim = 1;
-    }
     cache->dbfile = apr_pstrdup(ctx->pool, cur_node->txt);
     fmt = (char*)ezxml_attr(cur_node,"x_fmt");
     if(fmt && *fmt) {
