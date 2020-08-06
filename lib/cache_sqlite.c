@@ -75,6 +75,7 @@ struct mapcache_cache_sqlite {
        *top_fmt,*top_x_fmt,*top_y_fmt,*inv_top_x_fmt,*inv_top_y_fmt;
   int count_x, count_y;
   int top;
+  int allow_path_in_dim;
 };
 
 
@@ -234,8 +235,25 @@ static void _mapcache_cache_sqlite_filename_for_tile(mapcache_context *ctx, mapc
       int i = tile->dimensions->nelts;
       while(i--) {
         mapcache_requested_dimension *entry = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
-        const char *dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
-        char *single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
+        mapcache_dimension_type dimtype = entry->dimension->type;
+        const char *dimval;
+        char *single_dim;
+        if (dcache->allow_path_in_dim
+            && (dimtype == MAPCACHE_DIMENSION_POSTGRESQL
+              || dimtype == MAPCACHE_DIMENSION_SQLITE
+              || dimtype == MAPCACHE_DIMENSION_ELASTICSEARCH))
+        {
+          // Only if paths are allowed in dimension values and dimension is a second level type
+          // Forbid "../" in the dimension value
+          dimval = mapcache_util_str_replace_all(ctx->pool, entry->cached_value, "../", "#");
+        }
+        else
+        {
+          // If paths are not allowed in dimension values or if dimension is not a second level type
+          // Forbid '.' and '/' in the dimension value
+          dimval = mapcache_util_str_sanitize(ctx->pool,entry->cached_value,"/.",'#');
+        }
+        single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",dimval,NULL);
         if(strstr(*path,single_dim)) {
           *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
@@ -856,6 +874,7 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
 {
   ezxml_t cur_node;
   mapcache_cache_sqlite *cache;
+  char *attr;
   sqlite3_initialize();
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
   cache = (mapcache_cache_sqlite*) pcache;
@@ -866,6 +885,11 @@ static void _mapcache_cache_sqlite_configuration_parse_xml(mapcache_context *ctx
   if ((cur_node = ezxml_child(node, "dbname_template")) != NULL) {
     ctx->set_error(ctx, 500, "sqlite config <dbname_template> not supported anymore, use a \"multi-sqlite3\" cache type");
     return;
+  }
+  cache->allow_path_in_dim = 0;
+  attr = (char*)ezxml_attr(node,"allow_path_in_dim");
+  if(attr && *attr && !strcmp(attr,"yes")) {
+    cache->allow_path_in_dim = 1;
   }
   if ((cur_node = ezxml_child(node, "dbfile")) != NULL) {
     char *fmt;
