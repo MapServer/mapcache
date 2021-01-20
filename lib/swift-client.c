@@ -273,7 +273,7 @@ swift_set_container(swift_context_t *context, char *container_name)
 {
 	assert(context != NULL);
 	assert(container_name != NULL);
-	context->pvt.container = context->allocator(context->pvt.container, strlen(container_name) + 1);
+	context->pvt.container = context->allocator(context->pvt.container, strlen(container_name) + 1 /* '\0' */);
 	if (NULL == context->pvt.container) {
 		return SCERR_ALLOC_FAILED;
 	}
@@ -290,7 +290,7 @@ swift_set_object(swift_context_t *context, char *object_name)
 {
 	assert(context != NULL);
 	assert(object_name != NULL);
-	context->pvt.object = context->allocator(context->pvt.object, strlen(object_name) + 1);
+	context->pvt.object = context->allocator(context->pvt.object, strlen(object_name) + 1 /* '\0' */);
 	if (NULL == context->pvt.object) {
 		return SCERR_ALLOC_FAILED;
 	}
