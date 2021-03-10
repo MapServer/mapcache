@@ -18,11 +18,11 @@ matrix:
         - BUILD_TYPE=minimum
 
     - os: linux
-      dist: xenial
+      dist: bionic
       language: c
       sudo: required
       env:
-        - DISTRO=xenial
+        - DISTRO=bionic
         - BUILD_TYPE=maximum
 
 language: c
