@@ -51,7 +51,6 @@ script:
       cd ../tests; 
       sh ./travis_setup.sh;
       sh ./run_tests.sh;
-      sudo systemctl status apache2.service;
     fi
 
 
