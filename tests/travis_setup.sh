@@ -62,4 +62,4 @@ sudo su -c "echo '   </Directory>' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '   MapCacheAlias /mapcache \"/tmp/mc/mapcache.xml\"' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '</IfModule>' >> /etc/apache2/apache2.conf"
 
-sudo systemctl restart apache2
+sudo service apache2 restart

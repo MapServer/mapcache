@@ -52,7 +52,7 @@ script:
       sh ./travis_setup.sh;
       sh ./run_tests.sh;
     fi
-
+  - sudo apache2ctl configtest
 
 notifications:
   irc:
