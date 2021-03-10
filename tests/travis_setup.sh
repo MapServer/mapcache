@@ -29,7 +29,7 @@
 set -e
 
 mkdir /tmp/mc
-sudo chmod -R a+rw /tmp/mc
+sudo chmod -R 777 /tmp/mc
 
 MAPCACHE_CONF=/tmp/mc/mapcache.xml
 echo '<?xml version="1.0" encoding="UTF-8"?>' >> $MAPCACHE_CONF
