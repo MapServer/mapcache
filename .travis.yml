@@ -53,6 +53,7 @@ script:
       sh ./run_tests.sh;
     fi
   - sudo systemctl -l status apache2.service
+  - cat /tmp/mc/mapcache.xml
 
 notifications:
   irc:
