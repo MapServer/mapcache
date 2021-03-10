@@ -29,7 +29,7 @@
 set -e
 
 mkdir /tmp/mc
-sudo chmod -R 777 /tmp/mc
+sudo chmod -R a+rw /tmp/mc
 
 MAPCACHE_CONF=/tmp/mc/mapcache.xml
 echo '<?xml version="1.0" encoding="UTF-8"?>' >> $MAPCACHE_CONF
@@ -51,6 +51,9 @@ echo '    <service type="wmts" enabled="true"/>' >> $MAPCACHE_CONF
 echo '    <service type="wms" enabled="true"/>' >> $MAPCACHE_CONF
 echo '    <log_level>debug</log_level>' >> $MAPCACHE_CONF
 echo '</mapcache>' >> $MAPCACHE_CONF
+
+sudo chown -R travis:www-data /tmp/mc/mapcache.xml
+sudo chmod 777 /tmp/mc/mapcache.xml
 
 cp data/world.tif /tmp/mc
 
