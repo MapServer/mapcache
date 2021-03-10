@@ -51,9 +51,9 @@ script:
       cd ../tests; 
       sh ./travis_setup.sh;
       sh ./run_tests.sh;
+      sudo systemctl -l status apache2.service
+      cat /tmp/mc/mapcache.xml      
     fi
-  - sudo systemctl -l status apache2.service
-  - cat /tmp/mc/mapcache.xml
 
 notifications:
   irc:
