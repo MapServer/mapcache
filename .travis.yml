@@ -47,7 +47,11 @@ script:
   - make -j3
   - sudo make install
 # Only test with Apache 2.4
-  - if test "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
+  - if test [ "$DISTRO" = "focal" && "$BUILD_TYPE" = "maximum" ]; then 
+      cd ../tests; 
+      sh ./travis_setup.sh;
+      sh ./run_tests.sh;
+    fi
 
 
 notifications:
