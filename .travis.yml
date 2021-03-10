@@ -2,26 +2,27 @@ matrix:
   fast_finish: true
   include:
     - os: linux
-      dist: xenial
+      dist: focal
       language: c
       sudo: required
       env:
-        - DISTRO=xenial
+        - DISTRO=focal
         - BUILD_TYPE=maximum
 
     - os: linux
+      dist: focal
+      language: c
+      sudo: required
+      env:
+        - DISTRO=focal
+        - BUILD_TYPE=minimum
+
+    - os: linux
       dist: xenial
       language: c
       sudo: required
       env:
         - DISTRO=xenial
-        - BUILD_TYPE=minimum
-
-    - os: linux
-      language: c
-      sudo: required
-      env:
-        - DISTRO=precise
         - BUILD_TYPE=maximum
 
 language: c
@@ -42,15 +43,12 @@ script:
   - make -j3
   - sudo make install
 # Only test with Apache 2.4
-  - if test "$DISTRO" = "xenial" -a "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
+  - if test "$DISTRO" = "focal" -a "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
 
 
-#notifications:
-#  email:
-#    recipients:
-#      - thomas.bonfort@gmail.com
-#  irc:
-#    channels:
-#      - "irc.freenode.org#mapserver"
-#    use_notice: true
+notifications:
+  irc:
+    channels:
+      - "irc.freenode.org#mapcache"
+    use_notice: true
 
