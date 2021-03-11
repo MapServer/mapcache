@@ -62,7 +62,7 @@ sudo su -c "echo '<IfModule mapcache_module>' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '   <Directory /tmp/mc>' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '      Require all granted' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '   </Directory>' >> /etc/apache2/apache2.conf"
-sudo su -c "echo '   MapCacheAlias /mapcache \"/tmp/mc/mapcache.xml\"' >> /etc/apache2/apache2.conf"
+sudo su -c "echo '   MapCacheAlias /mapcache /tmp/mc/mapcache.xml' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '</IfModule>' >> /etc/apache2/apache2.conf"
 
 sudo service apache2 restart
