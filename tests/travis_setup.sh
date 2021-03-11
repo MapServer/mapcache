@@ -52,7 +52,7 @@ echo '    <service type="wms" enabled="true"/>' >> $MAPCACHE_CONF
 echo '    <log_level>debug</log_level>' >> $MAPCACHE_CONF
 echo '</mapcache>' >> $MAPCACHE_CONF
 
-sudo chown -R travis:www-data /tmp/mc/
+sudo chown -R www-data:www-data /tmp/mc/
 sudo chmod -R 777 /tmp/mc/
 
 cp data/world.tif /tmp/mc
@@ -62,7 +62,7 @@ sudo su -c "echo '<IfModule mapcache_module>' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '   <Directory /tmp/mc>' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '      Require all granted' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '   </Directory>' >> /etc/apache2/apache2.conf"
-sudo su -c "echo '   MapCacheAlias /mapcache /tmp/mc/mapcache.xml' >> /etc/apache2/apache2.conf"
+sudo su -c "echo '   MapCacheAlias /mapcache \"/tmp/mc/mapcache.xml\"' >> /etc/apache2/apache2.conf"
 sudo su -c "echo '</IfModule>' >> /etc/apache2/apache2.conf"
 
 sudo service apache2 restart
