@@ -52,8 +52,8 @@ echo '    <service type="wms" enabled="true"/>' >> $MAPCACHE_CONF
 echo '    <log_level>debug</log_level>' >> $MAPCACHE_CONF
 echo '</mapcache>' >> $MAPCACHE_CONF
 
-sudo chown -R travis:www-data /tmp/mc/mapcache.xml
-sudo chmod 777 /tmp/mc/mapcache.xml
+sudo chown -R travis:www-data /tmp/mc/
+sudo chmod -R 777 /tmp/mc/
 
 cp data/world.tif /tmp/mc
 
