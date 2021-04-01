@@ -2,6 +2,8 @@
  * Based on https://github.com/ukyg9e5r6k7gubiekd6/keystone-client
  */
 
+#ifdef USE_SWIFT
+
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -1236,3 +1238,5 @@ keystone_get_auth_token(keystone_context_t *context)
 
 	return context->pvt.auth_token;
 }
+
+#endif /* USE_SWIFT */
