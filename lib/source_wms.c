@@ -65,20 +65,20 @@ void _mapcache_source_wms_render_map(mapcache_context *ctx, mapcache_source *pso
   apr_table_setn(params,"SRS",map->grid_link->grid->srs);
 
   apr_table_overlap(params,wms->getmap_params,APR_OVERLAP_TABLES_SET);
-  
+
   if(map->dimensions && map->dimensions->nelts>0) {
     int i;
     for(i=0; i<map->dimensions->nelts; i++) {
       mapcache_requested_dimension *rdim = APR_ARRAY_IDX(map->dimensions,i,mapcache_requested_dimension*);
       /* set both DIM_key=val and key=val KVP params */
-      apr_table_setn(params,rdim->dimension->name,rdim->requested_value);
+      apr_table_setn(params,rdim->dimension->name,rdim->cached_value);
       if(strcasecmp(rdim->dimension->name,"TIME") && strcasecmp(rdim->dimension->name,"ELEVATION")) {
         char *dim_name = apr_pstrcat(ctx->pool,"DIM_",rdim->dimension->name,NULL);
-        apr_table_setn(params,dim_name,rdim->requested_value);
+        apr_table_setn(params,dim_name,rdim->cached_value);
       }
     }
   }
-  
+
   /* if the source has no LAYERS parameter defined, then use the tileset name
    * as the LAYERS to request. When using mirror-mode, the source has no layers
    * defined, it is added based on the incoming request
@@ -119,7 +119,7 @@ void _mapcache_source_wms_query(mapcache_context *ctx, mapcache_source *source, 
   apr_table_setn(params,"INFO_FORMAT",fi->format);
 
   apr_table_overlap(params,wms->getfeatureinfo_params,0);
-  
+
   if(map->dimensions && map->dimensions->nelts>0) {
     int i;
     for(i=0; i<map->dimensions->nelts; i++) {
