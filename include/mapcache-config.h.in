@@ -14,6 +14,7 @@
 #cmakedefine USE_MAPSERVER 1
 #cmakedefine USE_RIAK 1
 #cmakedefine USE_GDAL 1
+#cmakedefine USE_SWIFT 1
 
 #cmakedefine HAVE_STRNCASECMP 1
 #cmakedefine HAVE_SYMLINK 1

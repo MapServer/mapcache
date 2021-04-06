@@ -74,6 +74,8 @@ set_target_properties(mapcache PROPERTIES
   SOVERSION 1
 )
 
+set_property(TARGET mapcache PROPERTY C_STANDARD 11)
+
 # Add compiler flags for warnings
 if(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror=declaration-after-statement")
@@ -278,6 +280,17 @@ if(WITH_RIAK)
   endif(RIAK_FOUND)
 endif (WITH_RIAK)
 
+if(WITH_SWIFT)
+  find_package(JSONC)
+  if(JSONC_FOUND)
+    include_directories(${JSONC_INCLUDE_DIRS})
+    target_link_libraries(mapcache ${JSONC_LIBRARIES})
+    set (USE_SWIFT 1)
+  else(JSONC_FOUND)
+    report_optional_not_found(JSONC)
+  endif(JSONC_FOUND)
+endif (WITH_SWIFT)
+
 if(UNIX)
 target_link_libraries(mapcache ${CMAKE_DL_LIBS} m )
 endif(UNIX)
@@ -328,6 +341,7 @@ status_optional_component("PCRE" "${USE_PCRE}" "${PCRE_LIBRARY}")
 status_optional_component("Experimental mapserver support" "${USE_MAPSERVER}" "${MAPSERVER_LIBRARY}")
 status_optional_component("RIAK" "${USE_RIAK}" "${RIAK_LIBRARY}")
 status_optional_component("GDAL" "${USE_GDAL}" "${GDAL_LIBRARY}")
+status_optional_component("JSONC" "${USE_SWIFT}" "${JSONC_LIBRARIES}")
 message(STATUS " * Optional features")
 status_optional_feature("MAPCACHE_DETAIL" "${WITH_MAPCACHE_DETAIL}")
 
