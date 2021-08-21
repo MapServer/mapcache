@@ -37,24 +37,22 @@
 #include <limits.h>
 #endif
 
-char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_metatile *mt)
-{
+char* mapcache_tileset_tile_resource_key(mapcache_context *ctx, mapcache_tile *tile) {
   char *lockname = apr_psprintf(ctx->pool,
                                 "%d-%d-%d-%s",
-                                mt->z,mt->y,mt->x,
-                                mt->map.tileset->name);
+                                tile->z,tile->y/tile->tileset->metasize_y,tile->x/tile->tileset->metasize_x,
+                                tile->tileset->name);
 
   /* if the tileset has multiple grids, add the name of the current grid to the lock key*/
-  if(mt->map.tileset->grid_links->nelts > 1) {
-    lockname = apr_pstrcat(ctx->pool,lockname,mt->map.grid_link->grid->name,NULL);
+  if(tile->tileset->grid_links->nelts > 1) {
+    lockname = apr_pstrcat(ctx->pool,lockname,tile->grid_link->grid->name,NULL);
   }
 
-  if(mt->map.dimensions && !apr_is_empty_table(mt->map.dimensions)) {
-    const apr_array_header_t *elts = apr_table_elts(mt->map.dimensions);
+  if(tile->dimensions && tile->dimensions->nelts>0) {
     int i;
-    for(i=0; i<elts->nelts; i++) {
-      apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
-      char *dimvalue = apr_pstrdup(ctx->pool,entry.val);
+    for(i=0; i<tile->dimensions->nelts; i++) {
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      char *dimvalue = apr_pstrdup(ctx->pool,rdim->cached_value);
       char *iter = dimvalue;
       while(*iter) {
         if(*iter == '/') *iter='_';
@@ -67,11 +65,15 @@ char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_met
   return lockname;
 }
 
+char* mapcache_tileset_metatile_resource_key(mapcache_context *ctx, mapcache_metatile *mt)
+{
+  return mapcache_tileset_tile_resource_key(ctx,&mt->tiles[0]);
+}
+
 void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tileset *tileset)
 {
-
   /* check we have all we want */
-  if(tileset->cache == NULL) {
+  if(tileset->_cache == NULL) {
     /* TODO: we should allow tilesets with no caches */
     ctx->set_error(ctx, 400, "tileset \"%s\" has no cache configured.", tileset->name);
     return;
@@ -118,6 +120,12 @@ void mapcache_tileset_configuration_check(mapcache_context *ctx, mapcache_tilese
       return;
     }
   }
+
+  if(tileset->format && tileset->format->type == GC_RAW) {
+    if(tileset->metasize_x != 1 || tileset->metasize_y != 1 || tileset->metabuffer != 0) {
+      ctx->set_error(ctx, 400, "tileset \"%s\" references a RAW format type, metatiling is not supported for the \"%s\" format", tileset->name, tileset->format->name);
+    }
+  }
 }
 
 void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *tileset, const char *filename)
@@ -151,6 +159,30 @@ void mapcache_tileset_add_watermark(mapcache_context *ctx, mapcache_tileset *til
   tileset->watermark = mapcache_imageio_decode(ctx,watermarkdata);
 }
 
+void mapcache_tileset_tile_validate_z(mapcache_context *ctx, mapcache_tile *tile) {
+  if(tile->z < tile->grid_link->minz || tile->z >= tile->grid_link->maxz) {
+    ctx->set_error(ctx,404,"invalid tile z level");
+  }
+}
+
+void mapcache_tileset_tile_validate_x(mapcache_context *ctx, mapcache_tile *tile) {
+  mapcache_extent_i limits;
+  limits = tile->grid_link->grid_limits[tile->z];
+  if(tile->x<limits.minx || tile->x>=limits.maxx) {
+    ctx->set_error(ctx, 404, "tile x=%d not in [%d,%d[",
+                   tile->x,limits.minx,limits.maxx);
+  }
+}
+
+void mapcache_tileset_tile_validate_y(mapcache_context *ctx, mapcache_tile *tile) {
+  mapcache_extent_i limits;
+  limits = tile->grid_link->grid_limits[tile->z];
+  if(tile->y<limits.miny || tile->y>=limits.maxy) {
+    ctx->set_error(ctx, 404, "tile y=%d not in [%d,%d[",
+                   tile->y,limits.miny,limits.maxy);
+  }
+}
+
 void mapcache_tileset_tile_validate(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_extent_i limits;
@@ -176,7 +208,9 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
                                     mapcache_grid_link *grid_link,
                                     mapcache_extent *bbox, int width, int height,
                                     int *ntiles,
-                                    mapcache_tile ***tiles)
+                                    mapcache_tile ***tiles,
+                                    mapcache_grid_link **effectively_used_grid_link,
+                                    apr_array_header_t *dimensions)
 {
   double resolution;
   int level;
@@ -185,25 +219,41 @@ void mapcache_tileset_get_map_tiles(mapcache_context *ctx, mapcache_tileset *til
   int x,y;
   int i=0;
   resolution = mapcache_grid_get_resolution(bbox, width, height);
-  mapcache_grid_get_closest_level(ctx,grid_link,resolution,&level);
-  
+  *effectively_used_grid_link = mapcache_grid_get_closest_wms_level(ctx,grid_link,resolution,&level);
+
   /* we don't want to assemble tiles that have already been reassembled from a lower level */
-  if(grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > grid_link->max_cached_zoom) {
-    level = grid_link->max_cached_zoom;
+  if((*effectively_used_grid_link)->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE && level > (*effectively_used_grid_link)->max_cached_zoom) {
+    level = (*effectively_used_grid_link)->max_cached_zoom;
   }
 
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
-  mapcache_grid_get_xy(ctx,grid_link->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
-  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),grid_link->grid_limits[level].maxx),grid_link->grid_limits[level].minx);
-  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),grid_link->grid_limits[level].maxy),grid_link->grid_limits[level].miny);
-  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),grid_link->grid_limits[level].minx),grid_link->grid_limits[level].maxx);
-  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),grid_link->grid_limits[level].miny),grid_link->grid_limits[level].maxy);
+  // Get dimensions values for whole map if required by <wms_querybymap> configuration
+  if (dimensions)
+  {
+    int j;
+    for (j=0 ; j<dimensions->nelts ; j++)
+    {
+      mapcache_requested_dimension *rdim = APR_ARRAY_IDX(dimensions,j,mapcache_requested_dimension*);
+      mapcache_dimension *dim = rdim->dimension;
+      if (dim->wms_querybymap_minzoom != -1 && level >= dim->wms_querybymap_minzoom) {
+        rdim->cached_entries_for_value =
+          mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+              tileset,bbox,(*effectively_used_grid_link)->grid);
+      }
+    }
+  }
+
+  mapcache_grid_get_xy(ctx,(*effectively_used_grid_link)->grid,bbox->minx,bbox->miny,level,&bl_x,&bl_y);
+  mapcache_grid_get_xy(ctx,(*effectively_used_grid_link)->grid,bbox->maxx,bbox->maxy,level,&tr_x,&tr_y);
+  Mx = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_x,bl_x),(*effectively_used_grid_link)->grid_limits[level].maxx),(*effectively_used_grid_link)->grid_limits[level].minx);
+  My = MAPCACHE_MAX(MAPCACHE_MIN(MAPCACHE_MAX(tr_y,bl_y),(*effectively_used_grid_link)->grid_limits[level].maxy),(*effectively_used_grid_link)->grid_limits[level].miny);
+  mx = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_x,bl_x),(*effectively_used_grid_link)->grid_limits[level].minx),(*effectively_used_grid_link)->grid_limits[level].maxx);
+  my = MAPCACHE_MIN(MAPCACHE_MAX(MAPCACHE_MIN(tr_y,bl_y),(*effectively_used_grid_link)->grid_limits[level].miny),(*effectively_used_grid_link)->grid_limits[level].maxy);
   *ntiles = (Mx-mx+1)*(My-my+1);
   i=0;
   *tiles = (mapcache_tile**)apr_pcalloc(ctx->pool, *ntiles*sizeof(mapcache_tile*));
   for(x=mx; x<=Mx; x++) {
     for(y=my; y<=My; y++) {
-      mapcache_tile *tile = mapcache_tileset_tile_create(ctx->pool,tileset, grid_link);
+      mapcache_tile *tile = mapcache_tileset_tile_create(ctx->pool,tileset, (*effectively_used_grid_link));
       tile->x = x;
       tile->y = y;
       tile->z = level;
@@ -302,6 +352,9 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
         ox = (Mx - tile->x) * tile->grid_link->grid->tile_sx;
         oy = (tile->y - my) * tile->grid_link->grid->tile_sy;
         break;
+      default:
+        ctx->set_error(ctx,500,"BUG: invalid grid origin");
+        return NULL;
     }
     if(tile->nodata) continue;
 
@@ -326,7 +379,7 @@ mapcache_image* mapcache_tileset_assemble_map_tiles(mapcache_context *ctx, mapca
 
   /* copy/scale the srcimage onto the destination image */
   tileresolution = toplefttile->grid_link->grid->levels[toplefttile->z]->resolution;
-  mapcache_grid_get_extent(ctx,toplefttile->grid_link->grid,
+  mapcache_grid_get_tile_extent(ctx,toplefttile->grid_link->grid,
                            toplefttile->x, toplefttile->y, toplefttile->z, &tilebbox);
 
   /*compute the pixel position of top left corner*/
@@ -363,6 +416,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   mapcache_grid *grid = tile->grid_link->grid;
   double res = grid->levels[tile->z]->resolution;
   double gbuffer,gwidth,gheight,fullgwidth,fullgheight;
+
   mt->map.tileset = tileset;
   mt->map.grid_link = tile->grid_link;
   mt->z = tile->z;
@@ -405,7 +459,7 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
   /* configured metatile size in geographical units */
   fullgwidth = res * tileset->metasize_x * grid->tile_sx;
   fullgheight = res * tileset->metasize_y * grid->tile_sy;
-  
+
   switch(grid->origin) {
     case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
       mt->map.extent.minx = grid->extent.minx + mt->x * fullgwidth - gbuffer;
@@ -448,26 +502,17 @@ mapcache_metatile* mapcache_tileset_metatile_get(mapcache_context *ctx, mapcache
  */
 void mapcache_tileset_render_metatile(mapcache_context *ctx, mapcache_metatile *mt)
 {
-  int i;
-#ifdef DEBUG
-  if(!mt->map.tileset->source || mt->map.tileset->read_only) {
-    ctx->set_error(ctx,500,"###BUG### tileset_render_metatile called on tileset with no source or that is read-only");
+  mapcache_tileset *tileset = mt->map.tileset;
+
+  if(!tileset->source || tileset->read_only) {
+    ctx->set_error(ctx,500,"tileset_render_metatile called on tileset with no source or that is read-only");
     return;
   }
-#endif
-  mt->map.tileset->source->render_map(ctx, &mt->map);
+  mapcache_source_render_map(ctx, tileset->source, &mt->map);
   GC_CHECK_ERROR(ctx);
   mapcache_image_metatile_split(ctx, mt);
   GC_CHECK_ERROR(ctx);
-  if(mt->map.tileset->cache->tile_multi_set) {
-    mt->map.tileset->cache->tile_multi_set(ctx, mt->tiles, mt->ntiles);
-  } else {
-    for(i=0; i<mt->ntiles; i++) {
-      mapcache_tile *tile = &(mt->tiles[i]);
-      mt->map.tileset->cache->tile_set(ctx, tile);
-      GC_CHECK_ERROR(ctx);
-    }
-  }
+  mapcache_cache_tile_multi_set(ctx, tileset->_cache, mt->tiles, mt->ntiles);
 }
 
 
@@ -487,6 +532,9 @@ mapcache_tileset* mapcache_tileset_create(mapcache_context *ctx)
   tileset->format = NULL;
   tileset->grid_links = NULL;
   tileset->config = NULL;
+  tileset->store_dimension_assemblies = 1;
+  tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_NONE;
+  tileset->subdimension_read_only = 0;
   return tileset;
 }
 
@@ -504,11 +552,14 @@ mapcache_tileset* mapcache_tileset_clone(mapcache_context *ctx, mapcache_tileset
   dst->grid_links = src->grid_links;
   dst->config = src->config;
   dst->name = src->name;
-  dst->cache = src->cache;
+  dst->_cache = src->_cache;
   dst->source = src->source;
   dst->watermark = src->watermark;
   dst->wgs84bbox = src->wgs84bbox;
   dst->format = src->format;
+  dst->store_dimension_assemblies = src->store_dimension_assemblies;
+  dst->dimension_assembly_type = src->dimension_assembly_type;
+  dst->subdimension_read_only = src->subdimension_read_only;
   return dst;
 }
 
@@ -527,17 +578,16 @@ mapcache_tile* mapcache_tileset_tile_create(apr_pool_t *pool, mapcache_tileset *
   tile->grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    tile->dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    tile->dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(tile->dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
+      rdim->dimension = dimension;
+      APR_ARRAY_PUSH(tile->dimensions,mapcache_requested_dimension*) = rdim;
     }
-  }
-  if(tileset->timedimension) {
-    if(!tile->dimensions) {
-      tile->dimensions = apr_table_make(pool,1);
-    }
-    apr_table_set(tile->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
   }
   return tile;
 }
@@ -548,9 +598,7 @@ mapcache_tile* mapcache_tileset_tile_clone(apr_pool_t *pool, mapcache_tile *src)
   tile->tileset = src->tileset;
   tile->expires = src->expires;
   tile->grid_link = src->grid_link;
-  if(src->dimensions) {
-    tile->dimensions = apr_table_clone(pool,src->dimensions);
-  }
+  tile->dimensions = mapcache_requested_dimensions_clone(pool, src->dimensions);
   tile->x = src->x;
   tile->y = src->y;
   tile->z = src->z;
@@ -564,7 +612,7 @@ mapcache_map* mapcache_tileset_map_clone(apr_pool_t *pool, mapcache_map *src)
   map->tileset = src->tileset;
   map->expires = src->expires;
   map->grid_link = src->grid_link;
-  map->dimensions = apr_table_clone(pool,src->dimensions);
+  map->dimensions = mapcache_requested_dimensions_clone(pool, src->dimensions);
   map->height = src->height;
   map->width = src->width;
   map->extent = src->extent;
@@ -581,17 +629,16 @@ mapcache_map* mapcache_tileset_map_create(apr_pool_t *pool, mapcache_tileset *ti
   map->grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    map->dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    map->dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(map->dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
+      rdim->dimension = dimension;
+      APR_ARRAY_PUSH(map->dimensions,mapcache_requested_dimension*) = rdim;
     }
-  }
-  if(tileset->timedimension) {
-    if(!map->dimensions) {
-      map->dimensions = apr_table_make(pool,1);
-    }
-    apr_table_set(map->dimensions,tileset->timedimension->key,tileset->timedimension->default_value);
   }
   return map;
 }
@@ -607,30 +654,36 @@ mapcache_feature_info* mapcache_tileset_feature_info_create(apr_pool_t *pool, ma
   fi->map.grid_link = grid_link;
   if(tileset->dimensions) {
     int i;
-    fi->map.dimensions = apr_table_make(pool,tileset->dimensions->nelts);
+    fi->map.dimensions = apr_array_make(pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
     for(i=0; i<tileset->dimensions->nelts; i++) {
       mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      apr_table_set(fi->map.dimensions,dimension->name,dimension->default_value);
+      mapcache_requested_dimension *rdim = apr_pcalloc(pool,sizeof(mapcache_requested_dimension));
+      rdim->requested_value = dimension->default_value;
+      rdim->cached_value = NULL;
+      rdim->cached_entries_for_value = NULL;
+      rdim->dimension = dimension;
+      APR_ARRAY_PUSH(fi->map.dimensions,mapcache_requested_dimension*) = rdim;
     }
   }
   return fi;
 }
 
 void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_tile *tile) {
-  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
-
-  /* we have at most 4 tiles composing the requested tile */
   mapcache_extent tile_bbox;
   double shrink_x, shrink_y, scalefactor;
   int x[4],y[4];
   int i, n=1;
-  mapcache_grid_get_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z, &tile_bbox);
+  mapcache_tile *childtile;
+  assert(tile->grid_link->outofzoom_strategy == MAPCACHE_OUTOFZOOM_REASSEMBLE);
+
+  /* we have at most 4 tiles composing the requested tile */
+  mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z, &tile_bbox);
 
   /*
    shrink the extent so we do not fall exactly on a tile boundary, to avoid rounding
    errors when computing the x,y of the lower level tile(s) we will need
   */
-  
+
   shrink_x = (tile_bbox.maxx - tile_bbox.minx) / (tile->grid_link->grid->tile_sx * 1000); /* 1/1000th of a pixel */
   shrink_y = (tile_bbox.maxy - tile_bbox.miny) / (tile->grid_link->grid->tile_sy * 1000); /* 1/1000th of a pixel */
   tile_bbox.maxx -= shrink_x;
@@ -655,15 +708,15 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
   tile_bbox.minx -= shrink_x;
   tile_bbox.miny -= shrink_y;
 
-  mapcache_tile *childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
+  childtile = mapcache_tileset_tile_clone(ctx->pool,tile);
   childtile->z = tile->grid_link->max_cached_zoom;
   scalefactor = childtile->grid_link->grid->levels[childtile->z]->resolution/tile->grid_link->grid->levels[tile->z]->resolution;
   tile->nodata = 1;
   for(i=0;i<n;i++) {
-    childtile->x = x[i];
-    childtile->y = y[i];
     mapcache_extent childtile_bbox;
     double dstminx,dstminy;
+    childtile->x = x[i];
+    childtile->y = y[i];
     mapcache_tileset_tile_get(ctx,childtile);
     GC_CHECK_ERROR(ctx);
     if(childtile->nodata) {
@@ -682,7 +735,7 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
       tile->nodata = 0;
     }
     /* now copy/scale the srcimage onto the destination image */
-    mapcache_grid_get_extent(ctx,childtile->grid_link->grid,
+    mapcache_grid_get_tile_extent(ctx,childtile->grid_link->grid,
                             childtile->x, childtile->y, childtile->z, &childtile_bbox);
 
     /*compute the pixel position of top left corner*/
@@ -699,13 +752,14 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
       * https://bugs.freedesktop.org/show_bug.cgi?id=46277 */
       unsigned int row,col;
       unsigned char *srcpixptr;
+      unsigned char *row_ptr;
       unsigned int dstminxi = - dstminx / scalefactor;
       unsigned int dstminyi = - dstminy / scalefactor;
       srcpixptr = &(childtile->raw_image->data[dstminyi * childtile->raw_image->stride + dstminxi * 4]);
       /*
       ctx->log(ctx, MAPCACHE_WARN, "factor: %g. pixel: %d,%d (val:%d)",scalefactor,dstminxi,dstminyi,*((unsigned int*)srcpixptr));
        */
-      unsigned char *row_ptr = tile->raw_image->data;
+      row_ptr = tile->raw_image->data;
       for(row=0;row<tile->raw_image->h;row++) {
         unsigned char *pix_ptr = row_ptr;
         for(col=0;col<tile->raw_image->w;col++) {
@@ -722,11 +776,6 @@ void mapcache_tileset_assemble_out_of_zoom_tile(mapcache_context *ctx, mapcache_
     childtile->raw_image = NULL;
     childtile->encoded_data = NULL;
   }
-
-
-
-  
-  
 }
 
 void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) {
@@ -740,6 +789,308 @@ void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) 
     }
     ctx->set_error(ctx,500,"Proxying out of zoom tiles not implemented");
   }
+}
+
+int mapcache_tileset_tile_get_readonly(mapcache_context *ctx, mapcache_tile *tile) {
+  int ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
+  if(GC_HAS_ERROR(ctx))
+    return ret;
+  
+  if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
+    /* the cache is in auto-expire mode, and can return the tile modification date,
+     * and there is a source configured so we can possibly update it,
+     * so we check to see if it is stale */
+    apr_time_t now = apr_time_now();
+    apr_time_t stale = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
+    if(stale<now) {
+      mapcache_tileset_tile_delete(ctx,tile,0);
+      if(ctx->get_error(ctx) == 404) {
+        ctx->clear_errors(ctx);
+      }
+      ret = MAPCACHE_CACHE_MISS;
+    }
+  }
+  return ret;
+}
+
+typedef struct {
+  mapcache_tile *tile;
+  int isFetched;
+} mapcache_subtile;
+
+static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ctx, mapcache_tile *tile, int read_only);
+
+#if APR_HAS_THREADS                                                                      
+/* use a thread pool if using 1.3.12 or higher apu */                                    
+#include "apu_version.h"                                                                 
+#if (APU_MAJOR_VERSION <= 1 && APU_MINOR_VERSION <= 3)                                   
+#define USE_THREADPOOL 0                                                                 
+#include <apr_thread_proc.h>                                                             
+#else                                                                                    
+#define USE_THREADPOOL 1                                                                 
+#include <apr_thread_pool.h>                                                             
+#endif                                                                                   
+                                                                                         
+typedef struct {                                                                         
+  mapcache_subtile *subtile;                                                             
+  mapcache_tile *tile;                                                                   
+  mapcache_context *ctx;                                                                 
+} _thread_subtile;                                                                       
+static void* APR_THREAD_FUNC _thread_get_subtile(apr_thread_t *thread, void *data)       
+{                                                                                        
+  _thread_subtile * t = (_thread_subtile *)data;                                         
+  /* creates the tile from the source, takes care of metatiling */                       
+  mapcache_tileset_tile_get_without_subdimensions(t->ctx, t->subtile->tile,              
+      (t->tile->tileset->subdimension_read_only||!t->tile->tileset->source)?1:0);        
+  t->subtile->isFetched = MAPCACHE_TRUE;                                                 
+#if !USE_THREADPOOL                                                                      
+  apr_thread_exit(thread, APR_SUCCESS);                                                  
+#endif                                                                                   
+  return NULL;                                                                           
+}                                                                                        
+#endif // APR_HAS_THREADS                                                                
+                                                                                         
+
+void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
+  apr_array_header_t *subtiles;
+  mapcache_extent extent;
+  mapcache_subtile st;
+  mapcache_image *assembled_image = NULL;
+  mapcache_buffer *assembled_buffer = NULL;
+  int i,j,k,n_subtiles = 1,assembled_nodata = 1;
+  /* we can be here in two cases:
+   * - either we didn't look up the tile directly (need to split dimension into sub-dimension and reassemble dynamically)
+   * - either the direct lookup failed and we need to render/assemble the tiles from subdimensions
+   */
+  subtiles = apr_array_make(ctx->pool,1,sizeof(mapcache_subtile));
+  st.tile = tile;
+  st.isFetched = MAPCACHE_FALSE;
+  APR_ARRAY_PUSH(subtiles,mapcache_subtile) = st;
+  mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+  if(GC_HAS_ERROR(ctx)) goto cleanup;
+
+  for(i=0;i<tile->dimensions->nelts; i++) {
+    mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+    apr_array_header_t *single_subdimension;
+    if (rdim->cached_entries_for_value) {
+      single_subdimension = rdim->cached_entries_for_value;
+    } else {
+      single_subdimension = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value,
+          tile->tileset, &extent, tile->grid_link->grid);
+    }
+    if(GC_HAS_ERROR(ctx)) /* invalid dimension given */
+      goto cleanup;
+#ifdef DEBUG
+    {
+      char *dims = "";
+      int i;
+      for(i=0;i<single_subdimension->nelts;i++)
+        dims = apr_pstrcat(ctx->pool,dims,APR_ARRAY_IDX(single_subdimension,i,char*)," ",NULL);
+      ctx->log(ctx,MAPCACHE_DEBUG,"tile (%d,%d,%d) dimension (%s) returned: %s",
+             tile->z,tile->y,tile->x,rdim->dimension->name,dims);
+    }
+#endif
+
+    if(single_subdimension->nelts == 0) {
+      /* not an error, but no subdimension was found: we need to return an empty tile */
+      tile->nodata = 1;
+      if(tile->tileset->store_dimension_assemblies) {
+        tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+        tile->raw_image->has_alpha = MC_ALPHA_YES;
+        tile->raw_image->is_blank = MC_EMPTY_YES;
+        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+        /* set the key for the dimension so it can be stored with the requested dimension */
+        for(j=0;j<tile->dimensions->nelts;j++) {
+          mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,j,mapcache_requested_dimension*);
+          dim->cached_value = dim->requested_value;
+        }
+        mapcache_cache_tile_set(ctx, tile->tileset->_cache, tile);
+        GC_CHECK_ERROR(ctx);
+      }
+      return;
+    } else {
+      for(j=0;j<n_subtiles;j++) {
+        /* clone the existing subtiles if we have more than one sub-dimension to assemble for the the current dimension */
+        for(k=1;k<single_subdimension->nelts;k++) {
+          st.tile = mapcache_tileset_tile_clone(ctx->pool,APR_ARRAY_IDX(subtiles,j,mapcache_subtile).tile);
+          st.isFetched = MAPCACHE_FALSE;
+          APR_ARRAY_PUSH(subtiles,mapcache_subtile)=st;
+        }
+      }
+      n_subtiles *= single_subdimension->nelts;
+      /* foreach of the subtiles, now set the actual subdimension we are going to be using
+         the "j%nelts" part takes care of looping over and over through the individual subdimensions */
+      for(j=0;j<n_subtiles;j++) {
+        mapcache_tile_set_cached_dimension(ctx,APR_ARRAY_IDX(subtiles,j,mapcache_subtile).tile,rdim->dimension->name,
+                                           APR_ARRAY_IDX(single_subdimension,j%single_subdimension->nelts,char*));
+
+      }
+    }
+  }
+
+  /* our subtiles array now contains a list of tiles with subdimensions split up, we now need to fetch them from the cache */
+  /* note that subtiles[0].tile == tile */
+#if APR_HAS_THREADS                                                                                               
+  if (tile->tileset->assembly_threaded_fetching_maxzoom != -1
+      && tile->z <= tile->tileset->assembly_threaded_fetching_maxzoom) {
+    apr_thread_t **threads;                                                                                       
+    apr_threadattr_t *thread_attrs;                                                                               
+    int nthreads;                                                                                                 
+    _thread_subtile * thread_subtiles;                                                                            
+
+    nthreads = 0;                                                                                                 
+    apr_threadattr_create(&thread_attrs, ctx->pool);                                                              
+    thread_subtiles = (_thread_subtile*)apr_pcalloc(ctx->pool,subtiles->nelts*sizeof(_thread_subtile));           
+    threads = (apr_thread_t**)apr_pcalloc(ctx->pool,subtiles->nelts*sizeof(apr_thread_t*));                       
+    for(i=subtiles->nelts-1; i>=0; i--) {                                                                         
+      int rv;                                                                                                     
+      thread_subtiles[i].subtile = &(APR_ARRAY_IDX(subtiles,i,mapcache_subtile));                                 
+      thread_subtiles[i].tile = tile;                                                                             
+      thread_subtiles[i].ctx = ctx->clone(ctx);                                                                   
+      rv = apr_thread_create(&threads[i], thread_attrs, _thread_get_subtile,                                      
+          (void*)&(thread_subtiles[i]), thread_subtiles[i].ctx->pool);                                            
+      if (rv != APR_SUCCESS) {                                                                                    
+        // In case of failure creating a thread, the subtile will be fetched in the main loop below
+        break;                                                                             
+      }                                                                                    
+      nthreads++;                                                                          
+    }                                                                                      
+    for(i=0 ; i<nthreads ; i++) {                                                          
+      int rv;                                                                              
+      apr_thread_join(&rv, threads[i]);                                                    
+      if(rv != APR_SUCCESS) {                                                              
+        ctx->set_error(ctx,500, "thread %d of %d failed on exit\n",i,nthreads);            
+      }                                                                                    
+      if(GC_HAS_ERROR(thread_subtiles[i].ctx)) {                                           
+        /* transfer error message from child thread to main context */                     
+        ctx->set_error(ctx,thread_subtiles[i].ctx->get_error(thread_subtiles[i].ctx),      
+            thread_subtiles[i].ctx->get_error_message(thread_subtiles[i].ctx));            
+      }                                                                                    
+    }                                                                                      
+  }
+#endif // APR_HAS_THREADS
+
+  for(i=subtiles->nelts-1; i>=0; i--) {
+    mapcache_tile *subtile = APR_ARRAY_IDX(subtiles,i,mapcache_subtile).tile;
+    if (!APR_ARRAY_IDX(subtiles,i,mapcache_subtile).isFetched) {
+      mapcache_tileset_tile_get_without_subdimensions(ctx, subtile, (tile->tileset->subdimension_read_only||!tile->tileset->source)?1:0); /* creates the tile from the source, takes care of metatiling */
+    }
+    if(GC_HAS_ERROR(ctx))
+      goto cleanup;
+    if(!subtile->nodata) {
+      assembled_nodata = 0;
+      if(!assembled_buffer && !assembled_image) {
+        /* first "usable" subtile */
+        assembled_buffer = subtile->encoded_data;
+        assembled_image = subtile->raw_image;
+      } else {
+        /* need to merge current assembled tile over this subtile */
+        if(!assembled_image) {
+          assembled_image = mapcache_imageio_decode(ctx,assembled_buffer);
+          if(GC_HAS_ERROR(ctx))
+            goto cleanup;
+          assembled_buffer = NULL; /* the image data went stale as we're merging something */
+        }
+        if(!subtile->raw_image) {
+          subtile->raw_image = mapcache_imageio_decode(ctx,subtile->encoded_data);
+          if(GC_HAS_ERROR(ctx))
+            goto cleanup;
+        }
+        mapcache_image_merge(ctx, subtile->raw_image, assembled_image);
+        assembled_image = subtile->raw_image;
+        assembled_image->has_alpha = MC_ALPHA_UNKNOWN; /* we've merged two images, we now have no idea if it's transparent or not */
+        if(GC_HAS_ERROR(ctx))
+          goto cleanup;
+      }
+      if ((mapcache_imageio_alpha_sniff(ctx,subtile->encoded_data) == MC_ALPHA_NO) ||
+          (subtile->raw_image && subtile->raw_image->has_alpha == MC_ALPHA_NO)) {
+        /* the returned image is fully opaque, we don't need to get/decode/merge any further subtiles */
+        if(assembled_image)
+          assembled_image->has_alpha = MC_ALPHA_NO;
+        break;
+      }
+    }
+  }
+  
+  tile->encoded_data = assembled_buffer;
+  tile->raw_image = assembled_image;
+  tile->nodata = assembled_nodata;
+
+  /* TODO: how should the no data case be handled generically?
+   * uncomment the following block if this nodata state should be returned to
+   * the requester immediately, without this info being stored to the cache. 
+   * Leaving this uncommented will cause a no-data tile to be (maybe, depending
+   * on the cache's actual configuration) written to the cache
+   */
+  /*
+  if(tile->nodata) {
+    goto cleanup;
+  }
+  */
+
+  if(!tile->nodata && !tile->encoded_data) {
+    tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+    GC_CHECK_ERROR(ctx);
+  }
+  if(tile->tileset->store_dimension_assemblies) {
+    int already_stored = 1; /*depending on the type of dimension, we may have no nead to store the resulting tile*/
+
+    if(n_subtiles != 1)
+      already_stored = 0; /*if we had to merge multiple subdimensions, then we always have to store the resulting assembly*/
+
+    /* set the key for the dimension so it can be stored with the requested dimension */
+    for(j=0;j<tile->dimensions->nelts;j++) {
+      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,j,mapcache_requested_dimension*);
+      if(strcmp(dim->cached_value,dim->requested_value)) {
+        already_stored = 0; /*the subdimension is different than the requested dimension, we need to store the resulting tile*/
+      }
+      dim->cached_value = dim->requested_value;
+    }
+    if(!already_stored) {
+      if(tile->nodata) {
+        tile->raw_image = mapcache_image_create_with_data(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy);
+        tile->raw_image->has_alpha = MC_ALPHA_YES;
+        tile->raw_image->is_blank = MC_EMPTY_YES;
+        tile->encoded_data = tile->tileset->format->write(ctx, tile->raw_image, tile->tileset->format);
+        GC_CHECK_ERROR(ctx);
+      }
+      mapcache_cache_tile_set(ctx, tile->tileset->_cache, tile);
+      GC_CHECK_ERROR(ctx);
+    }
+  }
+
+cleanup:
+  return;
+}
+
+void mapcache_tileset_tile_get_with_subdimensions(mapcache_context *ctx, mapcache_tile *tile) {
+  int i,ret;
+
+  assert(tile->dimensions);
+  if(tile->tileset->store_dimension_assemblies) {
+    for(i=0;i<tile->dimensions->nelts;i++) {
+      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      dim->cached_value = dim->requested_value;
+    }
+    ret = mapcache_tileset_tile_get_readonly(ctx,tile);
+    GC_CHECK_ERROR(ctx);
+    if(ret == MAPCACHE_SUCCESS) {
+      /* update the tile expiration time */
+      if(tile->tileset->auto_expire && tile->mtime) {
+        apr_time_t now = apr_time_now();
+        apr_time_t expire_time = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
+        tile->expires = apr_time_sec(expire_time-now);
+      }
+      return;
+    }
+    for(i=0;i<tile->dimensions->nelts;i++) {
+      /* unset the cached dimension we setup earlier on */
+      mapcache_requested_dimension *dim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+      dim->cached_value = NULL;
+    }
+  }
+  return mapcache_tileset_tile_set_get_with_subdimensions(ctx,tile);
+  
 }
 
 /**
@@ -760,16 +1111,12 @@ void mapcache_tileset_outofzoom_get(mapcache_context *ctx, mapcache_tile *tile) 
  *    - release mutex
  *
  */
-void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
+
+static void mapcache_tileset_tile_get_without_subdimensions(mapcache_context *ctx, mapcache_tile *tile, int read_only)
 {
-  int isLocked,ret;
+  int ret;
   mapcache_metatile *mt=NULL;
-  if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
-          tile->z > tile->grid_link->max_cached_zoom) {
-    mapcache_tileset_outofzoom_get(ctx, tile);
-    return;
-  }
-  ret = tile->tileset->cache->tile_get(ctx, tile);
+  ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(ret == MAPCACHE_SUCCESS && tile->tileset->auto_expire && tile->mtime && tile->tileset->source && !tile->tileset->read_only) {
@@ -779,16 +1126,14 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
     apr_time_t now = apr_time_now();
     apr_time_t stale = tile->mtime + apr_time_from_sec(tile->tileset->auto_expire);
     if(stale<now) {
-      mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-      GC_CHECK_ERROR(ctx);
-      ret = MAPCACHE_CACHE_MISS;
+      /* Indicate that we need to re-render the tile */
+      ret = MAPCACHE_CACHE_RELOAD;
     }
   }
 
-  if(ret == MAPCACHE_CACHE_MISS) {
-
+  if (ret == MAPCACHE_CACHE_MISS) {
     /* bail out straight away if the tileset has no source or is read-only */
-    if(tile->tileset->read_only || !tile->tileset->source) {
+    if(read_only) {
       /* there is no source configured for this tile. not an error, let caller now*/
       /*
       ctx->set_error(ctx,404,"tile not in cache, and no source configured for tileset %s",
@@ -803,45 +1148,68 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
       ctx->set_error(ctx,404,"tile not in cache, and configured for readonly mode");
       return;
     }
+  }
 
-    /* the tile does not exist, we must take action before re-asking for it */
-    /*
-     * is the tile already being rendered by another thread ?
-     * the call is protected by the same mutex that sets the lock on the tile,
-     * so we can assure that:
-     * - if the lock does not exist, then this thread should do the rendering
-     * - if the lock exists, we should wait for the other thread to finish
-     */
+  if (ret == MAPCACHE_CACHE_MISS || ret == MAPCACHE_CACHE_RELOAD) {
+    int isLocked = MAPCACHE_FALSE;
+    void *lock;
 
-    /* aquire a lock on the metatile */
-    mt = mapcache_tileset_metatile_get(ctx, tile);
-    isLocked = mapcache_lock_or_wait_for_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+    /* If the tile does not exist or stale, we must take action before re-asking for it */
+    if( !read_only && !ctx->config->non_blocking) {
+      /*
+       * is the tile already being rendered by another thread ?
+       * the call is protected by the same mutex that sets the lock on the tile,
+       * so we can assure that:
+       * - if the lock does not exist, then this thread should do the rendering
+       * - if the lock exists, we should wait for the other thread to finish
+       */
 
-
-    if(isLocked == MAPCACHE_TRUE) {
-      /* no other thread is doing the rendering, do it ourselves */
+      /* aquire a lock on the metatile */
+      mt = mapcache_tileset_metatile_get(ctx, tile);
+      isLocked = mapcache_lock_or_wait_for_resource(ctx, ctx->config->locker, mapcache_tileset_metatile_resource_key(ctx,mt), &lock);
+      GC_CHECK_ERROR(ctx);
+      if(isLocked == MAPCACHE_TRUE) {
+         /* no other thread is doing the rendering, do it ourselves */
 #ifdef DEBUG
-      ctx->log(ctx, MAPCACHE_DEBUG, "cache miss: tileset %s - tile %d %d %d",
-               tile->tileset->name,tile->x, tile->y,tile->z);
+        ctx->log(ctx, MAPCACHE_DEBUG, "cache miss/reload: tileset %s - tile %d %d %d",
+             tile->tileset->name,tile->x, tile->y,tile->z);
 #endif
-      /* this will query the source to create the tiles, and save them to the cache */
-      mapcache_tileset_render_metatile(ctx, mt);
+        /* this will query the source to create the tiles, and save them to the cache */
+        mapcache_tileset_render_metatile(ctx, mt);
 
-      mapcache_unlock_resource(ctx, mapcache_tileset_metatile_resource_key(ctx,mt));
+        if(GC_HAS_ERROR(ctx)) {
+          /* temporarily clear error state so we don't mess up with error handling in the locker */
+          void *error;
+          ctx->pop_errors(ctx,&error);
+          mapcache_unlock_resource(ctx, ctx->config->locker, lock);
+          ctx->push_errors(ctx,error);
+        } else {
+          mapcache_unlock_resource(ctx, ctx->config->locker, lock);
+        }
+      }
     }
-    GC_CHECK_ERROR(ctx);
 
-    /* the previous step has successfully finished, we can now query the cache to return the tile content */
-    ret = tile->tileset->cache->tile_get(ctx, tile);
-    GC_CHECK_ERROR(ctx);
+    if (ret == MAPCACHE_CACHE_RELOAD && GC_HAS_ERROR(ctx))
+      /* If we tried to reload a stale tile but failed, we know we have already
+       * fetched it from the cache. We can then ignore errors and just use old tile.
+       */
+      ctx->clear_errors(ctx);
 
-    if(ret != MAPCACHE_SUCCESS) {
-      if(isLocked == MAPCACHE_FALSE) {
-        ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
-                       tile->tileset->name);
-      } else {
-        /* shouldn't really happen, as the error ought to have been caught beforehand */
-        ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+    else {
+      /* Else, check for errors and try to fetch the tile from the cache.
+      */
+      GC_CHECK_ERROR(ctx);
+      ret = mapcache_cache_tile_get(ctx, tile->tileset->_cache, tile);
+      GC_CHECK_ERROR(ctx);
+
+      if(ret != MAPCACHE_SUCCESS) {
+        if(isLocked == MAPCACHE_FALSE) {
+          ctx->set_error(ctx, 500, "tileset %s: unknown error (another thread/process failed to create the tile I was waiting for)",
+              tile->tileset->name);
+        } else {
+          /* shouldn't really happen, as the error ought to have been caught beforehand */
+          ctx->set_error(ctx, 500, "tileset %s: failed to re-get tile %d %d %d from cache after set", tile->tileset->name,tile->x,tile->y,tile->z);
+        }
       }
     }
   }
@@ -853,11 +1221,48 @@ void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile)
   }
 }
 
+void mapcache_tileset_tile_get(mapcache_context *ctx, mapcache_tile *tile) {
+  if(tile->grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED &&
+          tile->z > tile->grid_link->max_cached_zoom) {
+    mapcache_tileset_outofzoom_get(ctx, tile);
+    return;
+  }
+  if(tile->dimensions) {
+    if(tile->tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      return mapcache_tileset_tile_get_with_subdimensions(ctx,tile);
+    } else {
+      int i;
+      mapcache_requested_dimension *rdim;
+      mapcache_extent extent;
+      
+      mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+      for(i=0; i<tile->dimensions->nelts; i++) {
+        apr_array_header_t *rdim_vals;
+        rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        rdim_vals = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+        GC_CHECK_ERROR(ctx);
+        if(rdim_vals->nelts > 1) {
+          ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number (%d) of subdimensions (1 expected)",
+                         rdim->dimension->name, tile->tileset->name, rdim_vals->nelts);
+          return;
+        }
+        if(rdim_vals->nelts == 0) {
+          ctx->set_error(ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+          return;
+        }
+        rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
+      }
+    }
+  }
+  return mapcache_tileset_tile_get_without_subdimensions(ctx,tile, (tile->tileset->read_only||!tile->tileset->source)?1:0);
+  
+}
+
 void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, int whole_metatile)
 {
   int i;
   /*delete the tile itself*/
-  tile->tileset->cache->tile_delete(ctx,tile);
+  mapcache_cache_tile_delete(ctx,tile->tileset->_cache, tile);
   GC_CHECK_ERROR(ctx);
 
   if(whole_metatile) {
@@ -866,7 +1271,7 @@ void mapcache_tileset_tile_delete(mapcache_context *ctx, mapcache_tile *tile, in
       mapcache_tile *subtile = &mt->tiles[i];
       /* skip deleting the actual tile */
       if(subtile->x == tile->x && subtile->y == tile->y) continue;
-      subtile->tileset->cache->tile_delete(ctx,subtile);
+      mapcache_cache_tile_delete(ctx,subtile->tileset->_cache,subtile);
       /* silently pass failure if the tile was not found */
       if(ctx->get_error(ctx) == 404) {
         ctx->clear_errors(ctx);

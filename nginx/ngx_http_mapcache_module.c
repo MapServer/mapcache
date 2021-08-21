@@ -62,8 +62,7 @@ ngx_http_mapcache_create_conf(ngx_conf_t *cf)
   apr_pool_create(&process_pool,NULL);
   mapcache_context *ctx = apr_pcalloc(process_pool, sizeof(mapcache_ngx_context));
   ctx->pool = process_pool;
-  ctx->process_pool = process_pool;
-  ctx->threadlock = NULL;
+  ctx->connection_pool = NULL;
   mapcache_context_init(ctx);
   ctx->log = ngx_mapcache_context_log;
   ctx->clone = ngx_mapcache_context_clone;
@@ -211,7 +210,6 @@ ngx_http_mapcache_handler(ngx_http_request_t *r)
   mapcache_ngx_context *ngctx = ngx_http_get_module_loc_conf(r, ngx_http_mapcache_module);
   mapcache_context *ctx = (mapcache_context*)ngctx;
   apr_pool_create(&(ctx->pool),process_pool);
-  ctx->process_pool = process_pool;
   ngctx->r = r;
   mapcache_request *request = NULL;
   mapcache_http_response *http_response;
@@ -298,6 +296,11 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
     return NGX_CONF_ERROR;
   }
+  if(mapcache_config_services_enabled(ctx, ctx->config) <= 0) {
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no mapcache <service>s configured/enabled, no point in continuing.");
+    return NGX_CONF_ERROR;
+  }
+  mapcache_connection_pool_create(ctx->config, &ctx->connection_pool,ctx->pool);
   ctx->config->non_blocking = 1;
 
   ngx_http_core_loc_conf_t  *clcf;

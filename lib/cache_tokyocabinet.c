@@ -27,9 +27,9 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
+#include "mapcache.h"
 #ifdef USE_TC
 
-#include "mapcache.h"
 #include <apr_strings.h>
 #include <apr_reslist.h>
 #include <apr_file_info.h>
@@ -43,6 +43,14 @@
 #include <unistd.h>
 #endif
 
+typedef struct mapcache_cache_tc mapcache_cache_tc;
+struct mapcache_cache_tc {
+  mapcache_cache cache;
+  char *basedir;
+  char *key_template;
+  mapcache_context *ctx;
+};
+mapcache_cache *mapcache_cache_tc_create(mapcache_context *ctx);
 
 struct tc_conn {
   TCBDB *bdb;
@@ -214,6 +222,13 @@ mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx)
   cache->basedir = NULL;
   cache->key_template = NULL;
   return (mapcache_cache*)cache;
+}
+
+#else
+
+mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx) {
+  ctx->set_error(ctx,400,"TokyoCabinet support not compiled in this version");
+  return NULL;
 }
 
 #endif

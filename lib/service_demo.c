@@ -29,12 +29,11 @@
 
 #include <ctype.h>
 #include "mapcache.h"
+#include "mapcache_services.h"
 #include <apr_strings.h>
 #include <math.h>
 #include <apr_tables.h>
 
-/** \addtogroup services */
-/** @{ */
 
 static char *demo_head =
   "<!DOCTYPE html>\n"
@@ -58,7 +57,7 @@ static char *demo_head =
   "        padding: 0px;\n"
   "    }\n"
   "    </style>\n"
-  "    <script src=\"http://www.openlayers.org/api/OpenLayers.js\"></script>\n"
+  "    <script src=\"https://openlayers.org/api/OpenLayers.js\"></script>\n"
   "    <script type=\"text/javascript\">\n"
   "%s\n"
   "var map;\n"
@@ -282,7 +281,7 @@ static char *demo_head_gmaps =
   "      return null;\n"
   "    }\n"
   "\n"
-  "    // repeat accross x-axis\n"
+  "    // repeat across x-axis\n"
   "    if (x < 0 || x >= tileRange) {\n"
   "      x = (x % tileRange + tileRange) % tileRange;\n"
   "    }\n"
@@ -507,7 +506,7 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
         resolutions = apr_psprintf(ctx->pool,"%s,%.20f",resolutions,grid->levels[i]->resolution);
       }
 
-      if(!tileset->timedimension) {
+      if(!tileset->dimensions) {
         ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
         /* normalize name to something that is a valid variable name */
         for(i=0; i<strlen(ol_layer_name); i++)
@@ -549,41 +548,26 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
           caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
         }
       } else {
-        int id;
-        apr_array_header_t *timedimvals = tileset->timedimension->get_all_entries(
-                ctx,tileset->timedimension,tileset);
-        for(id=0;id<timedimvals->nelts;id++) {
-          if(id>1) break;
-          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
-          char *dimparam_wms = "    %s_wms_layer.mergeNewParams({%s:\"%s\"});\n";
-          char *dimparam_singletile = "    %s_slayer.mergeNewParams({%s:\"%s\"});\n";
-          ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
-          /* normalize name to something that is a valid variable name */
-          for(i=0; i<strlen(ol_layer_name); i++)
-            if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
-                || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
-              ol_layer_name[i] = '_';
-          ol_layer = apr_psprintf(ctx->pool, demo_layer_wms,
-                                  ol_layer_name,
-                                  tileset->name,
-                                  grid->name,
-                                  apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
-                                  tileset->name,
-                                  resolutions,
-                                  unit,
-                                  grid->extent.minx,
-                                  grid->extent.miny,
-                                  grid->extent.maxx,
-                                  grid->extent.maxy,
-                                  grid->srs,
-                                  smerc,
-                                  ol_layer_name);
-          caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
-          caps = apr_psprintf(ctx->pool,"%s%s",caps,
-                  apr_psprintf(ctx->pool,dimparam_wms,ol_layer_name,tileset->timedimension->key,idval));
-            
-          if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
-            ol_layer = apr_psprintf(ctx->pool, demo_layer_singletile,
+        int dim;
+        for(dim=0;dim<tileset->dimensions->nelts;dim++) {
+          int id;
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,dim,mapcache_dimension*);
+          apr_array_header_t *dimvals = dimension->get_all_entries(ctx,dimension,tileset,NULL,NULL);
+          for(id=0;id<dimvals->nelts;id++) {
+            char *idval;
+            char *dimparam_wms;
+            char *dimparam_singletile;
+            if(id>1) break;
+            idval = APR_ARRAY_IDX(dimvals,id,char*);
+            dimparam_wms = "    %s_wms_layer.mergeNewParams({%s:\"%s\"});\n";
+            dimparam_singletile = "    %s_slayer.mergeNewParams({%s:\"%s\"});\n";
+            ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s_%s", tileset->name, grid->name, dimension->name, idval);
+            /* normalize name to something that is a valid variable name */
+            for(i=0; i<strlen(ol_layer_name); i++)
+              if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+                  || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+                ol_layer_name[i] = '_';
+            ol_layer = apr_psprintf(ctx->pool, demo_layer_wms,
                                     ol_layer_name,
                                     tileset->name,
                                     grid->name,
@@ -600,7 +584,28 @@ void _create_demo_wms(mapcache_context *ctx, mapcache_request_get_capabilities *
                                     ol_layer_name);
             caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
             caps = apr_psprintf(ctx->pool,"%s%s",caps,
-                    apr_psprintf(ctx->pool,dimparam_singletile,ol_layer_name,tileset->timedimension->key,idval));
+                                apr_psprintf(ctx->pool,dimparam_wms,ol_layer_name,dimension->name,idval));
+
+            if(service->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
+              ol_layer = apr_psprintf(ctx->pool, demo_layer_singletile,
+                                      ol_layer_name,
+                                      tileset->name,
+                                      grid->name,
+                                      apr_pstrcat(ctx->pool,url_prefix,"?",NULL),
+                                      tileset->name,
+                                      resolutions,
+                                      unit,
+                                      grid->extent.minx,
+                                      grid->extent.miny,
+                                      grid->extent.maxx,
+                                      grid->extent.maxy,
+                                      grid->srs,
+                                      smerc,
+                                      ol_layer_name);
+              caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+              caps = apr_psprintf(ctx->pool,"%s%s",caps,
+                                  apr_psprintf(ctx->pool,dimparam_singletile,ol_layer_name,dimension->name,idval));
+            }
           }
         }
       }
@@ -660,15 +665,11 @@ void _create_demo_mapguide(mapcache_context *ctx, mapcache_request_get_capabilit
   tileindex_index = apr_hash_first(ctx->pool,ctx->config->tilesets);
   while(tileindex_index) {
     int i,j;
-    char *extension;
     mapcache_tileset *tileset;
     const void *key;
     apr_ssize_t keylen;
     apr_hash_this(tileindex_index,&key,&keylen,(void**)&tileset);
 
-    extension = "png";
-    if (tileset->format && tileset->format->extension)
-      extension = tileset->format->extension;
     for(j=0; j<tileset->grid_links->nelts; j++) {
       char *resolutions="";
       char *unit="dd";
@@ -841,7 +842,7 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
         resolutions = apr_psprintf(ctx->pool,"%s,%.20f",resolutions,grid->levels[i]->resolution);
       }
 
-      if(!tileset->timedimension) {
+      if(!tileset->dimensions) {
         ol_layer_name = apr_psprintf(ctx->pool, "%s_%s", tileset->name, grid->name);
         /* normalize name to something that is a valid variable name */
         for(i=0; i<strlen(ol_layer_name); i++)
@@ -868,42 +869,47 @@ void _create_demo_wmts(mapcache_context *ctx, mapcache_request_get_capabilities 
                                 ol_layer_name);
         caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
       } else {
-        int id;
-        apr_array_header_t *timedimvals = tileset->timedimension->get_all_entries(
-                ctx,tileset->timedimension,tileset);
-        GC_CHECK_ERROR(ctx);
-        for(id=0;id<timedimvals->nelts;id++) {
-          if(id>1) break; /* we don't want all the entries in the demo interface */
-          char *idval = APR_ARRAY_IDX(timedimvals,id,char*);
-          char *dimparam = "%s_wmts_layer.mergeNewParams({%s:\"%s\"});\n";
-          ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s", tileset->name, grid->name, idval);
-          /* normalize name to something that is a valid variable name */
-          for(i=0; i<strlen(ol_layer_name); i++)
-            if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
-                || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
-              ol_layer_name[i] = '_';
-          ol_layer = apr_psprintf(ctx->pool, demo_layer_wmts,
-                                ol_layer_name,
-                                tileset->name,
-                                grid->name,
-                                apr_pstrcat(ctx->pool,url_prefix,"wmts/",NULL),
-                                tileset->name,
-                                grid->name,
-                                mime_type,
-                                resolutions,
-                                grid_link->minz,
-                                unit,
-                                grid->extent.minx,
-                                grid->extent.miny,
-                                grid->extent.maxx,
-                                grid->extent.maxy,
-                                grid->srs,
-                                smerc,
-                                ol_layer_name);
-          caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
-          caps = apr_psprintf(ctx->pool,"%s%s",caps,
-                  apr_psprintf(ctx->pool,dimparam,ol_layer_name,tileset->timedimension->key,idval));
-            
+        int dim;
+        for(dim=0;dim<tileset->dimensions->nelts;dim++) {
+          int id;
+          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,dim,mapcache_dimension*);
+          apr_array_header_t *dimvals = dimension->get_all_entries(ctx,dimension,tileset,NULL,NULL);
+          GC_CHECK_ERROR(ctx);
+          for(id=0;id<dimvals->nelts;id++) {
+            char *idval;
+            char *dimparam;
+            if(id>1) break; /* we don't want all the entries in the demo interface */
+            idval = APR_ARRAY_IDX(dimvals,id,char*);
+            dimparam = "%s_wmts_layer.mergeNewParams({%s:\"%s\"});\n";
+            ol_layer_name = apr_psprintf(ctx->pool, "%s_%s_%s_%s", tileset->name, grid->name, dimension->name, idval);
+            /* normalize name to something that is a valid variable name */
+            for(i=0; i<strlen(ol_layer_name); i++)
+              if ((!i && !isalpha(ol_layer_name[i]) && ol_layer_name[i] != '_')
+                  || (!isalnum(ol_layer_name[i]) && ol_layer_name[i] != '_'))
+                ol_layer_name[i] = '_';
+            ol_layer = apr_psprintf(ctx->pool, demo_layer_wmts,
+                                    ol_layer_name,
+                                    tileset->name,
+                                    grid->name,
+                                    apr_pstrcat(ctx->pool,url_prefix,"wmts/",NULL),
+                                    tileset->name,
+                                    grid->name,
+                                    mime_type,
+                                    resolutions,
+                                    grid_link->minz,
+                                    unit,
+                                    grid->extent.minx,
+                                    grid->extent.miny,
+                                    grid->extent.maxx,
+                                    grid->extent.maxy,
+                                    grid->srs,
+                                    smerc,
+                                    ol_layer_name);
+            caps = apr_psprintf(ctx->pool,"%s%s",caps,ol_layer);
+            caps = apr_psprintf(ctx->pool,"%s%s",caps,
+                                apr_psprintf(ctx->pool,dimparam,ol_layer_name,dimension->name,idval));
+
+          }
         }
       }
     }

@@ -37,6 +37,7 @@
 #include <time.h>
 #ifndef _WIN32
 #include <unistd.h>
+#include <sys/stat.h>
 #define USE_FORK
 #include <sys/time.h>
 #endif
@@ -70,7 +71,7 @@ mapcache_tileset *tileset;
 mapcache_tileset *tileset_transfer;
 mapcache_cfg *cfg;
 mapcache_context ctx;
-apr_table_t *dimensions=NULL;
+apr_array_header_t *dimensions=NULL;
 int minzoom=-1;
 int maxzoom=-1;
 mapcache_grid_link *grid_link;
@@ -79,10 +80,14 @@ int nprocesses=0;
 int quiet = 0;
 int verbose = 0;
 int force = 0;
+int non_interactive = 0;
 int sig_int_received = 0;
 int error_detected = 0;
 double percent_failed_allowed = 1.0;
-int n_metatiles_tot=0;
+int n_metatiles_tot = 0;
+int n_nodata_tot = 0;
+int n_skipped_tot = 0;
+int rate_limit = 0;
 FILE *failed_log = NULL, *retry_log = NULL;
 #define FAIL_BACKLOG_COUNT 1000
 
@@ -94,7 +99,8 @@ typedef enum {
   MAPCACHE_CMD_STOP,
   MAPCACHE_CMD_DELETE,
   MAPCACHE_CMD_SKIP,
-  MAPCACHE_CMD_TRANSFER
+  MAPCACHE_CMD_TRANSFER,
+  MAPCACHE_CMD_STOP_RECURSION
 } cmd;
 
 typedef enum {
@@ -122,6 +128,8 @@ typedef enum {
 struct seed_status {
   s_status status;
   int x,y,z;
+  int nodata;
+  int skipped;
   char *msg;
 };
 
@@ -136,6 +144,9 @@ cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either
 
 int push_queue(struct seed_cmd cmd)
 {
+  struct seed_cmd *pcmd;
+  int retries=0;
+  int ret;
 #ifdef USE_FORK
   if(nprocesses > 1) {
     struct msg_cmd mcmd;
@@ -148,14 +159,23 @@ int push_queue(struct seed_cmd cmd)
     return APR_SUCCESS;
   }
 #endif
-  struct seed_cmd *pcmd = calloc(1,sizeof(struct seed_cmd));
+  pcmd = calloc(1,sizeof(struct seed_cmd));
   *pcmd = cmd;
-  return apr_queue_push(work_queue,pcmd);
+  ret = apr_queue_push(work_queue,pcmd);
+  while (ret == APR_EINTR && retries < 10) {
+    retries++;
+    ret = apr_queue_push(work_queue,pcmd);
+  }
+  if(ret == APR_EINTR) {
+    printf("failed to push tile %d %d %d after 10 retries\n",cmd.z,cmd.y,cmd.x);
+    return APR_EGENERAL;
+  }
+  return ret;
 }
 
 int pop_queue(struct seed_cmd *cmd)
 {
-  int ret;
+  int ret,retries=0;
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
@@ -169,8 +189,12 @@ int pop_queue(struct seed_cmd *cmd)
     return APR_SUCCESS;
   }
 #endif
-  
+
   ret = apr_queue_pop(work_queue, (void**)&pcmd);
+  while(ret == APR_EINTR && retries<10) {
+    retries++;
+    ret = apr_queue_pop(work_queue, (void**)&pcmd);
+  }
   if(ret == APR_SUCCESS) {
     *cmd = *pcmd;
     free(pcmd);
@@ -180,7 +204,7 @@ int pop_queue(struct seed_cmd *cmd)
 
 int trypop_queue(struct seed_cmd *cmd)
 {
-  int ret;
+  int ret,retries=0;
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
@@ -198,6 +222,10 @@ int trypop_queue(struct seed_cmd *cmd)
   }
 #endif
   ret = apr_queue_trypop(work_queue,(void**)&pcmd);
+  while(ret == APR_EINTR && retries<10) {
+    retries++;
+    ret = apr_queue_trypop(work_queue,(void**)&pcmd);
+  }
   if(ret == APR_SUCCESS) {
     *cmd = *pcmd;
     free(pcmd);
@@ -205,9 +233,13 @@ int trypop_queue(struct seed_cmd *cmd)
   return ret;
 }
 
+#define SEEDER_OPT_THREAD_DELAY 256
+#define SEEDER_OPT_RATE_LIMIT 257
+
 static const apr_getopt_option_t seed_options[] = {
   /* long-option, short-option, has-arg flag, description */
   { "config", 'c', TRUE, "configuration file (/path/to/mapcache.xml)"},
+  { "cache", 'C', TRUE, "override cache used by selected tileset (useful for selectively seeding fallback/multitier caches)"},
 #ifdef USE_CLIPPERS
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
 #endif
@@ -216,7 +248,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "force", 'f', FALSE, "force tile recreation even if it already exists" },
   { "grid", 'g', TRUE, "grid to seed" },
   { "help", 'h', FALSE, "show help" },
-  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"level-by-level\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and level-by-level for others. Use this flag to override." },
+  { "iteration-mode", 'i', TRUE, "either \"drill-down\" or \"scanline\". Default is to use drill-down for g, WGS84 and GoogleMapsCompatible grids, and scanline for others. Use this flag to override." },
 #ifdef USE_CLIPPERS
   { "ogr-layer", 'l', TRUE, "layer inside datasource"},
 #endif
@@ -234,19 +266,25 @@ static const apr_getopt_option_t seed_options[] = {
 #endif
   { "tileset", 't', TRUE, "tileset to seed" },
   { "verbose", 'v', FALSE, "show debug log messages" },
+  { "non-interactive", 'b', FALSE, "print progress messages on new lines"},
 #ifdef USE_CLIPPERS
   { "ogr-where", 'w', TRUE, "filter to apply on layer features"},
 #endif
   { "transfer", 'x', TRUE, "tileset to transfer" },
   { "zoom", 'z', TRUE, "min and max zoomlevels to seed, separated by a comma. eg 0,6" },
+  { "rate-limit", SEEDER_OPT_RATE_LIMIT, TRUE, "maximum number of tiles/second to seed"},
+  { "thread-delay", SEEDER_OPT_THREAD_DELAY, TRUE, "delay in seconds between rendering thread creation (ramp up)"},
   { NULL, 0, 0, NULL }
 };
 
 void handle_sig_int(int signal)
 {
+#define signal_msg "SIGINT received, waiting for threads to finish\npress ctrl-C again to force terminate\n"
   if(!sig_int_received) {
-    fprintf(stderr,"SIGINT received, waiting for threads to finish\n");
-    fprintf(stderr,"press ctrl-C again to force terminate, you might end up with locked tiles\n");
+    int err = write(2,signal_msg,strlen(signal_msg));
+    if(err) {
+      //nothing we can really do here
+    }
     sig_int_received = 1;
   } else {
     exit(signal);
@@ -255,12 +293,12 @@ void handle_sig_int(int signal)
 
 void seed_log(mapcache_context *ctx, mapcache_log_level level, char *msg, ...)
 {
-  if(verbose) {
+  if(level >= MAPCACHE_WARN || verbose) {
     va_list args;
     va_start(args,msg);
     vfprintf(stderr,msg,args);
     va_end(args);
-    printf("\n");
+    fprintf(stderr,"\n");
   }
 }
 
@@ -271,7 +309,7 @@ void mapcache_context_seeding_log(mapcache_context *ctx, mapcache_log_level leve
   va_start(args,msg);
   vfprintf(stderr,msg,args);
   va_end(args);
-  printf("\n");
+  fprintf(stderr,"\n");
 }
 
 #ifdef USE_CLIPPERS
@@ -279,6 +317,10 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_metatile *mt = mapcache_tileset_metatile_get(ctx,tile);
   GEOSCoordSequence *mtbboxls = GEOSCoordSeq_create(5,2);
+  GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
+  GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
+  int i;
+  int intersects = 0;
   GEOSCoordSeq_setX(mtbboxls,0,mt->map.extent.minx);
   GEOSCoordSeq_setY(mtbboxls,0,mt->map.extent.miny);
   GEOSCoordSeq_setX(mtbboxls,1,mt->map.extent.maxx);
@@ -289,10 +331,6 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   GEOSCoordSeq_setY(mtbboxls,3,mt->map.extent.maxy);
   GEOSCoordSeq_setX(mtbboxls,4,mt->map.extent.minx);
   GEOSCoordSeq_setY(mtbboxls,4,mt->map.extent.miny);
-  GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
-  GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
-  int i;
-  int intersects = 0;
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
@@ -309,40 +347,72 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   int action = MAPCACHE_CMD_SKIP;
-  int intersects = -1;
-  int tile_exists = force?0:tileset->cache->tile_exists(ctx,tile);
+  int tile_exists;
+
+#ifdef USE_CLIPPERS
+  /* check we are in the requested features before checking the tile */
+  if(nClippers > 0 && ogr_features_intersect_tile(ctx,tile) == 0)
+    return MAPCACHE_CMD_STOP_RECURSION;
+#endif
+
+  if(mode != MAPCACHE_CMD_TRANSFER && force) {
+    if(mode == MAPCACHE_CMD_DELETE) {
+      tile_exists = 1;
+    } else {
+      tile_exists = 0;
+    }
+  } else {
+    int i;
+    if(tile->tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      for(i=0; i<tile->dimensions->nelts; i++) {
+        mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+        rdim->cached_value = rdim->requested_value;
+      }
+    } else {
+      if(tile->dimensions) {
+        mapcache_extent extent;
+        mapcache_grid_get_tile_extent(ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          apr_array_header_t *rdim_vals;
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim_vals = mapcache_dimension_get_entries_for_value(ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          if(GC_HAS_ERROR(ctx)) {
+            return MAPCACHE_CMD_SKIP;
+          }
+          if(rdim_vals->nelts > 1) {
+            ctx->set_error(ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return MAPCACHE_CMD_SKIP;
+          }
+          if(rdim_vals->nelts == 0) {
+            ctx->set_error(ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return MAPCACHE_CMD_SKIP;
+          }
+          rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
+        }
+      }
+    }
+    tile_exists = mapcache_cache_tile_exists(ctx,tileset->_cache,tile);
+  }
 
   /* if the tile exists and a time limit was specified, check the tile modification date */
   if(tile_exists) {
     if(age_limit) {
-      if(tileset->cache->tile_get(ctx,tile) == MAPCACHE_SUCCESS) {
+      if(mapcache_cache_tile_get(ctx,tileset->_cache, tile) == MAPCACHE_SUCCESS) {
         if(tile->mtime && tile->mtime<age_limit) {
           /* the tile modification time is older than the specified limit */
-#ifdef USE_CLIPPERS
-          /* check we are in the requested features before deleting the tile */
-          if(nClippers > 0) {
-            intersects = ogr_features_intersect_tile(ctx,tile);
-          }
-#endif
-          if(intersects != 0) {
-            /* the tile intersects the ogr features, or there was no clipping asked for: seed it */
-            if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
-              mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-              /* if we are in mode transfer, delete it from the dst tileset */
-              if (mode == MAPCACHE_CMD_TRANSFER) {
-                tile->tileset = tileset_transfer;
-                if (tileset_transfer->cache->tile_exists(ctx,tile)) {
-                  mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
-                }
-                tile->tileset = tileset;
+          if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
+            mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
+            /* if we are in mode transfer, delete it from the dst tileset */
+            if (mode == MAPCACHE_CMD_TRANSFER) {
+              tile->tileset = tileset_transfer;
+              if (mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
+                mapcache_tileset_tile_delete(ctx,tile,MAPCACHE_TRUE);
               }
-              action = mode;
-            } else { //if(action == MAPCACHE_CMD_DELETE)
-              action = MAPCACHE_CMD_DELETE;
+              tile->tileset = tileset;
             }
-          } else {
-            /* the tile does not intersect the ogr features, and already exists, do nothing */
-            action = MAPCACHE_CMD_SKIP;
+            action = mode;
+          } else { //if(action == MAPCACHE_CMD_DELETE)
+            action = MAPCACHE_CMD_DELETE;
           }
         }
       } else {
@@ -357,7 +427,7 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
         /* the tile exists in the source tileset,
            check if the tile exists in the destination cache */
         tile->tileset = tileset_transfer;
-        if (tileset_transfer->cache->tile_exists(ctx,tile)) {
+        if (!force && mapcache_cache_tile_exists(ctx,tile->tileset->_cache, tile)) {
           action = MAPCACHE_CMD_SKIP;
         } else {
           action = MAPCACHE_CMD_TRANSFER;
@@ -370,27 +440,35 @@ cmd examine_tile(mapcache_context *ctx, mapcache_tile *tile)
     }
   } else {
     // the tile does not exist
-    if(mode == MAPCACHE_CMD_SEED || mode == MAPCACHE_CMD_TRANSFER) {
-#ifdef USE_CLIPPERS
-      /* check we are in the requested features before deleting the tile */
-      if(nClippers > 0) {
-        if(ogr_features_intersect_tile(ctx,tile)) {
-          action = mode;
-        } else {
-          action = MAPCACHE_CMD_SKIP;
-        }
-      } else {
-        action = mode;
-      }
-#else
+    if (mode == MAPCACHE_CMD_SEED) {
       action = mode;
-#endif
     } else {
       action = MAPCACHE_CMD_SKIP;
     }
   }
 
   return action;
+}
+
+double rate_limit_last_time = 0;
+double rate_limit_delay = 0.0;
+
+void rate_limit_sleep() {
+  if(rate_limit > 0) {
+    struct mctimeval now;
+    double now_time;
+    mapcache_gettimeofday(&now,NULL);
+    now_time = now.tv_sec + now.tv_usec / 1000000.0;
+
+    if((now_time - rate_limit_last_time) < rate_limit_delay) {
+      apr_sleep((int)((rate_limit_delay - (now_time - rate_limit_last_time)) * 1000000));
+      /*last_time = now_time + delay - (now_time - last_time); //now plus the time we slept */
+      rate_limit_last_time = rate_limit_delay + rate_limit_last_time;
+    } else {
+      rate_limit_last_time = now_time;
+    }
+
+  }
 }
 
 void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
@@ -419,8 +497,28 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
     cmd.y = tile->y;
     cmd.z = tile->z;
     cmd.command = action;
+    if(rate_limit > 0)
+      rate_limit_sleep();
     push_queue(cmd);
+  } else if (action == MAPCACHE_CMD_SKIP) {
+    apr_status_t ret;
+    struct seed_status *st = calloc(1,sizeof(struct seed_status));
+    int retries=0;
+    st->x=tile->x;
+    st->y=tile->y;
+    st->z=tile->z;
+    st->nodata = 0;
+    st->skipped = 1;
+    st->status = MAPCACHE_STATUS_OK;
+    ret = apr_queue_push(log_queue,(void*)st);
+    while( ret == APR_EINTR && retries < 10) {
+      retries++;
+      ret = apr_queue_push(log_queue,(void*)st);
+    }
   }
+
+  if(action == MAPCACHE_CMD_STOP_RECURSION)
+    return;
 
   //recurse into our 4 child metatiles
 
@@ -439,9 +537,9 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
    */
 
 
-  mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
+  mapcache_grid_get_tile_extent(cmd_ctx, grid_link->grid,
                            curx, cury, curz, &bboxbl);
-  mapcache_grid_get_extent(cmd_ctx, grid_link->grid,
+  mapcache_grid_get_tile_extent(cmd_ctx, grid_link->grid,
                            curx+tileset->metasize_x-1, cury+tileset->metasize_y-1, curz, &bboxtr);
   epsilon = (bboxbl.maxx-bboxbl.minx)*0.01;
   mapcache_grid_get_xy(cmd_ctx,grid_link->grid,
@@ -473,7 +571,7 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
   tile->z = curz;
 }
 
-void cmd_worker()
+void feed_worker()
 {
   int n;
   mapcache_tile *tile;
@@ -485,7 +583,11 @@ void cmd_worker()
   if(nprocesses >= 1) nworkers = nprocesses;
   apr_pool_create(&cmd_ctx.pool,ctx.pool);
   tile = mapcache_tileset_tile_create(ctx.pool, tileset, grid_link);
-  tile->dimensions = dimensions;
+  tile->dimensions = mapcache_requested_dimensions_clone(ctx.pool,dimensions);
+  if(rate_limit > 0) {
+    /* compute time between seed commands accounting for max rate-limit and current metasize */
+    rate_limit_delay = (tileset->metasize_x * tileset->metasize_y) / (double)rate_limit;
+  }
   if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
     do {
       tile->x = x;
@@ -533,7 +635,24 @@ void cmd_worker()
         cmd.y = y;
         cmd.z = z;
         cmd.command = action;
+        if(rate_limit > 0)
+          rate_limit_sleep();
         push_queue(cmd);
+      } else if (action == MAPCACHE_CMD_SKIP) {
+        apr_status_t ret;
+        struct seed_status *st = calloc(1,sizeof(struct seed_status));
+        int retries=0;
+        st->x=tile->x;
+        st->y=tile->y;
+        st->z=tile->z;
+        st->nodata = 0;
+        st->skipped = 1;
+        st->status = MAPCACHE_STATUS_OK;
+        ret = apr_queue_push(log_queue,(void*)st);
+        while( ret == APR_EINTR && retries < 10) {
+          retries++;
+          ret = apr_queue_push(log_queue,(void*)st);
+        }
       }
 
       //compute next x,y,z
@@ -570,7 +689,9 @@ void seed_worker()
   apr_pool_create(&seed_ctx.pool,ctx.pool);
   apr_pool_create(&tpool,ctx.pool);
   tile = mapcache_tileset_tile_create(tpool, tileset, grid_link);
-  tile->dimensions = dimensions;
+  if(dimensions) {
+    tile->dimensions = mapcache_requested_dimensions_clone(tpool,dimensions);
+  }
   while(1) {
     struct seed_cmd cmd;
     apr_status_t ret;
@@ -581,33 +702,64 @@ void seed_worker()
     tile->x = cmd.x;
     tile->y = cmd.y;
     tile->z = cmd.z;
+    tile->nodata = 0;
+    tile->encoded_data = NULL;
+    tile->raw_image = NULL;
+    if(tile->dimensions) {
+      int i;
+      if(tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+        mapcache_extent extent;
+        mapcache_grid_get_tile_extent(&seed_ctx,tile->grid_link->grid,tile->x,tile->y,tile->z,&extent);
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          apr_array_header_t *rdim_vals;
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim_vals = mapcache_dimension_get_entries_for_value(&seed_ctx,rdim->dimension,rdim->requested_value, tile->tileset, NULL, tile->grid_link->grid);
+          GC_CHECK_ERROR(&seed_ctx);
+          if(rdim_vals->nelts > 1) {
+            seed_ctx.set_error(&seed_ctx,500,"dimension (%s) for tileset (%s) returned invalid number of subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return;
+          }
+          if(rdim_vals->nelts == 0) {
+            seed_ctx.set_error(&seed_ctx,404,"dimension (%s) for tileset (%s) returned no subdimensions (1 expected)",rdim->dimension->name, tile->tileset->name);
+            return;
+          }
+          rdim->cached_value = APR_ARRAY_IDX(rdim_vals,0,char*);
+        }
+      } else {
+        for(i=0; i<tile->dimensions->nelts; i++) {
+          mapcache_requested_dimension *rdim = APR_ARRAY_IDX(tile->dimensions,i,mapcache_requested_dimension*);
+          rdim->cached_value = NULL;
+        }
+      }
+    }
     if(cmd.command == MAPCACHE_CMD_SEED) {
-      /* aquire a lock on the metatile ?*/
-      mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-      int isLocked = mapcache_lock_or_wait_for_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
-      if(isLocked == MAPCACHE_TRUE) {
+      if(!tile->dimensions || tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+        mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
         /* this will query the source to create the tiles, and save them to the cache */
         mapcache_tileset_render_metatile(&seed_ctx, mt);
-        mapcache_unlock_resource(&seed_ctx, mapcache_tileset_metatile_resource_key(&seed_ctx,mt));
+      } else {
+        mapcache_tileset_tile_set_get_with_subdimensions(&seed_ctx,tile);
       }
     } else if (cmd.command == MAPCACHE_CMD_TRANSFER) {
-      int i;
-      mapcache_metatile *mt = mapcache_tileset_metatile_get(&seed_ctx, tile);
-      for (i = 0; i < mt->ntiles; i++) {
-        mapcache_tile *subtile = &mt->tiles[i];
-        mapcache_tileset_tile_get(&seed_ctx, subtile);
-        subtile->tileset = tileset_transfer;
-        tileset_transfer->cache->tile_set(&seed_ctx, subtile);
+      mapcache_tileset_tile_get(&seed_ctx, tile);
+      if(!tile->nodata && !GC_HAS_ERROR(&seed_ctx)) {
+        mapcache_tileset *tmp_tileset = tile->tileset;
+        tile->tileset = tileset_transfer;
+        mapcache_cache_tile_set(&seed_ctx, tile->tileset->_cache, tile);
+        tile->tileset = tmp_tileset;
       }
     } else { //CMD_DELETE
       mapcache_tileset_tile_delete(&seed_ctx,tile,MAPCACHE_TRUE);
     }
-    
+
     {
       struct seed_status *st = calloc(1,sizeof(struct seed_status));
+      int retries=0;
       st->x=tile->x;
       st->y=tile->y;
       st->z=tile->z;
+      st->nodata = tile->nodata;
+      st->skipped = 0;
       if(seed_ctx.get_error(&seed_ctx)) {
         st->status = MAPCACHE_STATUS_FAIL;
         st->msg = strdup(seed_ctx.get_error_message(&seed_ctx));
@@ -616,6 +768,14 @@ void seed_worker()
         st->status = MAPCACHE_STATUS_OK;
       }
       ret = apr_queue_push(log_queue,(void*)st);
+      while( ret == APR_EINTR && retries < 10) {
+        retries++;
+        ret = apr_queue_push(log_queue,(void*)st);
+      }
+      if( ret == APR_EINTR) {
+        printf("FATAL ERROR: unable to log progress after 10 retries, aborting\n");
+        break;
+      }
       if(ret != APR_SUCCESS)
       {
         printf("FATAL ERROR: unable to log progress\n");
@@ -631,49 +791,83 @@ int seed_process() {
   return 0;
 }
 #endif
+
 static void* APR_THREAD_FUNC seed_thread(apr_thread_t *thread, void *data) {
   seed_worker();
   return NULL;
 }
 
+static void* APR_THREAD_FUNC feed_thread_fn(apr_thread_t *thread, void *data) {
+  //start the thread that will populate the queue.
+  feed_worker();
+  return NULL;
+}
+
 static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
+  size_t cur;
+  double last_time;
+  double now_time;
+  int i;
+  int nfailed;
+  int ntotal;
+  double pct;
   char failed[FAIL_BACKLOG_COUNT];
   memset(failed,-1,FAIL_BACKLOG_COUNT);
-  size_t cur=0;
-  double last_time=0, now_time;
-  while(error_detected == 0) {
+  cur=0;
+  last_time=0;
+  while(1) {
+    int retries = 0;
     struct seed_status *st;
     apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
+    while(ret == APR_EINTR && retries<10) {
+      retries++;
+      ret = apr_queue_pop(log_queue, (void**)&st);
+    }
     if(ret != APR_SUCCESS || !st) break;
     if(st->status == MAPCACHE_STATUS_FINISHED)
       return NULL;
     if(st->status == MAPCACHE_STATUS_OK) {
       failed[cur]=0;
-      n_metatiles_tot++;
+      if (st->skipped) {
+        n_skipped_tot++;
+      } else {
+        n_metatiles_tot++;
+      }
+      if(st->nodata) {
+        n_nodata_tot++;
+      }
       if(!quiet) {
         struct mctimeval now;
         mapcache_gettimeofday(&now,NULL);
         now_time = now.tv_sec + now.tv_usec / 1000000.0;
         if((now_time - last_time) > 1.0) {
-          printf("                                                                                               \r");
-          printf("seeded %d tiles, now at z%d x%d y%d\r",n_metatiles_tot*tileset->metasize_x*tileset->metasize_y, st->z,st->x,st->y);
-          fflush(stdout);
+          int seeded_count = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+          int skipped_count = n_skipped_tot*tileset->metasize_x*tileset->metasize_y;
+          if (non_interactive) {
+            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\n",seeded_count,skipped_count,st->z,st->x,st->y);
+          } else {
+            printf("                                                                                               \r");
+            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\r",seeded_count,skipped_count,st->z,st->x,st->y);
+            fflush(stdout);
+          }
+
           last_time = now_time;
         }
       }
     } else {
       /* count how many errors and successes we have */
       failed[cur]=1;
-      int i,nfailed=0,ntotal=0;
+      nfailed=0;
+      ntotal=0;
       if(failed_log) {
         fprintf(failed_log,"%d,%d,%d\n",st->x,st->y,st->z);
       }
       for(i=0; i<FAIL_BACKLOG_COUNT; i++) {
         if(failed[i]>=0) ntotal++;
-        if(failed[i]==1) nfailed++; 
+        if(failed[i]==1) nfailed++;
       }
       ctx.log(&ctx, MAPCACHE_WARN, "failed to seed tile z%d,x%d,y%d:\n%s\n", st->z,st->x,st->y,st->msg);
-      double pct = ((double)nfailed / (double)ntotal) * 100;
+      pct = ((double)nfailed / (double)ntotal) * 100;
       if(pct > percent_failed_allowed) {
         ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
         error_detected = 1;
@@ -730,10 +924,18 @@ int usage(const char *progname, char *msg, ...)
     printf("usage: %s options\n",progname);
 
   while(seed_options[i].name) {
-    if(seed_options[i].has_arg==TRUE) {
-      printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+    if(seed_options[i].optch<256) {
+      if(seed_options[i].has_arg==TRUE) {
+        printf("-%c|--%s [value]: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      }
     } else {
-      printf("-%c|--%s: %s\n",seed_options[i].optch,seed_options[i].name, seed_options[i].description);
+      if(seed_options[i].has_arg==TRUE) {
+        printf("   --%s [value]: %s\n",seed_options[i].name, seed_options[i].description);
+      } else {
+        printf("   --%s: %s\n",seed_options[i].name, seed_options[i].description);
+      }
     }
     i++;
   }
@@ -751,12 +953,12 @@ int main(int argc, const char **argv)
   /* initialize apr_getopt_t */
   apr_getopt_t *opt;
   const char *configfile=NULL;
-  apr_thread_t **threads;
-  apr_thread_t *log_thread;
-  apr_threadattr_t *thread_attrs;
+  apr_thread_t **seed_threads;
+  apr_thread_t *log_thread,*feed_thread;
   const char *tileset_name=NULL;
   const char *tileset_transfer_name=NULL;
   const char *grid_name = NULL;
+  const char *cache_override = NULL;
   int *zooms = NULL;//[2];
   mapcache_extent *extent = NULL;//[4];
   int optch;
@@ -769,8 +971,11 @@ int main(int argc, const char **argv)
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
   double *extent_array = NULL;
+  double thread_delay = 0.0;
 
 #ifdef USE_CLIPPERS
+  OGRFeatureH hFeature;
+  GEOSWKTReader *geoswktreader;
   const char *ogr_where = NULL;
   const char *ogr_layer = NULL;
   const char *ogr_sql = NULL;
@@ -781,7 +986,6 @@ int main(int argc, const char **argv)
   (void) signal(SIGINT,handle_sig_int);
   apr_pool_create(&ctx.pool,NULL);
   mapcache_context_init(&ctx);
-  ctx.process_pool = ctx.pool;
   cfg = mapcache_configuration_create(ctx.pool);
   ctx.config = cfg;
   ctx.log= mapcache_context_seeding_log;
@@ -806,8 +1010,14 @@ int main(int argc, const char **argv)
       case 'v':
         verbose = 1;
         break;
+      case 'b':
+        non_interactive = 1;
+        break;
       case 'c':
         configfile = optarg;
+        break;
+      case 'C':
+        cache_override = optarg;
         break;
       case 'g':
         grid_name = optarg;
@@ -821,10 +1031,10 @@ int main(int argc, const char **argv)
       case 'i':
         if(!strcmp(optarg,"drill-down")) {
           iteration_mode = MAPCACHE_ITERATION_DEPTH_FIRST;
-        } else if(!strcmp(optarg,"level-by-level")) {
+        } else if(!strcmp(optarg,"level-by-level") || !strcmp(optarg, "scanline")) {
           iteration_mode = MAPCACHE_ITERATION_LEVEL_FIRST;
         } else {
-          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"level-by-level\"");
+          return usage(argv[0],"invalid iteration mode, expecting \"drill-down\" or \"scanline\"");
         }
         break;
       case 'L':
@@ -919,6 +1129,16 @@ int main(int argc, const char **argv)
         }
         apr_table_set(argdimensions,dimkey,dimvalue);
         break;
+      case SEEDER_OPT_THREAD_DELAY:
+        thread_delay = strtod(optarg, NULL);
+        if(thread_delay < 0.0 )
+          return usage(argv[0], "failed to parse thread-delay, expecting positive number of seconds");
+        break;
+      case SEEDER_OPT_RATE_LIMIT:
+        rate_limit = (int)strtol(optarg, NULL, 10);
+        if(rate_limit <= 0 )
+          return usage(argv[0], "failed to parse rate-limit, expecting positive number of tiles per seconds");
+        break;
 #ifdef USE_CLIPPERS
       case 'd':
         ogr_datasource = optarg;
@@ -949,6 +1169,7 @@ int main(int argc, const char **argv)
     mapcache_configuration_post_config(&ctx,cfg);
     if(ctx.get_error(&ctx))
       return usage(argv[0],ctx.get_error_message(&ctx));
+    mapcache_connection_pool_create(cfg, &ctx.connection_pool, ctx.pool);
   }
 
 #ifdef USE_CLIPPERS
@@ -961,6 +1182,7 @@ int main(int argc, const char **argv)
   }
 
   if(ogr_datasource) {
+    int f=0;
     OGRDataSourceH hDS = NULL;
     OGRLayerH layer = NULL;
     OGRRegisterAll();
@@ -1008,21 +1230,20 @@ int main(int argc, const char **argv)
     clippers = (const GEOSPreparedGeometry**)malloc(nClippers*sizeof(GEOSPreparedGeometry*));
 
 
-    OGRFeatureH hFeature;
-    GEOSWKTReader *geoswktreader = GEOSWKTReader_create();
+    geoswktreader = GEOSWKTReader_create();
     OGR_L_ResetReading(layer);
-    extent = apr_palloc(ctx.pool,4*sizeof(mapcache_extent));
-    int f=0;
+    extent = apr_palloc(ctx.pool,sizeof(mapcache_extent));
     while( (hFeature = OGR_L_GetNextFeature(layer)) != NULL ) {
+      char *wkt;
+      GEOSGeometry *geosgeom;
+      OGREnvelope ogr_extent;
       OGRGeometryH geom = OGR_F_GetGeometryRef(hFeature);
       if(!geom ||  !OGR_G_IsValid(geom)) continue;
-      char *wkt;
       OGR_G_ExportToWkt(geom,&wkt);
-      GEOSGeometry *geosgeom = GEOSWKTReader_read(geoswktreader,wkt);
+      geosgeom = GEOSWKTReader_read(geoswktreader,wkt);
       free(wkt);
       clippers[f] = GEOSPrepare(geosgeom);
       //GEOSGeom_destroy(geosgeom);
-      OGREnvelope ogr_extent;
       OGR_G_GetEnvelope  (geom, &ogr_extent);
       if(f == 0) {
         extent->minx = ogr_extent.MinX;
@@ -1052,9 +1273,15 @@ int main(int argc, const char **argv)
     if(!tileset) {
       return usage(argv[0], "tileset not found in configuration");
     }
-    if(tileset->read_only) {
-      printf("tileset %s is read-only, switching it to read-write for seeding\n",tileset_name);
+    if(tileset->read_only && mode != MAPCACHE_CMD_TRANSFER) {
+      printf("tileset (%s) is read-only, switching it to read-write for seeding\n",tileset_name);
       tileset->read_only = 0;
+    }
+    if( mode == MAPCACHE_CMD_TRANSFER ) {
+      if( tileset->read_only == 0 ) {
+        printf("switching tileset (%s) to read-only as we are in transfer mode\n",tileset_name);
+      }
+      tileset->read_only = 1;
     }
     if( ! grid_name ) {
       grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
@@ -1071,6 +1298,38 @@ int main(int argc, const char **argv)
         return usage(argv[0],"grid not configured for tileset");
       }
     }
+#ifdef USE_CLIPPERS
+    if(ogr_datasource) {
+      /* check that the provided ogr features are compatible with the grid units */
+      if(grid_link->grid->unit == MAPCACHE_UNIT_DEGREES) {
+        if(extent->minx < -181.0 ||
+           extent->maxx > 181.0 ||
+           extent->miny < -91.0 ||
+           extent->maxy > 91.0) {
+          printf("\n********************************************************************************\n"
+                 "* WARNING!!!: you are seeding a grid in latlon degrees,\n"
+                 "* but your provided OGR intersection features span (%f,%f,%f,%f).\n"
+                 "* this seems like an error, you should be providing OGR features that\n"
+                 "* are in the same projection as the grid you want to seed\n"
+                 "********************************************************************************\n\n",
+                 extent->minx, extent->miny, extent->maxx, extent->maxy);
+        }
+      } else {
+        if(extent->minx > -181.0 &&
+           extent->maxx < 181.0 &&
+           extent->miny > -91.0 &&
+           extent->maxy < 91.0) {
+          printf("\n********************************************************************************\n"
+                 "* WARNING!!!: you are seeding a grid that is not in latlon degrees,\n"
+                 "* but your provided OGR intersection features span (%f,%f,%f,%f) which seem to be in degrees.\n"
+                 "* this seems like an error, you should be providing OGR features that\n"
+                 "* are in the same projection as the grid you want to seed\n"
+                 "********************************************************************************\n\n",
+                 extent->minx, extent->miny, extent->maxx, extent->maxy);
+        }
+      }
+    }
+#endif
     if(iteration_mode == MAPCACHE_ITERATION_UNSET) {
       if(!strcmp(grid_link->grid->name,"g") || !strcmp(grid_link->grid->name,"WGS84")
               || !strcmp(grid_link->grid->name,"GoogleMapsCompatible")) {
@@ -1090,7 +1349,7 @@ int main(int argc, const char **argv)
     if(minzoom<grid_link->minz) minzoom = grid_link->minz;
     if(maxzoom>= grid_link->maxz) maxzoom = grid_link->maxz - 1;
     if(grid_link->outofzoom_strategy != MAPCACHE_OUTOFZOOM_NOTCONFIGURED && maxzoom > grid_link->max_cached_zoom) {
-      maxzoom = grid_link->max_cached_zoom;
+      return usage(argv[0],"requested maxzoom %d is higher than configured max-cached-zoom %d for grid",maxzoom,grid_link->max_cached_zoom);
     }
 
     /* adjust metasize */
@@ -1102,14 +1361,23 @@ int main(int argc, const char **argv)
     /* ensure our metasize is a power of 2 in drill down mode */
     if(iteration_mode == MAPCACHE_ITERATION_DEPTH_FIRST) {
       if(!isPowerOfTwo(tileset->metasize_x) || !isPowerOfTwo(tileset->metasize_y)) {
-        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"level-by-level\"");
+        return usage(argv[0],"metatile size is not set to a power of two and iteration mode set to \"drill-down\", rerun with e.g -M 8,8, or force iteration mode to \"scanline\"");
       }
     }
 
+    if(cache_override) {
+      mapcache_cache *co = mapcache_configuration_get_cache(cfg, cache_override);
+      if(!co) {
+        return usage(argv[0], "overridden cache\"%s\" not found in configuration", cache_override);
+      } else {
+        tileset->_cache = co;
+      }
+    }
 
   }
 
   if (mode == MAPCACHE_CMD_TRANSFER) {
+    tileset->metasize_x = tileset->metasize_y = 1;
     if (!tileset_transfer_name)
       return usage(argv[0],"tileset where tiles should be transferred to not specified");
 
@@ -1159,61 +1427,30 @@ int main(int argc, const char **argv)
   }
 
   /* validate the supplied dimensions */
-  if (!apr_is_empty_array(tileset->dimensions) || tileset->timedimension) {
+  if (!apr_is_empty_array(tileset->dimensions)) {
     int i;
     const char *value;
-    dimensions = apr_table_make(ctx.pool,3);
-    if (!apr_is_empty_array(tileset->dimensions)) {
-      for(i=0; i<tileset->dimensions->nelts; i++) {
-        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-        if((value = (char*)apr_table_get(argdimensions,dimension->name)) != NULL) {
-          char *tmpval = apr_pstrdup(ctx.pool,value);
-          int ok = dimension->validate(&ctx,dimension,&tmpval);
-          if(GC_HAS_ERROR(&ctx) || ok != MAPCACHE_SUCCESS ) {
-            return usage(argv[0],"failed to validate dimension");
-            return 1;
-          } else {
-            /* validate may have changed the dimension value, so set that value into the dimensions table */
-            apr_table_setn(dimensions,dimension->name,tmpval);
-          }
-        } else {
-          /* a dimension was not specified on the command line, add the default value */
-          apr_table_setn(dimensions, dimension->name, dimension->default_value);
-        }
+    dimensions = apr_array_make(ctx.pool,tileset->dimensions->nelts,sizeof(mapcache_requested_dimension*));
+    for(i=0; i<tileset->dimensions->nelts; i++) {
+      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
+      mapcache_requested_dimension *rdim = apr_pcalloc(ctx.pool,sizeof(mapcache_requested_dimension));
+      rdim->dimension = dimension;
+      if((value = apr_table_get(argdimensions,dimension->name)) == NULL) {
+        value = dimension->default_value;
       }
+      rdim->requested_value = apr_pstrdup(ctx.pool,value);
+      APR_ARRAY_PUSH(dimensions,mapcache_requested_dimension*)=rdim;
     }
-    if(tileset->timedimension) {
-      if((value = (char*)apr_table_get(argdimensions,tileset->timedimension->key)) != NULL) {
-        apr_array_header_t *timedim_selected = mapcache_timedimension_get_entries_for_value(&ctx,tileset->timedimension, tileset, grid_link->grid, extent, value);
-        if(GC_HAS_ERROR(&ctx) || !timedim_selected) {
-          return usage(argv[0],"failed to validate time dimension");
-        }
-        if(timedim_selected->nelts == 0) {
-          return usage(argv[0],"Time dimension %s=%s returns no configured entry",tileset->timedimension->key,
-                  value);
-        }
-        if(timedim_selected->nelts > 1) {
-          return usage(argv[0],"Time dimension %s=%s returns more than 1 configured entries",tileset->timedimension->key,
-                  value);
-        }
-        apr_table_set(dimensions,tileset->timedimension->key,APR_ARRAY_IDX(timedim_selected,0,char*));
-      } else {
-        return usage(argv[0],"tileset references a TIME dimension, but none supplied on commandline. (hint: -D %s=<timestamp>",tileset->timedimension->key);
-        
+    if(tileset->dimension_assembly_type != MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      if(!tileset->store_dimension_assemblies) {
+        return usage(argv[0],"cannot seed a layer with dimension assembling and no caching of resulting assembly");
+      }
+      if(tileset->metasize_x != 1 || tileset->metasize_y != 1) {
+        return usage(argv[0],"cannot seed a layer with dimension assembling and metatiling enabled (hint: rerun with -M 1,1 to disable metatiling");
       }
     }
   }
-  
-  {
-  /* start the logging thread */
-    //create the queue where the seeding statuses will be put
-    apr_threadattr_t *log_thread_attrs;
-    apr_queue_create(&log_queue,2,ctx.pool);
 
-    //start the rendering threads.
-    apr_threadattr_create(&log_thread_attrs, ctx.pool);
-    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
-  }
 
   if(nthreads == 0 && nprocesses == 0) {
     nthreads = 1;
@@ -1221,13 +1458,24 @@ int main(int argc, const char **argv)
   if(nthreads >= 1 && nprocesses >= 1) {
     return usage(argv[0],"cannot set both nthreads and nprocesses");
   }
+
+  {
+  /* start the logging thread */
+    //create the queue where the seeding statuses will be put
+    apr_threadattr_t *log_thread_attrs;
+    apr_queue_create(&log_queue,MAPCACHE_MAX(nthreads,nprocesses),ctx.pool);
+
+    //start the rendering threads.
+    apr_threadattr_create(&log_thread_attrs, ctx.pool);
+    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
+  }
+
   if(nprocesses > 1) {
 #ifdef USE_FORK
     key_t key;
     int i;
     pid_t *pids = malloc(nprocesses*sizeof(pid_t));
     struct msqid_ds queue_ds;
-    ctx.threadlock = NULL;
     key = ftok(argv[0], 'B');
     if ((msqid = msgget(key, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
       return usage(argv[0],"failed to create sysv ipc message queue");
@@ -1262,7 +1510,7 @@ int main(int argc, const char **argv)
         pids[i] = pid;
       }
     }
-    cmd_worker();
+    feed_worker();
     for(i=0; i<nprocesses; i++) {
       int stat_loc;
       waitpid(pids[i],&stat_loc,0);
@@ -1272,26 +1520,48 @@ int main(int argc, const char **argv)
     return usage(argv[0],"bug: multi process support not available");
 #endif
   } else {
-    //start the thread that will populate the queue.
-    apr_thread_mutex_create((apr_thread_mutex_t**)&ctx.threadlock,APR_THREAD_MUTEX_DEFAULT,ctx.pool);
+    apr_threadattr_t *seed_thread_attrs;
     //create the queue where tile requests will be put
     apr_queue_create(&work_queue,nthreads,ctx.pool);
 
+    {
+      /* start the feeding thread */
+      apr_threadattr_t *feed_thread_attrs;
+      //start the rendering threads.
+      apr_threadattr_create(&feed_thread_attrs, ctx.pool);
+      apr_thread_create(&feed_thread, feed_thread_attrs, feed_thread_fn, NULL, ctx.pool);
+    }
+
+
+
     //start the rendering threads.
-    apr_threadattr_create(&thread_attrs, ctx.pool);
-    threads = (apr_thread_t**)apr_pcalloc(ctx.pool, nthreads*sizeof(apr_thread_t*));
+    apr_threadattr_create(&seed_thread_attrs, ctx.pool);
+    seed_threads = (apr_thread_t**)apr_pcalloc(ctx.pool, nthreads*sizeof(apr_thread_t*));
     for(n=0; n<nthreads; n++) {
-      apr_thread_create(&threads[n], thread_attrs, seed_thread, NULL, ctx.pool);
+      if(n && thread_delay > 0) {
+        apr_sleep((int)(thread_delay * 1000000));
+      }
+      apr_thread_create(&seed_threads[n], seed_thread_attrs, seed_thread, NULL, ctx.pool);
     }
-    cmd_worker();
+
+
+    //the worker has finished generating the list of tiles to be seeded, now wait for the rendering threads to finish
     for(n=0; n<nthreads; n++) {
-      apr_thread_join(&rv, threads[n]);
+      apr_thread_join(&rv, seed_threads[n]);
     }
+
+    apr_thread_join(&rv, feed_thread);
   }
   {
+    int retries=0;
+    int ret;
     struct seed_status *st = calloc(1,sizeof(struct seed_status));
     st->status = MAPCACHE_STATUS_FINISHED;
-    apr_queue_push(log_queue,(void*)st);
+    ret = apr_queue_push(log_queue,(void*)st);
+    while (ret == APR_EINTR && retries<10) {
+      retries++;
+      ret = apr_queue_push(log_queue,(void*)st);
+    }
     apr_thread_join(&rv, log_thread);
   }
 
@@ -1299,10 +1569,17 @@ int main(int argc, const char **argv)
     struct mctimeval now_t;
     float duration;
     int ntilestot = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+    int nnodatatot = n_nodata_tot*tileset->metasize_x*tileset->metasize_y;
     mapcache_gettimeofday(&now_t,NULL);
     duration = ((now_t.tv_sec-starttime.tv_sec)*1000000+(now_t.tv_usec-starttime.tv_usec))/1000000.0;
 
-    printf("\nseeded %d metatiles (%d tiles) in %.1f seconds at %.1f tiles/sec\n",n_metatiles_tot, ntilestot, duration, ntilestot/duration);
+    printf("\nseeded %d metatiles (%d total tiles, %d non-empty tiles) in %.1f seconds at %.1f tiles/sec (%.1f non-empty tiles/sec)\n",
+           n_metatiles_tot,
+           ntilestot,
+           ntilestot-nnodatatot,
+           duration,
+           ntilestot/duration,
+           (ntilestot-nnodatatot)/duration);
   } else {
     if(!error_detected) {
       printf("0 tiles needed to be seeded, exiting\n");
@@ -1311,9 +1588,9 @@ int main(int argc, const char **argv)
   apr_terminate();
 
   if (error_detected > 0) {
-    exit(1);  
+    exit(1);
   }
-  
+
   return 0;
 }
 /* vim: ts=2 sts=2 et sw=2

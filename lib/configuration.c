@@ -35,46 +35,11 @@
 
 void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, mapcache_cfg *config, int cgi)
 {
-  apr_dir_t *lockdir;
-  apr_status_t rv;
-  char errmsg[120];
   char *url;
 
   mapcache_configuration_parse_xml(ctx,filename,config);
 
-
   GC_CHECK_ERROR(ctx);
-
-  if(!config->lockdir || !strlen(config->lockdir)) {
-    config->lockdir = apr_pstrdup(ctx->pool, "/tmp");
-  }
-  rv = apr_dir_open(&lockdir,config->lockdir,ctx->pool);
-  if(rv != APR_SUCCESS) {
-    ctx->set_error(ctx,500, "failed to open lock directory %s: %s"
-                   ,config->lockdir,apr_strerror(rv,errmsg,120));
-    return;
-  }
-
-  /* only remove lockfiles if we're not in cgi mode */
-  if(!cgi) {
-    apr_finfo_t finfo;
-    while ((apr_dir_read(&finfo, APR_FINFO_DIRENT|APR_FINFO_TYPE|APR_FINFO_NAME, lockdir)) == APR_SUCCESS) {
-      if(finfo.filetype == APR_REG) {
-        if(!strncmp(finfo.name, MAPCACHE_LOCKFILE_PREFIX, strlen(MAPCACHE_LOCKFILE_PREFIX))) {
-          ctx->log(ctx,MAPCACHE_WARN,"found old lockfile %s/%s, deleting it",config->lockdir,
-                   finfo.name);
-          rv = apr_file_remove(apr_psprintf(ctx->pool,"%s/%s",config->lockdir, finfo.name),ctx->pool);
-          if(rv != APR_SUCCESS) {
-            ctx->set_error(ctx,500, "failed to remove lockfile %s: %s",finfo.name,apr_strerror(rv,errmsg,120));
-            return;
-          }
-
-        }
-
-      }
-    }
-  }
-  apr_dir_close(lockdir);
 
   /* if we were suppplied with an onlineresource, make sure it ends with a / */
   if(NULL != (url = (char*)apr_table_get(config->metadata,"url"))) {
@@ -162,6 +127,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   cfg->grids = apr_hash_make(pool);
   cfg->image_formats = apr_hash_make(pool);
   cfg->metadata = apr_table_make(pool,3);
+  cfg->rulesets = apr_hash_make(pool);
 
   mapcache_configuration_add_image_format(cfg,
           mapcache_imageio_create_png_format(pool,"PNG",MAPCACHE_COMPRESSION_FAST),
@@ -170,12 +136,12 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
           mapcache_imageio_create_png_q_format(pool,"PNG8",MAPCACHE_COMPRESSION_FAST,256),
           "PNG8");
   mapcache_configuration_add_image_format(cfg,
-          mapcache_imageio_create_jpeg_format(pool,"JPEG",90,MAPCACHE_PHOTOMETRIC_YCBCR),
+          mapcache_imageio_create_jpeg_format(pool,"JPEG",90,MAPCACHE_PHOTOMETRIC_YCBCR,MAPCACHE_OPTIMIZE_YES),
           "JPEG");
   mapcache_configuration_add_image_format(cfg,
           mapcache_imageio_create_mixed_format(pool,"mixed",
                     mapcache_configuration_get_image_format(cfg,"PNG"),
-                    mapcache_configuration_get_image_format(cfg,"JPEG")),
+                    mapcache_configuration_get_image_format(cfg,"JPEG"), 255),
           "mixed");
   cfg->default_image_format = mapcache_configuration_get_image_format(cfg,"mixed");
   cfg->reporting = MAPCACHE_REPORT_MSG;
@@ -254,8 +220,6 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   }
   mapcache_configuration_add_grid(cfg,grid,"g");
 
-  /* default retry interval is 1/100th of a second, i.e. 10000 microseconds */
-  cfg->lock_retry_interval = 10000;
 
   cfg->loglevel = MAPCACHE_WARN;
   cfg->autoreload = 0;
@@ -276,6 +240,11 @@ mapcache_cache *mapcache_configuration_get_cache(mapcache_cfg *config, const cha
 mapcache_grid *mapcache_configuration_get_grid(mapcache_cfg *config, const char *key)
 {
   return (mapcache_grid*)apr_hash_get(config->grids, (void*)key, APR_HASH_KEY_STRING);
+}
+
+mapcache_ruleset *mapcache_configuration_get_ruleset(mapcache_cfg *config, const char *key)
+{
+  return (mapcache_ruleset*)apr_hash_get(config->rulesets, (void*)key, APR_HASH_KEY_STRING);
 }
 
 mapcache_tileset *mapcache_configuration_get_tileset(mapcache_cfg *config, const char *key)
@@ -300,6 +269,11 @@ void mapcache_configuration_add_source(mapcache_cfg *config, mapcache_source *so
 void mapcache_configuration_add_grid(mapcache_cfg *config, mapcache_grid *grid, const char * key)
 {
   apr_hash_set(config->grids, key, APR_HASH_KEY_STRING, (void*)grid);
+}
+
+void mapcache_configuration_add_ruleset(mapcache_cfg *config, mapcache_ruleset *ruleset, const char * key)
+{
+  apr_hash_set(config->rulesets, key, APR_HASH_KEY_STRING, (void*)ruleset);
 }
 
 void mapcache_configuration_add_tileset(mapcache_cfg *config, mapcache_tileset *tileset, const char * key)

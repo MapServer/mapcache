@@ -30,11 +30,11 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
+#include "mapcache_services.h"
 
 /** \addtogroup services */
 
 /** @{ */
-
 
 
 void _create_capabilities_ve(mapcache_context *ctx, mapcache_request_get_capabilities *req, char *url, char *path_info, mapcache_cfg *cfg)
@@ -98,31 +98,11 @@ void _mapcache_service_ve_parse_request(mapcache_context *ctx, mapcache_service 
   quadkey = apr_table_get(params, "tile");
   tile = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
   if (quadkey) {
-    z = strlen(quadkey);
+    mapcache_util_quadkey_decode(ctx, quadkey, &x, &y, &z);
+    GC_CHECK_ERROR(ctx);
     if (z < 1 || z >= grid_link->grid->nlevels) {
       ctx->set_error(ctx, 404, "received ve request with invalid z level %d\n", z);
       return;
-    }
-    x = y = 0;
-    for (i = z; i; i--) {
-      int mask = 1 << (i - 1);
-      switch (quadkey[z - i]) {
-        case '0':
-          break;
-        case '1':
-          x |= mask;
-          break;
-        case '2':
-          y |= mask;
-          break;
-        case '3':
-          x |= mask;
-          y |= mask;
-          break;
-        default:
-          ctx->set_error(ctx, 404, "Invalid Quadkey sequence");
-          return;
-      }
     }
   } else {
     ctx->set_error(ctx, 400, "received ve request with no tile quadkey");
@@ -131,7 +111,7 @@ void _mapcache_service_ve_parse_request(mapcache_context *ctx, mapcache_service 
 
 
   req = (mapcache_request_get_tile*) apr_pcalloc(ctx->pool, sizeof (mapcache_request_get_tile));
-  req->request.type = MAPCACHE_REQUEST_GET_TILE;
+  ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
   req->ntiles = 1;
   req->tiles = (mapcache_tile**) apr_pcalloc(ctx->pool, sizeof (mapcache_tile*));
   req->tiles[0] = tile;

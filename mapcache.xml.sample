@@ -73,6 +73,16 @@
    </grid>
 
    <!--
+   <grid name="worldwind">
+     <extent>-180 -90 180 90</extent>
+     <srs>EPSG:4326</srs>
+     <units>dd</units>
+     <size>512 512</size>
+     <resolutions>0.0703125000000000 0.0351562500000000 0.0175781250000000 8.78906250000000e-3 4.39453125000000e-3 2.19726562500000e-3 1.09863281250000e-3 5.49316406250000e-4 2.74658203125000e-4 1.37329101562500e-4 6.86645507812500e-5 3.43322753906250e-5 1.71661376953125e-5 8.58306884765625e-6 4.29153442382812e-6 2.14576721191406e-6 1.07288360595703e-6 5.36441802978516e-7</resolutions>
+   </grid>
+   -->
+
+   <!--
          there are three preconfigured grids you can use in <tileset>s without having to
          explicitely define them here:
          <grid name="WGS84">
@@ -347,6 +357,14 @@
            preserve disk space.
       -->
       <symlink_blank/>
+      <!-- detect_blank
+          Similar to symlink_blank, except completely skip writing a file
+          if a blank, fully transparent tile is detected.
+          Note: This setting should only be used when using the seeder.  If used
+          on demand, mapcache will will query the WMS source on each subsequent 
+          tile request.
+      -->
+      <detect_blank/>
    </cache>
 
    <cache name="tmpl" type="disk">
@@ -373,6 +391,15 @@
 
       -->
       <template>/tmp/template-test/{tileset}#{grid}#{dim}/{z}/{x}/{y}.{ext}</template>
+
+      <!-- detect_blank
+          Similar to symlink_blank, except completely skip writing a file
+          if a blank, fully transparent tile is detected.
+          Note: This setting should only be used when using the seeder.  If used
+          on demand, mapcache will will query the WMS source on each subsequent 
+          tile request.
+      -->
+      <detect_blank/>
    </cache>
 
    <!-- memcache cache
@@ -414,6 +441,17 @@
 
       -->
       <pragma name="key">value</pragma>
+      <!-- queries
+            SQL to be sent to sqlite backend for operations on tiles. The default queries that are
+            sent are listed below
+      --> 
+      <queries>
+        <create>create table if not exists tiles(tileset text, grid text, x integer, y integer, z integer, data blob, dim text, ctime datetime, primary key(tileset,grid,x,y,z,dim))</create>
+        <exists>select 1 from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid</exists>
+        <get>select data,strftime("%s",ctime) from tiles where tileset=:tileset and grid=:grid and x=:x and y=:y and z=:z and dim=:dim</get>
+        <set>insert or replace into tiles(tileset,grid,x,y,z,data,dim,ctime) values (:tileset,:grid,:x,:y,:z,:data,:dim,datetime('now'))</set>
+        <delete>delete from tiles where x=:x and y=:y and z=:z and dim=:dim and tileset=:tileset and grid=:grid</delete>
+      </queries>
    </cache>
    <!--
    <cache name="mbtiles" type="mbtiles">
@@ -510,6 +548,31 @@
      </operation>
    </cache>
 
+   <!-- TIFF cache on local disk (read/write) -->
+   <cache name="my_tiff_cache" type="tiff">
+       <template>cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+    </cache>
+
+   <!-- TIFF cache in URL (read-only) -->
+   <cache name="my_tiff_cache_rest_storage" type="tiff">
+       <template>https://example.com/cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+       <storage type="rest">
+            <header_file>/dev/shm/google-mapcache.header</header_file> <!-- optional -->
+            <timeout>10</timeout> <!-- optional -->
+            <connection_timeout>3</connection_timeout> <!-- optional -->
+       </storage>
+    </cache>
+
+   <!-- TIFF cache in Google Cloud Storage (read-only) -->
+   <cache name="my_tiff_cache_google_storage" type="tiff">
+       <template>https://storage.googleapis.com/cache_tiff/{tileset}/{grid}/L{z}/R{inv_y}/C{x}.tif</template>
+       <storage type="google">
+            <access>GOOGPGDWFDG345SDFGSD</access>
+            <secret>sdfgsdSDFwedfwefr2345324dfsGdsfgs</secret>
+            <timeout>10</timeout> <!-- optional -->
+            <connection_timeout>3</connection_timeout> <!-- optional -->
+       </storage>
+   </cache>
 
    <!-- format
 
@@ -546,6 +609,7 @@
       <quality>75</quality>  
 
       <photometric>RGB</photometric>   <!-- RGB | YCBCR -->
+      <optimize>true</optimize>  <!-- true | false | arithmetic -->
    </format>
    <format name="PNG_BEST" type ="PNG">
       <compression>best</compression>
@@ -716,12 +780,17 @@
 
       <!-- metadata
          optional metadata tags used for responding to GetCapabilities request.
-         you can put anything in here, although only the title and abstract tags
-         are currently used to populate the GetCapabilities document.
+         you can put anything in here, although only the title, abstract and
+         keywords tags are currently used to populate the GetCapabilities
+         document.
       -->
       <metadata>
          <title>vmap0 map</title>
          <abstract>blabla</abstract>
+         <keywords>
+           <keyword>foo</keyword>
+           <keyword>bar</keyword>
+         </keywords>
       </metadata>
 
       <!-- watermark
@@ -795,7 +864,12 @@
                file. i.e. their are as many different caches created as their are values in the
                <values> tag.
          -->
-         <dimension type="values" name="DIM1" default="foobar">foobar,foobarbaz,foo,bar</dimension>
+	 <dimension type="values" name="DIM1" default="foobar">
+		 <value>foobar</value>
+		 <value>foobarbaz</value>
+		 <value>foo</value>
+		 <value>bar</value>
+	 </dimension>
          
          <!-- regex dimension
             the following creates a MAPFILE dimension, for using the same mod-mapcache tileset with different
@@ -806,8 +880,10 @@
             spearated by slashes (/) and finishing with ".map" ( [a-zA-Z0-9\./]*\.map$ ) , but will faill if there
             are two consecutive dots (..) in the path, to prevent filesystem traversal  ( (?!.*\.\.) ).
          -->
-         <dimension type="regex" name="MAPFILE" default="/path/to/mapfile.map">^(?!.*\.\.)[a-zA-Z0-9\./]*\.map$</dimension>
-
+	 <dimension type="regex" name="MAPFILE" default="/path/to/mapfile.map">
+		 <regex>^(?!.*\.\.)[a-zA-Z0-9\./]*\.map$</regex>
+	 </dimension>
+	 
          <!-- intervals dimension
             the syntax is the same as common-ows, i.e. a comma separated list of "min/max/resolution" entries.
             eg: 
@@ -815,7 +891,8 @@
                * 0/100/0 allows any values between 0 and 100
                * both values can be combined: 0/5000/1000,0/100/0
          -->
-         <dimension name="ELEVATION" type="intervals" default="0">0/5000/1000</dimension>
+         <dimension name="ELEVATION" type="intervals" default="0">0/5000/1000</dimension>	 
+
 
          <!-- coming in a future version: support for ISO8601 date/time dimensions -->
 
@@ -947,16 +1024,51 @@
    <errors>report</errors>
 
    
+   
+   <locker type="disk">  <!-- this is the default -->
    <!--
         location to put lockfiles (to block other clients while a metatile is being rendered.
         defaults to /tmp
         this location should be writable by the apache user
    -->
-   <lock_dir>/tmp</lock_dir>
+     <directory>/tmp</directory>
+     <retry>0.01</retry> <!-- check back every .01 seconds -->
+   </locker>
+
+   <lock_dir>/tmp</lock_dir>  <!-- deprecated, use <locker type="disk"> -->
+
+
+   <locker type="memcache">
+     <server>
+       <host>localhost</host>
+       <port>11211</port>
+     </server>
+     <server>
+       <host>memcache-host</host>
+       <port>11212</port>
+     </server>
+     <retry>0.3</retry> <!-- check back every .3 seconds if the lock has been released -->
+   </locker>
+
+
 
    <!-- use multiple threads when fetching multiple tiles (used for wms tile assembling -->
    <threaded_fetching>true</threaded_fetching>
    
+
+   <!--
+        Parameters for fine tuning connection_pool component, used for
+        connections to caches
+        - max_connections: maximum number of open connections at the same time
+          (default: 1024)
+        - time_to_live_us: maximum amount of time in microseconds an unused
+          connection is valid (default 60s)
+   -->
+   <connection_pool>
+     <max_connections>2000</max_connections>
+     <time_to_live_us>1000000</time_to_live_us>
+   </connection_pool>
+
    
    <!-- fastcgi only -->
    <log_level>info</log_level> <!-- logging verbosity -->

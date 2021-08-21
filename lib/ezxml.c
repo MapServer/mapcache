@@ -370,7 +370,7 @@ short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
       else *s = '\0'; // null terminate tag name
       for (i = 0; root->attr[i] && strcmp(n, root->attr[i][0]); i++);
 
-      while (*(n = ++s + strspn(s, EZXML_WS)) && *n != '>') {
+      while (*(n = s + 1 + strspn(s + 1, EZXML_WS)) && *n != '>') {
         if (*(s = n + strcspn(n, EZXML_WS))) *s = '\0'; // attr name
         else {
           ezxml_err(root, t, "malformed <!ATTLIST");

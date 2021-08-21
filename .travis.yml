@@ -1,0 +1,56 @@
+matrix:
+  fast_finish: true
+  include:
+    - os: linux
+      dist: xenial
+      language: c
+      sudo: required
+      env:
+        - DISTRO=xenial
+        - BUILD_TYPE=maximum
+
+    - os: linux
+      dist: xenial
+      language: c
+      sudo: required
+      env:
+        - DISTRO=xenial
+        - BUILD_TYPE=minimum
+
+    - os: linux
+      language: c
+      sudo: required
+      env:
+        - DISTRO=precise
+        - BUILD_TYPE=maximum
+
+language: c
+
+before_install:
+  - sudo mv /etc/apt/sources.list.d/pgdg* /tmp
+  - sudo apt-get purge -y libgdal* libgeos* libspatialite*
+  - sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
+  - sudo apt-get update
+  - sudo apt-get install cmake libspatialite-dev libfcgi-dev libproj-dev libgeos-dev libgdal-dev libtiff-dev libgeotiff-dev apache2-dev libpcre3-dev libsqlite3-dev libdb-dev
+# For testing
+  - sudo apt-get install libxml2-utils apache2 gdal-bin
+
+script:
+  - mkdir build
+  - cd build
+  - if test "$BUILD_TYPE" = "maximum"; then cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DWITH_TIFF=ON -DWITH_GEOTIFF=ON -DWITH_TIFF_WRITE_SUPPORT=ON -DWITH_PCRE=ON -DWITH_SQLITE=ON -DWITH_BERKELEY_DB=ON; else cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DWITH_TIFF=OFF -DWITH_GEOTIFF=OFF -DWITH_TIFF_WRITE_SUPPORT=OFF -DWITH_PCRE=OFF -DWITH_SQLITE=OFF -DWITH_BERKELEY_DB=OFF -DWITH_GDAL=OFF -DWITH_GEOS=OFF -DWITH_FCGI=OFF -DWITH_CGI=OFF -DWITH_APACHE=OFF -DWITH_OGR=OFF -DWITH_MAPSERVER=OFF -DWITH_MAPCACHE_DETAIL=OFF; fi
+  - make -j3
+  - sudo make install
+# Only test with Apache 2.4
+  - if test "$DISTRO" = "xenial" -a "$BUILD_TYPE" = "maximum"; then cd ../tests; sh ./travis_setup.sh; sh ./run_tests.sh; fi
+
+
+#notifications:
+#  email:
+#    recipients:
+#      - thomas.bonfort@gmail.com
+#  irc:
+#    channels:
+#      - "irc.freenode.org#mapserver"
+#    use_notice: true
+

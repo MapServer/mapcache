@@ -42,60 +42,34 @@
 void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
 {
   ezxml_t cur_node;
-  for(cur_node = node->child; cur_node; cur_node = cur_node->sibling) {
-    apr_table_add(metadata,cur_node->name, cur_node->txt);
-  }
-}
-
-void parseTimeDimension(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset) {
-  const char *attr = NULL;
-  if(tileset->timedimension) {
-    ctx->set_error(ctx,400,"tileset \"%s\" can only have a single <timedimension>", tileset->name);
-    return;
-  }
-  attr = ezxml_attr(node,"type");
-  if(attr && *attr) {
-    if(!strcmp(attr,"sqlite")) {
-#ifdef USE_SQLITE
-      tileset->timedimension = mapcache_timedimension_sqlite_create(ctx->pool);
-#else
-      ctx->set_error(ctx,400, "failed to add sqlite timedimension: Sqlite support is not available on this build");
-      return;
-#endif
+  for(cur_node = node->child; cur_node; cur_node = cur_node->ordered) {
+    if (!cur_node->child) {
+      // Parse simple text
+      apr_table_add(metadata, cur_node->name, cur_node->txt);
     } else {
-      ctx->set_error(ctx,400,"unknown \"type\" attribute \"%s\" for %s's <timedimension>. Expecting one of (sqlite)",attr,tileset->name);
-      return;
+      // Parse tags:
+      //   `>` suffix in name indicates that value is a table and not a string
+      char * name = apr_pstrcat(ctx->pool,cur_node->name,">",NULL);
+      apr_table_t * contents = apr_table_make(ctx->pool,3);
+      ezxml_t sub_node;
+      for(sub_node = cur_node->child; sub_node; sub_node = sub_node->ordered) {
+        apr_table_add(contents, sub_node->name, sub_node->txt);
+      }
+      apr_table_addn(metadata, name, (const char *)contents);
     }
-    
-  } else {
-    ctx->set_error(ctx,400,"missing \"type\" attribute for %s's <timedimension>",tileset->name);
-    return;
   }
-  attr = ezxml_attr(node,"name");
-  if(attr && *attr) {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,attr);
-  } else {
-    tileset->timedimension->key = apr_pstrdup(ctx->pool,"TIME");
-  }
-  
-  attr = ezxml_attr(node,"default");
-  if(attr && *attr) {
-    tileset->timedimension->default_value = apr_pstrdup(ctx->pool,attr);
-  } else {
-    ctx->set_error(ctx,400,"no \"default\" attribute for <timedimension> %s",tileset->timedimension->key);
-    return;
-  }
-  tileset->timedimension->configuration_parse_xml(ctx,tileset->timedimension,node);
 }
 
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
+  ezxml_t wms_querybymap_node;
   apr_array_header_t *dimensions = apr_array_make(ctx->pool,1,sizeof(mapcache_dimension*));
   for(dimension_node = ezxml_child(node,"dimension"); dimension_node; dimension_node = dimension_node->next) {
     char *name = (char*)ezxml_attr(dimension_node,"name");
     char *type = (char*)ezxml_attr(dimension_node,"type");
     char *unit = (char*)ezxml_attr(dimension_node,"unit");
+    char *time = (char*)ezxml_attr(dimension_node,"time");
     char *default_value = (char*)ezxml_attr(dimension_node,"default");
 
     mapcache_dimension *dimension = NULL;
@@ -107,15 +81,19 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
 
     if(type && *type) {
       if(!strcmp(type,"values")) {
-        dimension = mapcache_dimension_values_create(ctx->pool);
+        dimension = mapcache_dimension_values_create(ctx,ctx->pool);
       } else if(!strcmp(type,"regex")) {
-        dimension = mapcache_dimension_regex_create(ctx->pool);
-      } else if(!strcmp(type,"intervals")) {
-        dimension = mapcache_dimension_intervals_create(ctx->pool);
+        dimension = mapcache_dimension_regex_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"postgresql")) {
+        dimension = mapcache_dimension_postgresql_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"sqlite")) {
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+      } else if(!strcmp(type,"elasticsearch")) {
+        dimension = mapcache_dimension_elasticsearch_create(ctx,ctx->pool);
       } else if(!strcmp(type,"time")) {
-        ctx->set_error(ctx,501,"time dimension type not implemented yet");
-        return;
-        dimension = mapcache_dimension_time_create(ctx->pool);
+        //backwards compatibility
+        dimension = mapcache_dimension_sqlite_create(ctx,ctx->pool);
+        dimension->isTime = 1;
       } else {
         ctx->set_error(ctx,400,"unknown dimension type \"%s\"",type);
         return;
@@ -124,6 +102,7 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       ctx->set_error(ctx,400, "mandatory attribute \"type\" not found in <dimensions>");
       return;
     }
+    GC_CHECK_ERROR(ctx);
 
     dimension->name = apr_pstrdup(ctx->pool,name);
 
@@ -131,11 +110,36 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
       dimension->unit = apr_pstrdup(ctx->pool,unit);
     }
 
+    if(time && *time && !strcasecmp(time,"true")) {
+      dimension->isTime = 1;
+    }
+    
     if(default_value && *default_value) {
       dimension->default_value = apr_pstrdup(ctx->pool,default_value);
     } else {
       ctx->set_error(ctx,400,"dimension \"%s\" has no \"default\" attribute",dimension->name);
       return;
+    }
+    
+    dimension->wms_querybymap_minzoom = -1;
+    wms_querybymap_node = ezxml_child(dimension_node,"wms_querybymap");
+    if (wms_querybymap_node && wms_querybymap_node->txt) {
+      if (!strcasecmp(wms_querybymap_node->txt,"true")) {
+        const char * minzoom = ezxml_attr(wms_querybymap_node,"minzoom");
+        dimension->wms_querybymap_minzoom = 0;
+        if (minzoom && *minzoom) {
+          char *endptr;
+          dimension->wms_querybymap_minzoom = strtol(minzoom,&endptr,10);
+          if (*endptr != 0 || dimension->wms_querybymap_minzoom < 0) {
+            ctx->set_error(ctx, 400, "failed to parse minzoom \"%s\" for <wms_querybymap>"
+                "expecting an integer starting from 0",minzoom);
+            return;
+          }
+        }
+      } else if (strcasecmp(wms_querybymap_node->txt,"false")) {
+        ctx->set_error(ctx,400,"failed to parse <wms_querybymap> (%s), expecting \"true\" or \"false\"",wms_querybymap_node->txt);
+        return;
+      }
     }
 
     dimension->configuration_parse_xml(ctx,dimension,dimension_node);
@@ -147,7 +151,178 @@ void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tile
     ctx->set_error(ctx, 400, "<dimensions> for tileset \"%s\" has no dimensions defined (expecting <dimension> children)",tileset->name);
     return;
   }
+  
   tileset->dimensions = dimensions;
+  dimension_node = ezxml_child(node,"store_assemblies");
+  if(dimension_node && dimension_node->txt) {
+    if(!strcmp(dimension_node->txt,"false")) {
+      tileset->store_dimension_assemblies = 0;
+    } else if(strcmp(dimension_node->txt,"true")) {
+      ctx->set_error(ctx,400,"failed to parse <store_assemblies> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+      return;
+    }
+  }
+  
+  dimension_node = ezxml_child(node,"assembly_type");
+  if(dimension_node) {
+    if(!strcmp(dimension_node->txt,"stack")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_STACK;
+    } else if(!strcmp(dimension_node->txt,"animate")) {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_ANIMATE;
+      ctx->set_error(ctx,400,"animate dimension assembly mode not implemented");
+      return;
+    } else if(strcmp(dimension_node->txt,"none")) {
+      ctx->set_error(ctx,400,"unknown dimension assembly mode (%s). Can be one of \"stack\" or \"none\"",dimension_node->txt);
+      return;
+    } else {
+      tileset->dimension_assembly_type = MAPCACHE_DIMENSION_ASSEMBLY_NONE;
+    }
+  }
+  
+  tileset->assembly_threaded_fetching_maxzoom = -1;
+  dimension_node = ezxml_child(node,"assembly_threaded_fetching");
+  if (dimension_node) {
+    if (dimension_node && dimension_node->txt) {
+      if (!strcmp(dimension_node->txt,"true")) {
+        int maxzoom = INT_MAX;
+        char * smaxzoom = (char*)ezxml_attr(dimension_node,"maxzoom");;
+        if (smaxzoom && *smaxzoom) {
+          char *endptr;
+          maxzoom = (int)strtol(smaxzoom,&endptr,10);
+          if(*endptr != 0 || maxzoom < 0) {
+            ctx->set_error(ctx, 400, "failed to parse assembly_threaded_fetching"
+                " maxzoom %s (expecting a positive integer)", smaxzoom);
+            return;
+          }
+        }
+        tileset->assembly_threaded_fetching_maxzoom = maxzoom;
+      } else if (strcmp(dimension_node->txt,"false")) {
+        ctx->set_error(ctx,400,"failed to parse <assembly_threaded_fetching>"
+            " (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+        return;
+      }
+    }
+  }
+
+  /* should we create subdimensions from source if not found in cache.
+  e.g. if dimension=mosaic returns dimension=val1,val2,val3 should we 
+  query the wms source with dimension=val1 , dimension=val2 and/or
+  dimension=val3 if they are not found in cache */
+  dimension_node = ezxml_child(node,"subdimensions_read_only");
+  if(dimension_node) {
+    if(tileset->dimension_assembly_type == MAPCACHE_DIMENSION_ASSEMBLY_NONE) {
+      ctx->set_error(ctx,400,"<subdimensions_read_only> used on a tileset with no <assembly_type> set, which makes no sense");
+      return;
+    }
+    if(dimension_node && dimension_node->txt && !strcmp(dimension_node->txt,"true")) {
+      tileset->subdimension_read_only = 1;
+    } else if(strcmp(dimension_node->txt,"false")) {
+      ctx->set_error(ctx,400,"failed to parse <subdimensions_read_only> (%s), expecting \"true\" or \"false\"",dimension_node->txt);
+      return;
+    }
+  }
+}
+
+void parseRuleset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
+{
+  char *name;
+  mapcache_ruleset *ruleset;
+  ezxml_t cur_node;
+  int i;
+
+  name = (char*)ezxml_attr(node,"name");
+
+  if(!name || !strlen(name)) {
+    ctx->set_error(ctx, 400, "mandatory attribute \"name\" not found in <ruleset>");
+    return;
+  } else {
+    name = apr_pstrdup(ctx->pool, name);
+    /* check we don't already have a ruleset defined with this name */
+    if(mapcache_configuration_get_ruleset(config, name)) {
+      ctx->set_error(ctx, 400, "duplicate ruleset with name \"%s\"",name);
+      return;
+    }
+  }
+
+  ruleset = mapcache_ruleset_create(ctx->pool);
+  ruleset->name = name;
+
+  /* parse rules, <rule> */
+  for(cur_node = ezxml_child(node,"rule"), i = 0; cur_node; cur_node = cur_node->next, i++) {
+    int *zoom, nzoom, j;
+    char* zoom_attr = (char*)ezxml_attr(cur_node, "zoom_level");
+    ezxml_t visibility = ezxml_child(cur_node, "visibility");
+    mapcache_rule *rule = mapcache_ruleset_rule_create(ctx->pool);
+
+    /* parse zoom_level attribute */
+    if(zoom_attr && *zoom_attr) {
+      char *value = apr_pstrdup(ctx->pool, zoom_attr);
+      if(MAPCACHE_SUCCESS != mapcache_util_extract_int_list(ctx, value, NULL, &zoom, &nzoom) || nzoom < 1) {
+        ctx->set_error(ctx, 400, "failed to parse zoom_level array %s in ruleset %s, rule %d. "
+                      "(expecting space separated integers, eg <rule zoom_level=\"0 1 2\">)",
+                       value, ruleset->name, i+1);
+        return;
+      }
+    } else {
+        ctx->set_error(ctx, 400, "zoom_level not set in rule %d", i+1);
+        return;
+    }
+
+    /* parse visibility, <visibility> */
+    if(visibility) {
+      char *hidden_color = (char*)ezxml_attr(visibility, "hidden_color");
+      ezxml_t extent_node;
+
+      if (hidden_color && *hidden_color) {
+        /* parse color, base 16 */
+        rule->hidden_color = (unsigned int)strtol(hidden_color, NULL, 16);
+
+        if (strlen(hidden_color) <= 6) {
+            /* if color is set, but no alpha value. Assume no transparency. */
+            rule->hidden_color += 0xff000000;
+        }
+      }
+
+      /* parse extents, <extent> */
+      for (extent_node = ezxml_child(visibility,"extent"); extent_node; extent_node = extent_node->next) {
+        double *values;
+        int nvalues;
+        char *value = apr_pstrdup(ctx->pool,extent_node->txt);
+        mapcache_extent extent = {0,0,0,0};
+        mapcache_extent *pextent;
+
+        if(MAPCACHE_SUCCESS != mapcache_util_extract_double_list(ctx, value, NULL, &values, &nvalues) ||
+            nvalues != 4) {
+          ctx->set_error(ctx, 400, "failed to parse extent array %s in ruleset %s, rule %d. "
+                         "(expecting 4 space separated numbers, got %d (%f %f %f %f)"
+                         "eg <extent>-180 -90 180 90</extent>)",
+                         value,ruleset->name,i+1,nvalues,values[0],values[1],values[2],values[3]);
+          return;
+        }
+
+        extent.minx = values[0];
+        extent.miny = values[1];
+        extent.maxx = values[2];
+        extent.maxy = values[3];
+        pextent =  (mapcache_extent*)apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
+        *pextent = extent;
+        APR_ARRAY_PUSH(rule->visible_extents, mapcache_extent*) = pextent;
+      }
+    }
+
+    /* add this rule for given zoom_levels */
+    for(j = 0; j < nzoom; j++) {
+      mapcache_rule *clone_rule = mapcache_ruleset_rule_clone(ctx->pool, rule);
+      /* check for duplicate rule for this zoom level */
+      if(mapcache_ruleset_rule_find(ruleset->rules, zoom[j]) != NULL) {
+        ctx->set_error(ctx, 400, "found duplicate rule for zoom_level %d", zoom[j]);
+        return;
+      }
+      clone_rule->zoom_level = zoom[j];
+      APR_ARRAY_PUSH(ruleset->rules, mapcache_rule*) = clone_rule;
+    }
+  }
+  mapcache_configuration_add_ruleset(config,ruleset,ruleset->name);
 }
 
 void parseGrid(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
@@ -333,14 +508,14 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   source = NULL;
   if(!strcmp(type,"wms")) {
     source = mapcache_source_wms_create(ctx);
-#ifdef USE_MAPSERVER
   } else if(!strcmp(type,"mapserver")) {
     source = mapcache_source_mapserver_create(ctx);
-#endif
   } else if(!strcmp(type,"gdal")) {
     source = mapcache_source_gdal_create(ctx);
   } else if(!strcmp(type,"dummy")) {
     source = mapcache_source_dummy_create(ctx);
+  } else if(!strcmp(type,"fallback")) {
+    source = mapcache_source_fallback_create(ctx);
   } else {
     ctx->set_error(ctx, 400, "unknown source type %s for source \"%s\"", type, name);
     return;
@@ -355,8 +530,22 @@ void parseSource(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     parseMetadata(ctx, cur_node, source->metadata);
     GC_CHECK_ERROR(ctx);
   }
+  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
+    source->retry_count = atoi(cur_node->txt);
+    if(source->retry_count > 10) {
+      ctx->set_error(ctx,400,"source (%s) <retries> count of %d is unreasonably large. max is 10", source->name, source->retry_count);
+      return;
+    }
+  }
+  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
+    source->retry_delay = (double)atof(cur_node->txt);
+    if(source->retry_delay < 0) {
+      ctx->set_error(ctx,400,"source (%s) retry delay of %f must be positive",source->name, source->retry_delay);
+      return;
+    }
+  }
 
-  source->configuration_parse_xml(ctx,node,source);
+  source->configuration_parse_xml(ctx,node,source, config);
   GC_CHECK_ERROR(ctx);
   source->configuration_check(ctx,config,source);
   GC_CHECK_ERROR(ctx);
@@ -415,6 +604,7 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
   } else if(!strcmp(type,"JPEG")) {
     int quality = 95;
+    int optimize = TRUE;
     mapcache_photometric photometric = MAPCACHE_PHOTOMETRIC_YCBCR;
     if ((cur_node = ezxml_child(node,"quality")) != NULL) {
       char *endptr;
@@ -438,10 +628,24 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         return;
       }
     }
+    if ((cur_node = ezxml_child(node,"optimize")) != NULL) {
+      if(cur_node->txt && !strcasecmp(cur_node->txt,"false"))
+        optimize = MAPCACHE_OPTIMIZE_NO;
+      else if(cur_node->txt && !strcasecmp(cur_node->txt,"true"))
+        optimize = MAPCACHE_OPTIMIZE_YES;
+      else if(cur_node->txt && !strcasecmp(cur_node->txt,"arithmetic"))
+        optimize = MAPCACHE_OPTIMIZE_ARITHMETIC;
+      else {
+        ctx->set_error(ctx,500,"failed to parse jpeg format %s optimize %s. expecting true, false or arithmetic",
+                       name,cur_node->txt);
+        return;
+      }
+    }
     format = mapcache_imageio_create_jpeg_format(ctx->pool,
-             name,quality,photometric);
+             name,quality,photometric,optimize);
   } else if(!strcasecmp(type,"MIXED")) {
     mapcache_image_format *transparent=NULL, *opaque=NULL;
+    unsigned int alpha_cutoff=255;
     if ((cur_node = ezxml_child(node,"transparent")) != NULL) {
       transparent = mapcache_configuration_get_image_format(config,cur_node->txt);
     }
@@ -460,7 +664,16 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      name,cur_node->txt,cur_node->txt);
       return;
     }
-    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque);
+    if ((cur_node = ezxml_child(node,"alpha_cutoff")) != NULL) {
+      alpha_cutoff = atoi(cur_node->txt);
+    }
+    format = mapcache_imageio_create_mixed_format(ctx->pool,name,transparent, opaque, alpha_cutoff);
+  } else if(!strcasecmp(type,"RAW")) {
+    char *extension=NULL;
+    char *mime_type=NULL;
+    if ((cur_node = ezxml_child(node,"extension")) != NULL) extension = apr_pstrdup(ctx->pool, cur_node->txt);
+    if ((cur_node = ezxml_child(node,"mime_type")) != NULL) mime_type = apr_pstrdup(ctx->pool, cur_node->txt);
+    format = mapcache_imageio_create_raw_format(ctx->pool,name,extension,mime_type);
   } else {
     ctx->set_error(ctx, 400, "unknown format type %s for format \"%s\"", type, name);
     return;
@@ -470,7 +683,6 @@ void parseFormat(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     return;
   }
 
-
   mapcache_configuration_add_image_format(config,format,name);
   return;
 }
@@ -479,6 +691,7 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
 {
   char *name = NULL,  *type = NULL;
   mapcache_cache *cache = NULL;
+  ezxml_t cur_node;
   name = (char*)ezxml_attr(node,"name");
   type = (char*)ezxml_attr(node,"type");
   if(!name || !strlen(name)) {
@@ -498,6 +711,12 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   }
   if(!strcmp(type,"disk")) {
     cache = mapcache_cache_disk_create(ctx);
+  } else if(!strcmp(type,"fallback")) {
+    cache = mapcache_cache_fallback_create(ctx);
+  } else if(!strcmp(type,"multitier")) {
+    cache = mapcache_cache_multitier_create(ctx);
+  } else if(!strcmp(type,"composite")) {
+    cache = mapcache_cache_composite_create(ctx);
   } else if(!strcmp(type,"rest")) {
     cache = mapcache_cache_rest_create(ctx);
   } else if(!strcmp(type,"s3")) {
@@ -507,63 +726,49 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   } else if(!strcmp(type,"google")) {
     cache = mapcache_cache_google_create(ctx);
   } else if(!strcmp(type,"bdb")) {
-#ifdef USE_BDB
     cache = mapcache_cache_bdb_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": Berkeley DB support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"tokyocabinet")) {
-#ifdef USE_TC
     cache = mapcache_cache_tc_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": Tokyo Cabinet support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"sqlite3")) {
-#ifdef USE_SQLITE
     cache = mapcache_cache_sqlite_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": sqlite support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"mbtiles")) {
-#ifdef USE_SQLITE
     cache = mapcache_cache_mbtiles_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": sqlite support is not available on this build",name);
-    return;
-#endif
   } else if(!strcmp(type,"memcache")) {
-#ifdef USE_MEMCACHE
     cache = mapcache_cache_memcache_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": memcache support is not available on this build",name);
-    return;
-#endif
-  } else if(!strcmp(type,"redis")) {
-#ifdef USE_REDIS
-    cache = mapcache_cache_redis_create(ctx);
-#else
-    ctx->set_error(ctx, 400, "failed to add cache \"%s\": redis support is not available on this build", name);
-    return;
-#endif
   } else if(!strcmp(type,"tiff")) {
-#ifdef USE_TIFF
     cache = mapcache_cache_tiff_create(ctx);
-#else
-    ctx->set_error(ctx,400, "failed to add cache \"%s\": tiff support is not available on this build",name);
-    return;
-#endif
+  } else if(!strcmp(type,"couchbase")) {
+    cache = mapcache_cache_couchbase_create(ctx);
+  } else if(!strcmp(type,"riak")) {
+    cache = mapcache_cache_riak_create(ctx);
+  } else if(!strcmp(type,"redis")) {
+    cache = mapcache_cache_redis_create(ctx);
   } else {
     ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"", type, name);
     return;
   }
+  GC_CHECK_ERROR(ctx);
   if(cache == NULL) {
     ctx->set_error(ctx, 400, "failed to parse cache \"%s\"", name);
     return;
   }
   cache->name = name;
+
+  if ((cur_node = ezxml_child(node,"retries")) != NULL) {
+    cache->retry_count = atoi(cur_node->txt);
+    if(cache->retry_count > 10) {
+      ctx->set_error(ctx,400,"cache (%s) <retries> count of %d is unreasonably large. max is 10", cache->name, cache->retry_count);
+      return;
+    }
+  }
+  if ((cur_node = ezxml_child(node,"retry_delay")) != NULL) {
+    cache->retry_delay = (double)atof(cur_node->txt);
+    if(cache->retry_delay < 0) {
+      ctx->set_error(ctx,400,"cache (%s) retry delay of %f must be positive",cache->name, cache->retry_delay);
+      return;
+    }
+  }
+
 
   cache->configuration_parse_xml(ctx,node,cache,config);
   GC_CHECK_ERROR(ctx);
@@ -578,6 +783,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
   ezxml_t cur_node;
   char* value;
   int havewgs84bbox=0;
+
   if(config->mode == MAPCACHE_MODE_NORMAL) {
     name = (char*)ezxml_attr(node,"name");
   } else {
@@ -627,12 +833,24 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     havewgs84bbox = 1;
   }
 
+  if ((cur_node = ezxml_child(node,"format")) != NULL) {
+    mapcache_image_format *format = mapcache_configuration_get_image_format(config,cur_node->txt);
+    if(!format) {
+      ctx->set_error(ctx, 400, "tileset \"%s\" references format \"%s\","
+                     " but it is not configured",name,cur_node->txt);
+      return;
+    }
+    tileset->format = format;
+  }
+
   for(cur_node = ezxml_child(node,"grid"); cur_node; cur_node = cur_node->next) {
     mapcache_grid *grid;
     mapcache_grid_link *gridlink;
-    char *restrictedExtent = NULL, *sTolerance = NULL;
+    mapcache_ruleset *ruleset = NULL;
+    char *restrictedExtent = NULL, *sTolerance = NULL, *ruleset_name = NULL;
     mapcache_extent *extent;
     int tolerance;
+    int i;
 
     if (tileset->grid_links == NULL) {
       tileset->grid_links = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
@@ -649,6 +867,18 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     gridlink->maxz = grid->nlevels;
     gridlink->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,grid->nlevels*sizeof(mapcache_extent_i));
     gridlink->outofzoom_strategy = MAPCACHE_OUTOFZOOM_NOTCONFIGURED;
+    gridlink->intermediate_grids = apr_array_make(ctx->pool,1,sizeof(mapcache_grid_link*));
+    gridlink->rules = apr_array_make(ctx->pool,0,sizeof(mapcache_rule*));
+
+    ruleset_name = (char*)ezxml_attr(cur_node,"ruleset");
+    if(ruleset_name) {
+      ruleset = mapcache_configuration_get_ruleset(config, ruleset_name);
+      if(!ruleset) {
+        ctx->set_error(ctx, 400, "grid  \"%s\" in tileset \"%s\" references ruleset \"%s\","
+                     " but it is not configured", cur_node->txt, name, ruleset_name);
+        return;
+      }
+    }
 
     restrictedExtent = (char*)ezxml_attr(cur_node,"restricted_extent");
     if(restrictedExtent) {
@@ -684,9 +914,62 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
         return;
       }
     }
-
+    sTolerance = (char*)ezxml_attr(cur_node,"use_wms_intermediate_resolutions");
+    if(sTolerance && !strcmp(sTolerance,"true")) {
+      mapcache_grid_link *intermediate_gridlink = apr_pcalloc(ctx->pool,sizeof(mapcache_grid_link));
+      APR_ARRAY_PUSH(gridlink->intermediate_grids,mapcache_grid_link*) = intermediate_gridlink;
+    }
 
     mapcache_grid_compute_limits(grid,extent,gridlink->grid_limits,tolerance);
+
+    // setup zoom level rules if configured
+    if(ruleset) {
+      mapcache_buffer *last_hidden_tile = NULL;
+      unsigned int last_hidden_color;
+
+      // prepare one rule per zoom level. if rule is missing it will be NULL
+      for(i = 0; i < grid->nlevels; i++) {
+        mapcache_rule *rule = mapcache_ruleset_rule_find(ruleset->rules, i);
+
+        if(rule) {
+          mapcache_rule *rule_clone = mapcache_ruleset_rule_clone(ctx->pool, rule);
+
+          if(rule->visible_extents) {
+            int j;
+
+            // create blank tile in configured format to return when outside visible extent
+            // try to reuse last tile if possible
+            if(last_hidden_tile == NULL || last_hidden_color != rule->hidden_color) {
+              if(tileset->format) {
+                last_hidden_tile = tileset->format->create_empty_image(ctx, tileset->format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              } else {
+                last_hidden_tile = config->default_image_format->create_empty_image(ctx, config->default_image_format, grid->tile_sx, grid->tile_sy, rule->hidden_color);
+              }
+
+              if(GC_HAS_ERROR(ctx)) {
+                return;
+              }
+
+              last_hidden_color = rule->hidden_color;
+            }
+
+            rule_clone->hidden_tile = last_hidden_tile;
+
+            // compute limits for extents
+            for(j = 0; j < rule->visible_extents->nelts; j++) {
+              mapcache_extent *visible_extent = APR_ARRAY_IDX(rule->visible_extents, j, mapcache_extent*);
+              mapcache_extent_i *visible_limit = apr_pcalloc(ctx->pool, sizeof(mapcache_extent_i));
+              mapcache_grid_compute_limits_at_level(grid,visible_extent,visible_limit,tolerance,i);
+              APR_ARRAY_PUSH(rule_clone->visible_limits, mapcache_extent_i*) = visible_limit;
+            }
+          }
+          APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = rule_clone;
+        } else {
+          // no rule for zoom level
+          APR_ARRAY_PUSH(gridlink->rules, mapcache_rule*) = NULL;
+        }
+      }
+    }
 
     sTolerance = (char*)ezxml_attr(cur_node,"minzoom");
     if(sTolerance) {
@@ -752,11 +1035,43 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
       }
     }
 
-
-
     /* compute wgs84 bbox if it wasn't supplied already */
     if(!havewgs84bbox && !strcasecmp(grid->srs,"EPSG:4326")) {
       tileset->wgs84bbox = *extent;
+    }
+
+    if(gridlink->intermediate_grids->nelts > 0) {
+      double factor = 0.5, unitheight,unitwidth;
+      int i;
+      mapcache_grid_link *igl = APR_ARRAY_IDX(gridlink->intermediate_grids, 0, mapcache_grid_link*);
+      igl->restricted_extent = gridlink->restricted_extent;
+      igl->minz = gridlink->minz;
+      igl->max_cached_zoom = gridlink->max_cached_zoom - 1;
+      igl->maxz = gridlink->maxz - 1;
+      igl->outofzoom_strategy = gridlink->outofzoom_strategy;
+      igl->grid = mapcache_grid_create(ctx->pool);
+      igl->grid->extent = gridlink->grid->extent;
+      igl->grid->name = apr_psprintf(ctx->pool,"%s_intermediate_%g",gridlink->grid->name,factor);
+      igl->grid->nlevels = gridlink->grid->nlevels - 1;
+      igl->grid->origin = gridlink->grid->origin;
+      igl->grid->srs = gridlink->grid->srs;
+      igl->grid->srs_aliases = gridlink->grid->srs_aliases;
+      igl->grid->unit = gridlink->grid->unit;
+      igl->grid->tile_sx = gridlink->grid->tile_sx + gridlink->grid->tile_sx * factor;
+      igl->grid->tile_sy = gridlink->grid->tile_sy + gridlink->grid->tile_sy * factor;
+      igl->grid->levels = (mapcache_grid_level**)apr_pcalloc(ctx->pool, igl->grid->nlevels*sizeof(mapcache_grid_level*));
+      for(i=0; i<igl->grid->nlevels; i++) {
+        mapcache_grid_level *level = (mapcache_grid_level*)apr_pcalloc(ctx->pool,sizeof(mapcache_grid_level));
+        level->resolution = gridlink->grid->levels[i]->resolution + (gridlink->grid->levels[i+1]->resolution - gridlink->grid->levels[i]->resolution) * factor;
+        unitheight = igl->grid->tile_sy * level->resolution;
+        unitwidth = igl->grid->tile_sx * level->resolution;
+        
+        level->maxy = ceil((igl->grid->extent.maxy-igl->grid->extent.miny - 0.01* unitheight)/unitheight);
+        level->maxx = ceil((igl->grid->extent.maxx-igl->grid->extent.minx - 0.01* unitwidth)/unitwidth);
+        igl->grid->levels[i] = level;
+      }
+      igl->grid_limits = (mapcache_extent_i*)apr_pcalloc(ctx->pool,igl->grid->nlevels*sizeof(mapcache_extent_i));
+      mapcache_grid_compute_limits(igl->grid,extent,igl->grid_limits,tolerance);
     }
     APR_ARRAY_PUSH(tileset->grid_links,mapcache_grid_link*) = gridlink;
   }
@@ -766,12 +1081,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     GC_CHECK_ERROR(ctx);
   }
   
-  if ((cur_node = ezxml_child(node,"timedimension")) != NULL) {
-    parseTimeDimension(ctx, cur_node, tileset);
-    GC_CHECK_ERROR(ctx);
-  }
-
-
   if ((cur_node = ezxml_child(node,"cache")) != NULL) {
     mapcache_cache *cache = mapcache_configuration_get_cache(config, cur_node->txt);
     if(!cache) {
@@ -779,7 +1088,7 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      " but it is not configured", name, cur_node->txt);
       return;
     }
-    tileset->cache = cache;
+    tileset->_cache = cache;
   }
 
   if ((cur_node = ezxml_child(node,"source")) != NULL) {
@@ -808,7 +1117,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     tileset->metasize_x = values[0];
     tileset->metasize_y = values[1];
   }
-
 
   if ((cur_node = ezxml_child(node,"watermark")) != NULL) {
     if(!*cur_node->txt) {
@@ -853,16 +1161,6 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
                      cur_node->txt);
       return;
     }
-  }
-
-  if ((cur_node = ezxml_child(node,"format")) != NULL) {
-    mapcache_image_format *format = mapcache_configuration_get_image_format(config,cur_node->txt);
-    if(!format) {
-      ctx->set_error(ctx, 400, "tileset \"%s\" references format \"%s\","
-                     " but it is not configured",name,cur_node->txt);
-      return;
-    }
-    tileset->format = format;
   }
 
   mapcache_tileset_configuration_check(ctx,tileset);
@@ -927,6 +1225,7 @@ void parseServices(mapcache_context *ctx, ezxml_t root, mapcache_cfg *config)
 }
 
 
+
 void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filename, mapcache_cfg *config)
 {
   ezxml_t doc, node;
@@ -985,6 +1284,11 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
 
   for(node = ezxml_child(doc,"cache"); node; node = node->next) {
     parseCache(ctx, node, config);
+    if(GC_HAS_ERROR(ctx)) goto cleanup;
+  }
+
+  for(node = ezxml_child(doc,"ruleset"); node; node = node->next) {
+    parseRuleset(ctx, node, config);
     if(GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
@@ -1056,8 +1360,6 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
   } else if ((node = ezxml_child(doc,"services")) != NULL) {
     ctx->log(ctx,MAPCACHE_WARN,"<services> tag is deprecated, use <service type=\"wms\" enabled=\"true|false\">");
     parseServices(ctx, node, config);
-  } else {
-    ctx->set_error(ctx, 400, "no <services> configured");
   }
   if(GC_HAS_ERROR(ctx)) goto cleanup;
 
@@ -1095,20 +1397,12 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     }
   }
 
-  if((node = ezxml_child(doc,"lock_dir")) != NULL) {
-    config->lockdir = apr_pstrdup(ctx->pool, node->txt);
+  if((node = ezxml_child(doc,"locker")) != NULL) {
+    mapcache_config_parse_locker(ctx,node,&config->locker);
+    GC_CHECK_ERROR(ctx);
   } else {
-    config->lockdir = apr_pstrdup(ctx->pool,"/tmp");
-  }
-
-  if((node = ezxml_child(doc,"lock_retry")) != NULL) {
-    char *endptr;
-    config->lock_retry_interval = (unsigned int)strtol(node->txt,&endptr,10);
-    if(*endptr != 0 || config->lock_retry_interval < 0) {
-      ctx->set_error(ctx, 400, "failed to parse lock_retry microseconds \"%s\". Expecting a positive integer",
-                     node->txt);
-      return;
-    }
+    mapcache_config_parse_locker_old(ctx,doc,config);
+    GC_CHECK_ERROR(ctx);
   }
 
   if((node = ezxml_child(doc,"threaded_fetching")) != NULL) {
@@ -1153,6 +1447,28 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
     }
   }
 
+  config->cp_hmax = 1024;
+  config->cp_ttl = 60*1000*1000;
+  if((node = ezxml_child(doc,"connection_pool")) != NULL) {
+    ezxml_t cp_param_node;
+    char *endptr;
+    if ((cp_param_node = ezxml_child(node,"max_connections")) != NULL) {
+      config->cp_hmax = (int)strtol(cp_param_node->txt,&endptr,10);
+      if (*endptr != 0 || config->cp_hmax < 0) {
+        ctx->set_error(ctx, 400, "failed to parse max_connections %s "
+            "(expecting a positive integer)", cp_param_node->txt);
+        return;
+      }
+    }
+    if ((cp_param_node = ezxml_child(node,"time_to_live_us")) != NULL) {
+      config->cp_ttl = (int)strtol(cp_param_node->txt,&endptr,10);
+      if (*endptr != 0 || config->cp_ttl < 0) {
+        ctx->set_error(ctx, 400, "failed to parse time_to_live_us %s "
+            "(expecting a positive integer)", cp_param_node->txt);
+        return;
+      }
+    }
+  }
 
 cleanup:
   ezxml_free(doc);

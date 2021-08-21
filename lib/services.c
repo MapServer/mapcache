@@ -70,6 +70,15 @@ void mapcache_service_dispatch_request(mapcache_context *ctx, mapcache_request *
   ctx->set_error(ctx,404,"unknown service %s",pathinfo);
 }
 
+int mapcache_config_services_enabled(mapcache_context *ctx, mapcache_cfg *config) {
+  int count=0,i;
+  for(i=0; i<MAPCACHE_SERVICES_COUNT; i++) {
+    if(config->services[i])
+      count++;
+  }
+  return count;
+}
+
 /** @} */
 
 

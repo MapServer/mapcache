@@ -40,7 +40,6 @@
 #include <time.h>
 #include "util.h"
 
-
 static const char *abb_weekdays[] = {
   "Sun",
   "Mon",

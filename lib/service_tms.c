@@ -30,7 +30,8 @@
 #include "mapcache.h"
 #include <apr_strings.h>
 #include <math.h>
-#include <ezxml.h>
+#include "mapcache_services.h"
+
 /** \addtogroup services */
 /** @{ */
 
@@ -174,6 +175,133 @@ void _create_capabilities_tms(mapcache_context *ctx, mapcache_request_get_capabi
 
 }
 
+struct requested_tms_layer{
+  mapcache_tileset *tileset;
+  mapcache_grid_link *grid_link;
+  apr_array_header_t *dimensions;
+};
+
+/**
+ * @brief parse a TMS key representing a layer
+ * @param ctx
+ * @param key the string representing the requested layer. can be of the form
+ *        layer
+ *        layer@gridname
+ *        layer[dim1=value1]
+ *        layer[dim1=val1][dim2=val2]
+ *        layer[dim=val]@gridname
+ * @return 
+ */
+static struct requested_tms_layer* _mapcache_service_tms_parse_layer_key(mapcache_context *ctx, char *key) {
+  char *grid_name = NULL;
+  struct requested_tms_layer *rtl = apr_pcalloc(ctx->pool, sizeof(struct requested_tms_layer));
+  char *at_ptr = strchr(key,'@');
+  char *dim_ptr = strchr(key,'[');
+  if(!at_ptr && !dim_ptr) {
+    rtl->tileset = mapcache_configuration_get_tileset(ctx->config,key);
+    if(!rtl->tileset) {
+      ctx->set_error(ctx,400,"received TMS with invalid layer name");
+      return NULL;
+    }
+    return rtl;
+  } else {
+    key = apr_pstrdup(ctx->pool,key);
+    if(at_ptr) {
+      at_ptr = strchr(key,'@');
+      *at_ptr = 0;
+    }
+    if(dim_ptr) {
+      dim_ptr = strchr(key,'[');
+      *dim_ptr = 0;
+    }
+    rtl->tileset = mapcache_configuration_get_tileset(ctx->config,key);
+    if(!rtl->tileset) {
+      ctx->set_error(ctx,400,"received TMS with invalid layer name");
+      return NULL;
+    }
+    /*reapply opening bracket*/
+    if(dim_ptr) {
+      *dim_ptr = '[';
+    }
+  }
+  
+  /* if here, we have a valid rtl->tileset defined */
+  
+  /* if we have a specific grid requested */
+  if(at_ptr) {
+    int i;
+    grid_name = at_ptr + 1;
+    if(!*grid_name) {
+      ctx->set_error(ctx,400,"received invalid tms layer name. expecting layer_name@grid_name");
+      return NULL;
+    }
+    for(i=0; i<rtl->tileset->grid_links->nelts; i++) {
+      mapcache_grid_link *sgrid = APR_ARRAY_IDX(rtl->tileset->grid_links,i,mapcache_grid_link*);
+      if(!strcmp(sgrid->grid->name,grid_name)) {
+        rtl->grid_link = sgrid;
+        break;
+      }
+    }
+    if(!rtl->grid_link) {
+      ctx->set_error(ctx,400,"received invalid tms layer. grid not configured for requested layer");
+      return NULL;
+    }
+  }
+  
+  /*if we have dimensions requested*/
+  if(dim_ptr) {
+    int i;
+    if(!rtl->tileset->dimensions || rtl->tileset->dimensions->nelts < 1) {
+      ctx->set_error(ctx,400,"received invalid tms layer. no dimensions configured for tileset");
+      return NULL;
+    }
+    for(i=0;i<rtl->tileset->dimensions->nelts;i++) {
+      mapcache_dimension *dimension = APR_ARRAY_IDX(rtl->tileset->dimensions,i,mapcache_dimension*);
+      char *individual_dim_ptr;
+      char *dim_lookup = apr_pstrcat(ctx->pool,"[",dimension->name,"=",NULL);
+      individual_dim_ptr = strstr(dim_ptr,dim_lookup);
+      if(individual_dim_ptr) {
+        mapcache_requested_dimension rdim;
+        char *dim_value;
+        char *dim_value_end;
+        if(!rtl->dimensions) {
+          rtl->dimensions = apr_array_make(ctx->pool,1,sizeof(mapcache_requested_dimension));
+        }
+        dim_value = individual_dim_ptr + strlen(dim_lookup);
+        if(!*dim_value || *dim_value == ']') {
+          ctx->set_error(ctx,400,"received invalid tms layer. failed (1) to parse dimension value");
+          return NULL;
+        }
+        dim_value_end = strchr(dim_value,']');
+        if(!dim_value_end) {
+          ctx->set_error(ctx,400,"received invalid tms layer. failed (2) to parse dimension value");
+          return NULL;
+        }
+        *dim_value_end = 0;
+        rdim.dimension = dimension;
+        rdim.requested_value = apr_pstrdup(ctx->pool,dim_value);
+        *dim_value_end = ']';
+        APR_ARRAY_PUSH(rtl->dimensions,mapcache_requested_dimension) = rdim;
+      }
+    }
+    /* sanity check: make sure we have as many requested dimensions as '[' characters in key */
+    {
+      int i, count;
+      if(!rtl->dimensions) {
+        ctx->set_error(ctx,400,"received invalid tms layer. failed (3) to parse dimension values");
+        return NULL;
+      }
+      for (i=0, count=0; dim_ptr[i]; i++)
+        count += (dim_ptr[i] == '[');
+      if(count != rtl->dimensions->nelts) {
+        ctx->set_error(ctx,400,"received invalid tms layer. failed (4) to parse dimension values");
+        return NULL;
+      }
+    }
+  }
+  return rtl;
+}
+
 /**
  * \brief parse a TMS request
  * \private \memberof mapcache_service_tms
@@ -185,8 +313,6 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
   int index = 0;
   char *last, *key, *endptr;
   char *sTileset = NULL;
-  mapcache_tileset *tileset = NULL;
-  mapcache_grid_link *grid_link = NULL;
   char *pathinfo = NULL;
   int x=-1,y=-1,z=-1;
 
@@ -238,93 +364,73 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
     }
   }
   if(index == 5) {
-    char *gridname;
+    char *iter,*gridname=NULL;
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(ctx->pool,sizeof(mapcache_request_get_tile));
-    req->request.type = MAPCACHE_REQUEST_GET_TILE;
-    gridname = sTileset;  /*hijack the char* pointer while counting the number of commas */
-    while(*gridname) {
-      if(*gridname == ';') req->ntiles++;
-      gridname++;
+    ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
+    iter = sTileset;
+    while(*iter) {
+      if(*iter == ';') req->ntiles++;
+      iter++;
     }
     req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,(req->ntiles+1) * sizeof(mapcache_tile*));
 
-    /* reset the hijacked variables back to default value */
-    gridname = NULL;
     req->ntiles = 0;
 
     for (key = apr_strtok(sTileset, ";", &last); key != NULL;
          key = apr_strtok(NULL, ";", &last)) {
-      tileset = mapcache_configuration_get_tileset(config,key);
-      if(!tileset) {
-        /*tileset not found directly, test if it was given as "name@grid" notation*/
-        char *tname = apr_pstrdup(ctx->pool,key);
-        char *gname = tname;
-        int i;
-        while(*gname) {
-          if(*gname == '@') {
-            *gname = '\0';
-            gname++;
-            break;
-          }
-          gname++;
-        }
-        if(!gname) {
-          ctx->set_error(ctx,404, "received tms request with invalid layer %s", key);
-          return;
-        }
-        tileset = mapcache_configuration_get_tileset(config,tname);
-        if(!tileset) {
-          ctx->set_error(ctx,404, "received tms request with invalid layer %s", tname);
-          return;
-        }
-        for(i=0; i<tileset->grid_links->nelts; i++) {
-          mapcache_grid_link *sgrid = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
-          if(!strcmp(sgrid->grid->name,gname)) {
-            grid_link = sgrid;
-            break;
-          }
-        }
-        if(!grid_link) {
-          ctx->set_error(ctx,404, "received tms request with invalid grid %s", gname);
-          return;
-        }
-
-      } else {
-        grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
+      struct requested_tms_layer *rtl = _mapcache_service_tms_parse_layer_key(ctx,key);
+      GC_CHECK_ERROR(ctx);
+      if(!rtl->grid_link) {
+        rtl->grid_link = APR_ARRAY_IDX(rtl->tileset->grid_links,0,mapcache_grid_link*);
       }
+      
+      /*make sure all our requested layers have the same grid*/
       if(!gridname) {
-        gridname = grid_link->grid->name;
+        gridname = rtl->grid_link->grid->name;
       } else {
-        if(strcmp(gridname,grid_link->grid->name)) {
+        if(strcmp(gridname,rtl->grid_link->grid->name)) {
           ctx->set_error(ctx,400,"received tms request with conflicting grids %s and %s",
-                         gridname,grid_link->grid->name);
+                         gridname,rtl->grid_link->grid->name);
           return;
         }
       }
       if(((mapcache_service_tms*)this)->reverse_y) {
-        y = grid_link->grid->levels[z]->maxy - y - 1;
+        y = rtl->grid_link->grid->levels[z]->maxy - y - 1;
       }
-      req->tiles[req->ntiles] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-      switch(grid_link->grid->origin) {
+      req->tiles[req->ntiles] = mapcache_tileset_tile_create(ctx->pool, rtl->tileset, rtl->grid_link);
+      switch(rtl->grid_link->grid->origin) {
         case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
           req->tiles[req->ntiles]->x = x;
           req->tiles[req->ntiles]->y = y;
           break;
         case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
           req->tiles[req->ntiles]->x = x;
-          req->tiles[req->ntiles]->y = grid_link->grid->levels[z]->maxy - y - 1;
+          req->tiles[req->ntiles]->y = rtl->grid_link->grid->levels[z]->maxy - y - 1;
           break;
         case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-          req->tiles[req->ntiles]->x = grid_link->grid->levels[z]->maxx - x - 1;
+          req->tiles[req->ntiles]->x = rtl->grid_link->grid->levels[z]->maxx - x - 1;
           req->tiles[req->ntiles]->y = y;
           break;
         case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-          req->tiles[req->ntiles]->x = grid_link->grid->levels[z]->maxx - x - 1;
-          req->tiles[req->ntiles]->y = grid_link->grid->levels[z]->maxy - y - 1;
+          req->tiles[req->ntiles]->x = rtl->grid_link->grid->levels[z]->maxx - x - 1;
+          req->tiles[req->ntiles]->y = rtl->grid_link->grid->levels[z]->maxy - y - 1;
           break;
       }
       req->tiles[req->ntiles]->z = z;
       mapcache_tileset_tile_validate(ctx,req->tiles[req->ntiles]);
+      if(rtl->dimensions) {
+        int i;
+        for(i=0;i<rtl->dimensions->nelts;i++) {
+          mapcache_requested_dimension rdim = APR_ARRAY_IDX(rtl->dimensions,i,mapcache_requested_dimension);
+          int j;
+          for(j=0;j<req->tiles[req->ntiles]->dimensions->nelts;j++) {
+            mapcache_requested_dimension *tile_dim = APR_ARRAY_IDX(req->tiles[req->ntiles]->dimensions,j,mapcache_requested_dimension*);
+            if(!strcasecmp(tile_dim->dimension->name,rdim.dimension->name)) {
+              tile_dim->requested_value = rdim.requested_value;
+            }
+          }
+        }
+      }
       req->ntiles++;
       GC_CHECK_ERROR(ctx);
     }
@@ -335,45 +441,19 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
           ctx->pool,sizeof(mapcache_request_get_capabilities_tms));
     req->request.request.type = MAPCACHE_REQUEST_GET_CAPABILITIES;
     if(index == 2) {
-      tileset = mapcache_configuration_get_tileset(config,sTileset);
-      if(!tileset) {
-        /*tileset not found directly, test if it was given as "name@grid" notation*/
-        char *tname = apr_pstrdup(ctx->pool,sTileset);
-        char *gname = tname;
-        int i;
-        while(*gname) {
-          if(*gname == '@') {
-            *gname = '\0';
-            gname++;
-            break;
-          }
-          gname++;
-        }
-        if(!gname) {
-          ctx->set_error(ctx,404, "received tms request with invalid layer %s", key);
-          return;
-        }
-        tileset = mapcache_configuration_get_tileset(config,tname);
-        if(!tileset) {
-          ctx->set_error(ctx,404, "received tms request with invalid layer %s", tname);
-          return;
-        }
-        for(i=0; i<tileset->grid_links->nelts; i++) {
-          mapcache_grid_link *sgrid = APR_ARRAY_IDX(tileset->grid_links,i,mapcache_grid_link*);
-          if(!strcmp(sgrid->grid->name,gname)) {
-            grid_link = sgrid;
-            break;
-          }
-        }
-        if(!grid_link) {
-          ctx->set_error(ctx,404, "received tms request with invalid grid %s", gname);
-          return;
-        }
-      } else {
-        grid_link = APR_ARRAY_IDX(tileset->grid_links,0,mapcache_grid_link*);
+      struct requested_tms_layer *rtl;
+      if(strchr(sTileset,';')) {
+         ctx->set_error(ctx,400,"tms caps: invalid tileset name");
+         return;
       }
-      req->tileset = tileset;
-      req->grid_link = grid_link;
+
+      rtl = _mapcache_service_tms_parse_layer_key(ctx,sTileset);
+      GC_CHECK_ERROR(ctx);
+      if(!rtl->grid_link) {
+        rtl->grid_link = APR_ARRAY_IDX(rtl->tileset->grid_links,0,mapcache_grid_link*);
+      }
+      req->tileset = rtl->tileset;
+      req->grid_link = rtl->grid_link;
     }
     if(index >= 1) {
       req->version = apr_pstrdup(ctx->pool,"1.0.0");

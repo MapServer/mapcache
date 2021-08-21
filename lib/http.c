@@ -73,12 +73,39 @@ size_t _mapcache_curl_header_callback( void *ptr, size_t size, size_t nmemb,  vo
   return size*nmemb;
 }
 
+/*update val replacing {foo_header} with the Value of foo_header from the orginal request */
+static void _header_replace_str(mapcache_context *ctx, apr_table_t *headers, char **val) {
+  char *value = *val;
+  char *start_tag, *end_tag;
+  size_t start_tag_offset;
+  start_tag = strchr(value,'{');
+  while(start_tag) {
+    start_tag_offset = start_tag - value; /*record where we found the '{' so we can look for the next one after that spot
+                                            (avoids infinite loop if tag was not found/replaced) */
+    *start_tag=0;
+    end_tag = strchr(start_tag+1,'}');
+    if(end_tag) {
+      const char *header_value;
+      *end_tag=0;
+      header_value = apr_table_get(headers,start_tag+1);
+      if(header_value) {
+        value = apr_pstrcat(ctx->pool,value,header_value,end_tag+1,NULL);
+      }
+      *end_tag='}';
+    }
+    *start_tag='{';
+    start_tag = strchr(value+start_tag_offset+1,'{');
+  }
+  *val = value;
+}
+
 void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcache_buffer *data, apr_table_t *headers, long *http_code)
 {
   CURL *curl_handle;
   char error_msg[CURL_ERROR_SIZE];
   int ret;
   struct curl_slist *curl_headers=NULL;
+  struct _header_struct h;
   curl_handle = curl_easy_init();
 
 
@@ -95,7 +122,6 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
 
   if(headers != NULL) {
     /* intercept headers */
-    struct _header_struct h;
     h.headers = headers;
     h.ctx=ctx;
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, _mapcache_curl_header_callback);
@@ -115,24 +141,35 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
     apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
     int i;
     for (i = 0; i < array->nelts; i++) {
-      curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",elts[i].val,NULL));
+      char *val = elts[i].val;
+      if(val && strchr(val,'{') && ctx->headers_in) {
+        _header_replace_str(ctx,ctx->headers_in,&val);
+      }
+      curl_headers = curl_slist_append(curl_headers, apr_pstrcat(ctx->pool,elts[i].key,": ",val,NULL));
     }
   }
   if(!req->headers || !apr_table_get(req->headers,"User-Agent")) {
     curl_headers = curl_slist_append(curl_headers, "User-Agent: "MAPCACHE_USERAGENT);
   }
   curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, curl_headers);
+
+  if(req->post_body && req->post_len>0) {
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, req->post_body);
+  }
+
+  if(!http_code)
+    curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
+
   /* get it! */
   ret = curl_easy_perform(curl_handle);
   if(http_code)
     curl_easy_getinfo (curl_handle, CURLINFO_RESPONSE_CODE, http_code);
-  else
-    curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
 
   if(ret != CURLE_OK) {
     ctx->set_error(ctx, 502, "curl failed to request url %s : %s", req->url, error_msg);
   }
   /* cleanup curl stuff */
+  curl_slist_free_all(curl_headers);
   curl_easy_cleanup(curl_handle);
 }
 
@@ -144,16 +181,31 @@ void mapcache_http_do_request_with_params(mapcache_context *ctx, mapcache_http *
   mapcache_http_do_request(ctx,request,data,headers, http_code);
 }
 
-/* calculate the length of the string formed by key=value&, and add it to cnt */
-#ifdef _WIN32
-static int _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#else
-static APR_DECLARE_NONSTD(int) _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#endif
-  *((int*)cnt) += strlen(key) + 2 + ((value && *value) ? strlen(value) : 0);
-  return 1;
+typedef struct header_cb_struct{
+  apr_pool_t *pool;
+  char *str;
+} header_cb_struct;
+
+/* Converts an integer value to its hex character*/
+char to_hex(char code) {
+  static char hex[] = "0123456789abcdef";
+  return hex[code & 15];
+}
+
+/* Returns a url-encoded version of str */
+char *url_encode(apr_pool_t *p, const char *str) {
+  char *buf = apr_pcalloc(p, strlen(str) * 3 + 1), *pbuf = buf;
+  while (*str) {
+    if (isalnum(*str) || *str == '-' || *str == '_' || *str == '.' || *str == '~')
+      *pbuf++ = *str;
+    else if (*str == ' ')
+      *pbuf++ = '+';
+    else
+      *pbuf++ = '%', *pbuf++ = to_hex(*str >> 4), *pbuf++ = to_hex(*str & 15);
+    str++;
+  }
+  *pbuf = '\0';
+  return buf;
 }
 
 #ifdef _WIN32
@@ -163,13 +215,15 @@ static int _mapcache_key_value_append_callback(void *cnt, const char *key, const
 static APR_DECLARE_NONSTD(int) _mapcache_key_value_append_callback(void *cnt, const char *key, const char *value)
 {
 #endif
-#define _mystr *((char**)cnt)
-  _mystr = apr_cpystrn(_mystr,key,MAX_STRING_LEN);
-  *((_mystr)++) = '=';
+#define _mystr (((header_cb_struct*)cnt)->str)
+  header_cb_struct *hcs = (header_cb_struct*)cnt;
+  hcs->str = apr_pstrcat(hcs->pool, hcs->str, key, "=", NULL);
   if(value && *value) {
-    _mystr = apr_cpystrn(_mystr,value,MAX_STRING_LEN);
+    hcs->str = apr_pstrcat(hcs->pool, hcs->str, url_encode(hcs->pool, value), "&", NULL);
   }
-  *((_mystr)++) = '&';
+  else {
+    hcs->str = apr_pstrcat(hcs->pool, hcs->str, "&", NULL);
+  }
   return 1;
 #undef _mystr
 }
@@ -230,38 +284,29 @@ int _mapcache_unescape_url(char *url)
 
 
 
-char* mapcache_http_build_url(mapcache_context *r, char *base, apr_table_t *params)
+char* mapcache_http_build_url(mapcache_context *ctx, char *base, apr_table_t *params)
 {
   if(!apr_is_empty_table(params)) {
-    int stringLength = 0, baseLength;
-    char *builtUrl,*builtUrlPtr;
-    char charToAppend=0;
+    int baseLength;
+    header_cb_struct hcs;
     baseLength = strlen(base);
-
-    /*calculate the length of the param string we are going to build */
-    apr_table_do(_mapcache_key_value_strlen_callback, (void*)&stringLength, params, NULL);
+    hcs.pool = ctx->pool;
+    hcs.str = base;
 
     if(strchr(base,'?')) {
       /* base already contains a '?' , shall we be adding a '&' to the end */
       if(base[baseLength-1] != '?' && base[baseLength-1] != '&') {
-        charToAppend = '&';
+        hcs.str = apr_pstrcat(ctx->pool, hcs.str, "&", NULL);
       }
     } else {
       /* base does not contain a '?', we will be adding it */
-      charToAppend='?';
+      hcs.str = apr_pstrcat(ctx->pool, hcs.str, "?", NULL);
     }
 
-    /* add final \0 and eventual separator to add ('?' or '&') */
-    stringLength += baseLength + ((charToAppend)?2:1);
-
-    builtUrl = builtUrlPtr = apr_palloc(r->pool, stringLength);
-
-    builtUrlPtr = apr_cpystrn(builtUrlPtr,base,MAX_STRING_LEN);
-    if(charToAppend)
-      *(builtUrlPtr++)=charToAppend;
-    apr_table_do(_mapcache_key_value_append_callback, (void*)&builtUrlPtr, params, NULL);
-    *(builtUrlPtr-1) = '\0'; /*replace final '&' by a \0 */
-    return builtUrl;
+    apr_table_do(_mapcache_key_value_append_callback, (void*)&hcs, params, NULL);
+    baseLength = strlen(hcs.str);
+    hcs.str[baseLength-1] = '\0';
+    return hcs.str;
   } else {
     return base;
   }
@@ -344,7 +389,7 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
   } else {
     req->connection_timeout = 30;
   }
-  
+
   if ((http_node = ezxml_child(node,"timeout")) != NULL) {
     char *endptr;
     req->timeout = (int)strtol(http_node->txt,&endptr,10);

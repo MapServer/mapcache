@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE WMT_MS_Capabilities SYSTEM "http://schemas.opengis.net/wms/1.1.0/capabilities_1_1_0.dtd" [
+<!ELEMENT VendorSpecificCapabilities EMPTY>
+]>
+<WMT_MS_Capabilities version="1.1.1">
+  <Service>
+    <Name>OGC:WMS</Name>
+    <Title>no title set, add some in metadata</Title>
+    <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://localhost/mapcache/?"/>
+  </Service>
+  <Capability>
+    <Request>
+      <GetCapabilities>
+        <Format>application/vnd.ogc.wms_xml</Format>
+        <DCPType>
+          <HTTP>
+            <Get>
+              <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://localhost/mapcache/?"/>
+            </Get>
+          </HTTP>
+        </DCPType>
+      </GetCapabilities>
+      <GetMap>
+        <Format>image/png</Format>
+        <Format>image/jpeg</Format>
+        <DCPType>
+          <HTTP>
+            <Get>
+              <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://localhost/mapcache/?"/>
+            </Get>
+          </HTTP>
+        </DCPType>
+      </GetMap>
+      <GetFeatureInfo>
+        <Format>text/plain</Format>
+        <Format>application/vnd.ogc.gml</Format>
+        <DCPType>
+          <HTTP>
+            <Get>
+              <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://localhost/mapcache/?"/>
+            </Get>
+          </HTTP>
+        </DCPType>
+      </GetFeatureInfo>
+    </Request>
+    <Exception>
+      <Format>text/plain</Format>
+    </Exception>
+    <VendorSpecificCapabilities>
+      <TileSet>
+        <SRS>EPSG:3857</SRS>
+        <BoundingBox SRS="EPSG:3857" minx="-20037508.342789" miny="-20037508.342789" maxx="20037508.342789" maxy="20037508.342789"/>
+        <Resolutions>156543.03392804099712520838 78271.51696402048401068896 39135.75848201022745342925 19567.87924100512100267224 9783.93962050256050133612 4891.96981025128025066806 2445.98490512564012533403 1222.99245256282006266702 611.49622628141003133351 305.74811314070478829308 152.87405657035250783338 76.43702828517623970583 38.21851414258812695834 19.10925707129405992646 9.55462853564703173959 4.77731426782351586979 2.38865713391175793490 1.19432856695587897633 </Resolutions>
+        <Width>256</Width>
+        <Height>256</Height>
+        <Format>image/jpeg</Format>
+        <Layers>global</Layers>
+        <Styles/>
+      </TileSet>
+    </VendorSpecificCapabilities>
+    <Layer>
+      <Title>no title set, add some in metadata</Title>
+      <SRS>EPSG:3857</SRS>
+      <SRS>EPSG:900913</SRS>
+      <Layer cascaded="1" queryable="0">
+        <Name>global</Name>
+        <Title>global</Title>
+        <BoundingBox SRS="EPSG:3857" minx="-20037508.342789" miny="-20037508.342789" maxx="20037508.342789" maxy="20037508.342789"/>
+        <SRS>EPSG:3857</SRS>
+        <SRS>EPSG:900913</SRS>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMT_MS_Capabilities>

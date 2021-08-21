@@ -48,7 +48,7 @@ mapcache_grid* mapcache_grid_create(apr_pool_t *pool)
  * \brief compute the extent of a given tile in the grid given its x, y, and z.
  * \returns \extent the tile's extent
  */
-void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
+void mapcache_grid_get_tile_extent(mapcache_context *ctx, mapcache_grid *grid,
                               int x, int y, int z, mapcache_extent *bbox)
 {
   double res  = grid->levels[z]->resolution;
@@ -68,6 +68,65 @@ void mapcache_grid_get_extent(mapcache_context *ctx, mapcache_grid *grid,
     case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
     case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
       ctx->set_error(ctx,500,"grid origin not implemented");
+  }
+}
+
+void mapcache_grid_get_metatile_extent(mapcache_context *ctx, mapcache_tile *tile, mapcache_extent *extent) {
+  mapcache_grid *grid = tile->grid_link->grid;
+  double res = grid->levels[tile->z]->resolution;
+  double gbuffer,gwidth,gheight,fullgwidth,fullgheight;
+  mapcache_tileset *tileset = tile->tileset;
+  int mtx,mty,blx,bly,mtsx,mtsy;
+  mtx = tile->x / tileset->metasize_x;
+  if(tile->x < 0)
+    mtx --;
+  mty = tile->y / tileset->metasize_y;
+  if(tile->y < 0)
+    mty --;
+  blx = mtx * tileset->metasize_x;
+  bly = mty * tileset->metasize_y;
+
+  /* adjust the size of the the metatile so it does not extend past the grid limits.
+   * If we don't do this, we end up with cut labels on the edges of the tile grid
+   */
+  if(blx+tileset->metasize_x-1 >= grid->levels[tile->z]->maxx) {
+    mtsx = grid->levels[tile->z]->maxx - blx;
+  } else {
+    mtsx = tileset->metasize_x;
+  }
+  if(bly+tileset->metasize_y-1 >= grid->levels[tile->z]->maxy) {
+    mtsy = grid->levels[tile->z]->maxy - bly;
+  } else {
+    mtsy = tileset->metasize_y;
+  }
+
+  /* buffer in geographical units */
+  gbuffer = res * tileset->metabuffer;
+
+  /* adjusted metatile size in geographical units */
+  gwidth = res * mtsx * grid->tile_sx;
+  gheight = res * mtsy * grid->tile_sy;
+
+  /* configured metatile size in geographical units */
+  fullgwidth = res * tileset->metasize_x * grid->tile_sx;
+  fullgheight = res * tileset->metasize_y * grid->tile_sy;
+
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      extent->minx = grid->extent.minx + mtx * fullgwidth - gbuffer;
+      extent->miny = grid->extent.miny + mty * fullgheight - gbuffer;
+      extent->maxx = extent->minx + gwidth + 2 * gbuffer;
+      extent->maxy = extent->miny + gheight + 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      extent->minx = grid->extent.minx + mtx * fullgwidth - gbuffer;
+      extent->maxy = grid->extent.maxy - mty * fullgheight + gbuffer;
+      extent->maxx = extent->minx + gwidth + 2 * gbuffer;
+      extent->miny = extent->maxy - gheight - 2 * gbuffer;
+      break;
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+      ctx->set_error(ctx,500,"origin not implemented");
   }
 }
 
@@ -91,40 +150,44 @@ const char* mapcache_grid_get_srs(mapcache_context *ctx, mapcache_grid *grid)
   return (const char*)grid->srs;
 }
 
+void mapcache_grid_compute_limits_at_level(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits_ptr, int tolerance, int zoom_level)
+{
+  double epsilon = 0.0000001;
+  mapcache_grid_level *level = grid->levels[zoom_level];
+  double unitheight = grid->tile_sy * level->resolution;
+  double unitwidth = grid->tile_sx * level->resolution;
+
+  switch(grid->origin) {
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
+      limits_ptr->minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+      limits_ptr->maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+      limits_ptr->miny = floor((extent->miny - grid->extent.miny) / unitheight + epsilon) - tolerance;
+      limits_ptr->maxy = ceil((extent->maxy - grid->extent.miny) / unitheight - epsilon) + tolerance;
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
+      limits_ptr->minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
+      limits_ptr->maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
+      limits_ptr->miny = floor((grid->extent.maxy - extent->maxy) / unitheight + epsilon) - tolerance;
+      //limits_ptr->maxy = level->maxy - floor((extent->miny - grid->extent.miny) / unitheight + epsilon) + tolerance;
+      limits_ptr->maxy = ceil((grid->extent.maxy - extent->miny) / unitheight - epsilon) + tolerance;
+      //printf("%d: %d %d %d %d\n",i,limits_ptr->minx,limits_ptr->miny,limits_ptr->maxx,limits_ptr->maxy);
+      break;
+    case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+    case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
+      break; /* not implemented */
+  }
+  // to avoid requesting out-of-range tiles
+  if (limits_ptr->minx < 0) limits_ptr->minx = 0;
+  if (limits_ptr->maxx > level->maxx) limits_ptr->maxx = level->maxx;
+  if (limits_ptr->miny < 0) limits_ptr->miny = 0;
+  if (limits_ptr->maxy > level->maxy) limits_ptr->maxy = level->maxy;
+}
+
 void mapcache_grid_compute_limits(const mapcache_grid *grid, const mapcache_extent *extent, mapcache_extent_i *limits, int tolerance)
 {
   int i;
-  double epsilon = 0.0000001;
   for(i=0; i<grid->nlevels; i++) {
-    mapcache_grid_level *level = grid->levels[i];
-    double unitheight = grid->tile_sy * level->resolution;
-    double unitwidth = grid->tile_sx * level->resolution;
-
-    switch(grid->origin) {
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_LEFT:
-        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
-        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
-        limits[i].miny = floor((extent->miny - grid->extent.miny) / unitheight + epsilon) - tolerance;
-        limits[i].maxy = ceil((extent->maxy - grid->extent.miny) / unitheight - epsilon) + tolerance;
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_LEFT:
-        limits[i].minx = floor((extent->minx - grid->extent.minx) / unitwidth + epsilon) - tolerance;
-        limits[i].maxx = ceil((extent->maxx - grid->extent.minx) / unitwidth - epsilon) + tolerance;
-        limits[i].miny = floor((grid->extent.maxy - extent->maxy) / unitheight + epsilon) - tolerance;
-        //limits[i].maxy = level->maxy - floor((extent->miny - grid->extent.miny) / unitheight + epsilon) + tolerance;
-        limits[i].maxy = ceil((grid->extent.maxy - extent->miny) / unitheight - epsilon) + tolerance;
-        //printf("%d: %d %d %d %d\n",i,limits[i].minx,limits[i].miny,limits[i].maxx,limits[i].maxy);
-        break;
-      case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
-      case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
-        break; /* not implemented */
-    }
-    // to avoid requesting out-of-range tiles
-    if (limits[i].minx < 0) limits[i].minx = 0;
-    if (limits[i].maxx > level->maxx) limits[i].maxx = level->maxx;
-    if (limits[i].miny < 0) limits[i].miny = 0;
-    if (limits[i].maxy > level->maxy) limits[i].maxy = level->maxy;
-
+    mapcache_grid_compute_limits_at_level(grid, extent, &limits[i], tolerance, i);
   }
 }
 
@@ -160,10 +223,11 @@ int mapcache_grid_get_level(mapcache_context *ctx, mapcache_grid *grid, double *
   return MAPCACHE_FAILURE;
 }
 
-void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *grid_link, double resolution, int *level)
+mapcache_grid_link* mapcache_grid_get_closest_wms_level(mapcache_context *ctx, mapcache_grid_link *grid_link, double resolution, int *level)
 {
   double dst = fabs(grid_link->grid->levels[grid_link->minz]->resolution - resolution);
-  int i;
+  int i,g;
+  mapcache_grid_link *ret = grid_link;
   *level = 0;
 
   for(i=grid_link->minz + 1; i<grid_link->maxz; i++) {
@@ -173,6 +237,20 @@ void mapcache_grid_get_closest_level(mapcache_context *ctx, mapcache_grid_link *
       *level = i;
     }
   }
+  if(grid_link->intermediate_grids) {
+    for(g=0; g<grid_link->intermediate_grids->nelts; g++) {
+      mapcache_grid_link *igl = APR_ARRAY_IDX(grid_link->intermediate_grids, g, mapcache_grid_link*);
+      for(i=igl->minz; i<igl->maxz; i++) {
+        double curdst = fabs(igl->grid->levels[i]->resolution - resolution);
+        if(curdst<dst) {
+          dst = curdst;
+          *level = i;
+          ret = igl;
+        }
+      }
+    }
+  }
+  return ret;
 }
 
 /*

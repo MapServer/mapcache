@@ -128,6 +128,11 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
   if(response->mtime) {
     char *datestr;
     char *if_modified_since = getenv("HTTP_IF_MODIFIED_SINCE");
+
+    datestr = apr_palloc(ctx->ctx.pool, APR_RFC822_DATE_LEN);
+    apr_rfc822_date(datestr, response->mtime);
+    printf("Last-Modified: %s\r\n", datestr);
+
     if(if_modified_since) {
       apr_time_t ims_time;
       apr_int64_t ims,mtime;
@@ -138,11 +143,14 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
       ims = apr_time_sec(ims_time);
       if(ims >= mtime) {
         printf("Status: 304 Not Modified\r\n");
+	/*
+	 * "The 304 response MUST NOT contain a message-body"
+	 * https://tools.ietf.org/html/rfc2616#section-10.3.5
+	 */
+	printf("\r\n");
+	return;
       }
     }
-    datestr = apr_palloc(ctx->ctx.pool, APR_RFC822_DATE_LEN);
-    apr_rfc822_date(datestr, response->mtime);
-    printf("Last-Modified: %s\r\n", datestr);
   }
   if(response->data) {
     printf("Content-Length: %ld\r\n\r\n", response->data->size);
@@ -192,12 +200,17 @@ static void load_config(mapcache_context *ctx, char *filename)
   if(GC_HAS_ERROR(ctx)) goto failed_load;
   mapcache_configuration_post_config(ctx, cfg);
   if(GC_HAS_ERROR(ctx)) goto failed_load;
+  if(mapcache_config_services_enabled(ctx,cfg) <= 0) {
+    ctx->set_error(ctx,500,"no mapcache <service>s configured/enabled, no point in continuing.");
+    goto failed_load;
+  }
 
   /* no error, destroy the previous pool if we are reloading the config */
   if(config_pool) {
     apr_pool_destroy(config_pool);
   }
   config_pool = tmp_config_pool;
+  mapcache_connection_pool_create(cfg, &ctx->connection_pool, config_pool);
 
   return;
 
@@ -273,8 +286,6 @@ int main(int argc, const char **argv)
       }
     }
     apr_pool_create(&(ctx->pool),config_pool);
-    ctx->process_pool = config_pool;
-    ctx->threadlock = NULL;
     request = NULL;
     pathInfo = getenv("PATH_INFO");
 

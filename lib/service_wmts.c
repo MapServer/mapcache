@@ -31,11 +31,10 @@
 #include <apr_strings.h>
 #include <math.h>
 #include <apr_tables.h>
-#include "ezxml.h"
+#include "mapcache_services.h"
 
 /** \addtogroup services */
 /** @{ */
-
 
 
 static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
@@ -63,7 +62,11 @@ static ezxml_t _wmts_capabilities(mapcache_context *ctx, mapcache_cfg *cfg)
 
 int _wmts_service_identification_keywords(void *in, const char *key, const char *value) {
    ezxml_t node = (ezxml_t )in;
-   ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+   if (!strcasecmp(key,"keyword")) {
+     ezxml_set_txt(ezxml_add_child(node,"ows:Keyword",0),value);
+   } else {
+     ezxml_set_txt(ezxml_add_child(node,key,0),value);
+   }
 
    return 1;
 }
@@ -85,10 +88,6 @@ static ezxml_t _wmts_service_identification(mapcache_context *ctx, mapcache_cfg 
   value = apr_table_get(cfg->metadata,"keyword");
   if(value) {
     ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
-    /*
-     * @todo: cfg->metadata holds only one item named keyword,
-     *    adjust configuration_xml.c
-     */
     apr_table_do(_wmts_service_identification_keywords, nodeKeywords, cfg->metadata, "keyword", NULL);
     ezxml_insert(nodeKeywords, node, 0);
   }
@@ -330,6 +329,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     ezxml_t layer;
     const char *title;
     const char *abstract;
+    const char *keywords;
     ezxml_t style;
     char *dimensionstemplate="";
     ezxml_t resourceurl;
@@ -337,15 +337,33 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
     apr_hash_this(layer_index,&key,&keylen,(void**)&tileset);
 
     layer = ezxml_add_child(contents,"Layer",0);
+
+    /* optional layer title */
     title = apr_table_get(tileset->metadata,"title");
     if(title) {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Title",0),title);
     } else {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Title",0),tileset->name);
+
+    /* optional layer abstract */
     }
     abstract = apr_table_get(tileset->metadata,"abstract");
     if(abstract) {
       ezxml_set_txt(ezxml_add_child(layer,"ows:Abstract",0),abstract);
+    }
+
+    // optional layer keywords
+    // `>` suffix in name indicates that a table is expected instead of a string
+    // (see `parseMetadata()` in `configuration_xml.c`)
+    keywords = apr_table_get(tileset->metadata,"keywords>");
+    if (keywords) {
+      apr_table_t * contents = (apr_table_t *)keywords;
+      keywords = apr_table_get(contents,"keyword");
+      if (keywords) {
+        ezxml_t nodeKeywords = ezxml_new("ows:Keywords");
+        apr_table_do(_wmts_service_identification_keywords, nodeKeywords, contents, "keyword", NULL);
+        ezxml_insert(nodeKeywords, layer, 0);
+      }
     }
 
     if(tileset->wgs84bbox.minx != tileset->wgs84bbox.maxx) {
@@ -372,8 +390,8 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
     if(tileset->dimensions) {
       for(i=0; i<tileset->dimensions->nelts; i++) {
-        const char **values;
-        const char **value;
+        apr_array_header_t *values;
+        int value_idx;
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
         ezxml_t dim = ezxml_add_child(layer,"Dimension",0);
         ezxml_set_txt(ezxml_add_child(dim,"ows:Identifier",0),dimension->name);
@@ -382,11 +400,10 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         if(dimension->unit) {
           ezxml_set_txt(ezxml_add_child(dim,"UOM",0),dimension->unit);
         }
-        values = dimension->print_ogc_formatted_values(ctx,dimension);
-        value = values;
-        while(*value) {
-          ezxml_set_txt(ezxml_add_child(dim,"Value",0),*value);
-          value++;
+        values = dimension->get_all_ogc_formatted_entries(ctx,dimension,tileset,NULL,NULL);
+        for(value_idx=0;value_idx<values->nelts;value_idx++) {
+          char *idval = APR_ARRAY_IDX(values,value_idx,char*);
+          ezxml_set_txt(ezxml_add_child(dim,"Value",0),idval);
         }
         dimensionstemplate = apr_pstrcat(ctx->pool,dimensionstemplate,"{",dimension->name,"}/",NULL);
       }
@@ -418,13 +435,13 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
           ezxml_set_txt(ezxml_add_child(matrixlimits,"TileMatrix",0),
                         apr_psprintf(ctx->pool,"%s:%d",grid_link->grid->name,j));
           ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].minx));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileRow",0),
-                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxx-1));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileCol",0),
                         apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].miny));
-          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileCol",0),
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileRow",0),
                         apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxy-1));
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MinTileCol",0),
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].minx));
+          ezxml_set_txt(ezxml_add_child(matrixlimits,"MaxTileCol",0),
+                        apr_psprintf(ctx->pool,"%d",grid_link->grid_limits[j].maxx-1));
         }
       }
 
@@ -452,7 +469,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
         ezxml_set_attr(resourceurl,"resourceType","FeatureInfo");
         ezxml_set_attr(resourceurl,"template",
                        apr_pstrcat(ctx->pool,onlineresource,"wmts/1.0.0/",tileset->name,"/default/",
-                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.",apr_psprintf(ctx->pool,"%d",i),NULL));
+                                   dimensionstemplate,"{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}/{J}/{I}.",apr_psprintf(ctx->pool,"%d",i),NULL));
       }
     }
 
@@ -498,10 +515,18 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
 
     bbox = ezxml_add_child(tmset,"ows:BoundingBox",0);
 
-    ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent.minx, grid->extent.miny));
-    ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
-                  grid->extent.maxx, grid->extent.maxy));
+    if(mapcache_is_axis_inverted(grid->srs)) {
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.miny, grid->extent.minx));
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.maxy, grid->extent.maxx));
+    } else {
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:LowerCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.minx, grid->extent.miny));
+      ezxml_set_txt(ezxml_add_child(bbox,"ows:UpperCorner",0),apr_psprintf(ctx->pool,"%f %f",
+                    grid->extent.maxx, grid->extent.maxy));
+    }
+
     ezxml_set_attr(bbox,"crs",mapcache_grid_get_crs(ctx,grid));
 
     ezxml_set_txt(ezxml_add_child(tmset,"ows:SupportedCRS",0),mapcache_grid_get_crs(ctx,grid));
@@ -528,6 +553,7 @@ void _create_capabilities_wmts(mapcache_context *ctx, mapcache_request_get_capab
           break;
         case MAPCACHE_GRID_ORIGIN_BOTTOM_RIGHT:
         case MAPCACHE_GRID_ORIGIN_TOP_RIGHT:
+        default:
           ctx->set_error(ctx,500,"origin not implemented");
           return;
       }
@@ -567,8 +593,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
                       *infoformat = NULL, *fi_i = NULL, *fi_j = NULL;
   apr_table_t *dimtable = NULL;
   mapcache_extent *extent = NULL;
-  char *timedim = NULL;
-  apr_array_header_t *timedim_selected; /* the individual time entries that corresponded to the input request */
   mapcache_tileset *tileset = NULL;
   int row,col,level,x,y;
   int kvp = 0;
@@ -629,14 +653,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           if((value = apr_table_get(params,dimension->name)) != NULL) {
             apr_table_set(dimtable,dimension->name,value);
           }
-        }
-      }
-      if(tileset->timedimension) {
-        const char* value;
-        if((value = apr_table_get(params,tileset->timedimension->key)) != NULL) {
-          timedim = apr_pstrdup(ctx->pool,value);
-        } else {
-          timedim = apr_pstrdup(ctx->pool,tileset->timedimension->default_value);
         }
       }
       if(!strcasecmp(str,"getfeatureinfo")) {
@@ -703,10 +719,6 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
           continue;
         }
       }
-      if(!timedim && tileset->timedimension) {
-        timedim = key;
-        continue;
-      }
       if(!matrixset) {
         matrixset = key;
         continue;
@@ -769,40 +781,9 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     return;
   }
 
-  /*validate dimensions*/
-  if(tileset->dimensions) {
-    int i;
-    if(!dimtable) {
-      ctx->set_error(ctx,404, "received request with no dimensions");
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","dim");
-      return;
-    }
-
-    for(i=0; i<tileset->dimensions->nelts; i++) {
-      char *tmpval;
-      int ok;
-      mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
-      const char *value = apr_table_get(dimtable,dimension->name);
-      if(value) {
-        tmpval = apr_pstrdup(ctx->pool,value);
-        ok = dimension->validate(ctx,dimension,&tmpval);
-        GC_CHECK_ERROR(ctx);
-        if(ok != MAPCACHE_SUCCESS) {
-          ctx->set_error(ctx,404,"dimension \"%s\" value \"%s\" fails to validate",
-                         dimension->name, value);
-          if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","%s",dimension->name);
-          return;
-        }
-
-        /* re-set the eventually modified value in the dimension table */
-        apr_table_set(dimtable,dimension->name,tmpval);
-      }
-    }
-  }
-
   if(!matrixset) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEMATRIXSET");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilematrixset");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileMatrixSet");
     return;
   } else {
     int i;
@@ -814,49 +795,49 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     }
     if(!grid_link) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEMATRIXSET %s",matrixset);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilematrixset");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrixSet");
       return;
     }
   }
 
   if(!matrix) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEMATRIX");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilematrix");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileMatrix");
     return;
   } else {
     char *endptr;
     level = (int)strtol(matrix,&endptr,10);
     if(*endptr != 0 || level < grid_link->minz || level >= grid_link->maxz) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEMATRIX %s", matrix);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilematrix");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrix");
       return;
     }
   }
 
   if(!tilerow) {
     ctx->set_error(ctx, 404, "received wmts request with no TILEROW");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilerow");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileRow");
     return;
   } else {
     char *endptr;
     row = (int)strtol(tilerow,&endptr,10);
     if(*endptr != 0 || row < 0) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILEROW %s",tilerow);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilerow");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileRow");
       return;
     }
   }
 
   if(!tilecol) {
     ctx->set_error(ctx, 404, "received wmts request with no TILECOL");
-    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","tilecol");
+    if(kvp) ctx->set_exception(ctx,"MissingParameterValue","TileCol");
     return;
   } else {
     char *endptr;
     col = (int)strtol(tilecol,&endptr,10);
     if(endptr == tilecol || col < 0) {
       ctx->set_error(ctx, 404, "received wmts request with invalid TILECOL %s",tilecol);
-      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","tilecol");
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileCol");
       return;
     }
   }
@@ -879,17 +860,19 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
       x = grid_link->grid->levels[level]->maxx - col - 1;
       y = row;
       break;
+    default:
+      ctx->set_error(ctx,500,"BUG: invalid grid origin");
+      return;
   }
 
 
-  if(fi_j || timedim) {
+  if(fi_j) {
     //we need the extent of the request, compute it here
     extent = apr_pcalloc(ctx->pool, sizeof(mapcache_extent));
-    mapcache_grid_get_extent(ctx,grid_link->grid,x,y,level,extent);
+    mapcache_grid_get_tile_extent(ctx,grid_link->grid,x,y,level,extent);
   }
 
   if(!fi_j) { /*we have a getTile request*/
-    int i;
 
 #ifdef PEDANTIC_WMTS_FORMAT_CHECK
     if(tileset->format) {
@@ -915,57 +898,46 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     mapcache_request_get_tile *req = (mapcache_request_get_tile*)apr_pcalloc(
                                        ctx->pool,sizeof(mapcache_request_get_tile));
     
-    req->request.type = MAPCACHE_REQUEST_GET_TILE;
-    if(timedim) {
-      timedim_selected = mapcache_timedimension_get_entries_for_value(ctx,
-              tileset->timedimension, tileset, grid_link->grid, extent, timedim);
-      GC_CHECK_ERROR(ctx);
-      if(!timedim_selected || timedim_selected->nelts == 0) {
-        ctx->set_error(ctx, 404, "no matching entry for given TIME dimension");
-        if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TIME");
-        return;
-      }
-      req->ntiles = timedim_selected->nelts;
-    } else {
-      req->ntiles = 1;
-    }
+    ((mapcache_request*)req)->type = MAPCACHE_REQUEST_GET_TILE;
+    req->ntiles = 1;
     req->tiles = (mapcache_tile**)apr_pcalloc(ctx->pool,req->ntiles * sizeof(mapcache_tile*));
 
-    for(i=0;i<req->ntiles;i++) {
-      req->tiles[i] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
-      if(!req->tiles[i]) {
-        ctx->set_error(ctx, 500, "failed to allocate tile");
-        if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
-        return;
-      }
+    req->tiles[0] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
+    if(!req->tiles[0]) {
+      ctx->set_error(ctx, 500, "failed to allocate tile");
+      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
+      return;
+    }
 
-      /*populate dimensions*/
-      if(tileset->dimensions) {
-        int d;
-        for(d=0; d<tileset->dimensions->nelts; d++) {
-          mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
-          const char *value = apr_table_get(dimtable,dimension->name);
-          if(value) {
-            apr_table_set(req->tiles[i]->dimensions,dimension->name,value);
-          }
+    /*populate dimensions*/
+    if(tileset->dimensions) {
+      int d;
+      for(d=0; d<tileset->dimensions->nelts; d++) {
+        mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
+        const char *value = apr_table_get(dimtable,dimension->name);
+        if(value) {
+          mapcache_tile_set_requested_dimension(ctx,req->tiles[0],dimension->name,value);
         }
       }
-      if(tileset->timedimension) {
-        apr_table_set(req->tiles[i]->dimensions,tileset->timedimension->key,
-                APR_ARRAY_IDX(timedim_selected,i,char*));
-      }
-
-      req->tiles[i]->z = level;
-      req->tiles[i]->x = x;
-      req->tiles[i]->y = y;
-      if(i==0) {
-        /* no need to validate all the tiles as they all have the same x,y,z */
-        mapcache_tileset_tile_validate(ctx,req->tiles[0]);
-        if(GC_HAS_ERROR(ctx)) {
-          if(kvp) ctx->set_exception(ctx,"TileOutOfRange","");
-          return;
-        }
-      }
+    }
+    req->tiles[0]->z = level;
+    req->tiles[0]->x = x;
+    req->tiles[0]->y = y;
+    /* no need to validate all the tiles as they all have the same x,y,z */
+    mapcache_tileset_tile_validate_z(ctx,req->tiles[0]);
+    if(GC_HAS_ERROR(ctx)) {
+      if(kvp) ctx->set_exception(ctx,"InvalidParameterValue","TileMatrix");
+      return;
+    }
+    mapcache_tileset_tile_validate_x(ctx,req->tiles[0]);
+    if(GC_HAS_ERROR(ctx)) {
+      if(kvp) ctx->set_exception(ctx,"TileOutOfRange","TileCol");
+      return;
+    }
+    mapcache_tileset_tile_validate_y(ctx,req->tiles[0]);
+    if(GC_HAS_ERROR(ctx)) {
+      if(kvp) ctx->set_exception(ctx,"TileOutOfRange","TileRow");
+      return;
     }
 
     *request = (mapcache_request*)req;
@@ -1023,7 +995,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,d,mapcache_dimension*);
         const char *value = apr_table_get(dimtable,dimension->name);
         if(value) {
-          apr_table_set(fi->map.dimensions,dimension->name,value);
+          mapcache_map_set_requested_dimension(ctx,&fi->map,dimension->name,value);
         }
       }
     }
@@ -1061,7 +1033,9 @@ void _error_report_wmts(mapcache_context *ctx, mapcache_service *service, char *
                              "<Exception exceptionCode=\"%s\" locator=\"%s\"/>",elts[i].key,elts[i].val),NULL);
   }
 
-  *err_body = apr_psprintf(ctx->pool,template,msg,exceptions);
+  *err_body = apr_psprintf(ctx->pool,template,
+                           mapcache_util_str_xml_escape(ctx->pool, msg, MAPCACHE_UTIL_XML_SECTION_COMMENT),
+                           exceptions);
   apr_table_set(headers, "Content-Type", "application/xml");
 
 

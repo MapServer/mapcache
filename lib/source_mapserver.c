@@ -41,8 +41,15 @@
 #include <apr_reslist.h>
 #include <mapserver.h>
 
-/* hash table key = source->name, value = apr_reslist_t of mapObjs */
-static apr_hash_t *mapobj_container = NULL;
+/**\class mapcache_source_mapserver
+ * \brief WMS mapcache_source
+ * \implements mapcache_source
+ */
+typedef struct mapcache_source_mapserver mapcache_source_mapserver;
+struct mapcache_source_mapserver {
+  mapcache_source source;
+  char *mapfile;
+};
 
 struct mc_mapobj {
   mapObj *map;
@@ -50,91 +57,44 @@ struct mc_mapobj {
   char *error;
 };
 
-static apr_status_t _ms_get_mapobj(void **conn_, void *params, apr_pool_t *pool)
-{
+void mapcache_mapserver_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
   mapcache_source_mapserver *src = (mapcache_source_mapserver*) params;
   struct mc_mapobj *mcmap = calloc(1,sizeof(struct mc_mapobj));
-  *conn_ = mcmap;
   mcmap->map = msLoadMap(src->mapfile,NULL);
   if(!mcmap->map) {
     errorObj *errors = NULL;
-    msWriteError(stderr);
+    ctx->set_error(ctx, 500, "Failed to load mapfile '%s'",src->mapfile);
     errors = msGetErrorObj();
-    mcmap->error = apr_psprintf(pool,"Failed to load mapfile '%s'. Mapserver reports: %s",src->mapfile, errors->message);
-    return APR_EGENERAL;
+    while(errors) {
+      ctx->set_error(ctx, 500, "Failed to load mapfile '%s'. Mapserver reports: %s",src->mapfile, errors->message);
+      errors = errors->next;
+    }
+    return;
   }
   msMapSetLayerProjections(mcmap->map);
-  return APR_SUCCESS;
+  *conn_ = mcmap;
 }
 
-static apr_status_t _ms_free_mapobj(void *conn_, void *params, apr_pool_t *pool)
-{
+void mapcache_mapserver_connection_destructor(void *conn_) {
   struct mc_mapobj *mcmap = (struct mc_mapobj*) conn_;
   msFreeMap(mcmap->map);
   free(mcmap);
-  return APR_SUCCESS;
 }
 
-static struct mc_mapobj* _get_mapboj(mapcache_context *ctx, mapcache_map *map) {
-  apr_status_t rv;
-  mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
-  struct mc_mapobj *mcmap;
-  apr_reslist_t *mapobjs = NULL;
-  if(!mapobj_container || NULL == (mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING))) {
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_lock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-    if(!mapobj_container) {
-      mapobj_container = apr_hash_make(ctx->process_pool);
-    }
-    mapobjs = apr_hash_get(mapobj_container,src->source.name,APR_HASH_KEY_STRING);
-    if(!mapobjs) {
-      apr_status_t rv;
-      rv = apr_reslist_create(&mapobjs,
-                              0 /* min */,
-                              1 /* soft max */,
-                              30 /* hard max */,
-                              6 * 1000000 /*6 seconds, ttl*/,
-                              _ms_get_mapobj, /* resource constructor */
-                              _ms_free_mapobj, /* resource destructor */
-                              src, ctx->process_pool);
-      if (rv != APR_SUCCESS) {
-        ctx->set_error(ctx, 500, "failed to create mapobj connection pool for cache %s", src->source.name);
-#ifdef APR_HAS_THREADS
-        if(ctx->threadlock)
-          apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-        return NULL;
-      }
-      apr_hash_set(mapobj_container,src->source.name,APR_HASH_KEY_STRING,mapobjs);
-    }
-    assert(mapobjs);
-#ifdef APR_HAS_THREADS
-    if(ctx->threadlock)
-      apr_thread_mutex_unlock((apr_thread_mutex_t*)ctx->threadlock);
-#endif
-  }
-  rv = apr_reslist_acquire(mapobjs, (void **) &mcmap);
-  if (rv != APR_SUCCESS) {
-    ctx->set_error(ctx, 500, "failed to aquire mappObj instance: %s", mcmap->error);
-    return NULL;
-  }
-  return mcmap;
-}
-
-static void _release_mapboj(mapcache_context *ctx, mapcache_map *map, struct mc_mapobj *mcmap)
+static mapcache_pooled_connection* _mapserver_get_connection(mapcache_context *ctx, mapcache_map *map)
 {
-  mapcache_source_mapserver *src = (mapcache_source_mapserver*) map->tileset->source;
-  msFreeLabelCache(&mcmap->map->labelcache);
-  apr_reslist_t *mapobjs = apr_hash_get(mapobj_container,src->source.name, APR_HASH_KEY_STRING);
-  assert(mapobjs);
-  if (GC_HAS_ERROR(ctx)) {
-    apr_reslist_invalidate(mapobjs, (void*) mcmap);
-  } else {
-    apr_reslist_release(mapobjs, (void*) mcmap);
+  mapcache_pooled_connection *pc;
+  char *key = apr_psprintf(ctx->pool, "ms_src_%s", map->tileset->source->name);
+
+  pc = mapcache_connection_pool_get_connection(ctx, key, mapcache_mapserver_connection_constructor,
+          mapcache_mapserver_connection_destructor, map->tileset->source);
+  if(!GC_HAS_ERROR(ctx) && pc && pc->connection) {
   }
+
+  return pc;
 }
+
+
 /**
  * \private \memberof mapcache_source_mapserver
  * \sa mapcache_source::render_map()
@@ -142,15 +102,27 @@ static void _release_mapboj(mapcache_context *ctx, mapcache_map *map, struct mc_
 void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *map)
 {
   errorObj *errors = NULL;
+  mapcache_pooled_connection *pc;
+  struct mc_mapobj *mcmap;
+  double dx, dy;
+  rasterBufferObj rb;
+  imageObj *image;
 
-  struct mc_mapobj *mcmap = _get_mapboj(ctx,map);
+  pc = _mapserver_get_connection(ctx, map);
+  GC_CHECK_ERROR(ctx);
+
+  mcmap = pc->connection;
   GC_CHECK_ERROR(ctx);
 
   if(mcmap->grid_link != map->grid_link) {
     if (msLoadProjectionString(&(mcmap->map->projection), map->grid_link->grid->srs) != 0) {
+      ctx->set_error(ctx,500, "Unable to set projection on mapObj.");
       errors = msGetErrorObj();
-      ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
-      _release_mapboj(ctx,map,mcmap);
+      while(errors) {
+        ctx->set_error(ctx,500, "Unable to set projection on mapObj. MapServer reports: %s", errors->message);
+        errors = errors->next;
+      }
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
       return;
     }
     switch(map->grid_link->grid->unit) {
@@ -173,7 +145,6 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   ** pixel to center of pixel.  Here we try to adjust the WMS extents
   ** in by half a pixel.
   */
-  double dx, dy;
   dx = (map->extent.maxx - map->extent.minx) / (map->width*2);
   dy = (map->extent.maxy - map->extent.miny) / (map->height*2);
 
@@ -183,20 +154,27 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   mcmap->map->extent.maxy = map->extent.maxy - dy;
   msMapSetSize(mcmap->map, map->width, map->height);
 
-  imageObj *image = msDrawMap(mcmap->map, MS_FALSE);
+  image = msDrawMap(mcmap->map, MS_FALSE);
   if(!image) {
+    ctx->set_error(ctx,500, "MapServer failed to create image.");
     errors = msGetErrorObj();
-    ctx->set_error(ctx,500, "MapServer failed to create image. MapServer reports: %s", errors->message);
-    _release_mapboj(ctx,map,mcmap);
+    while(errors) {
+      ctx->set_error(ctx,500, "MapServer reports: %s", errors->message);
+      errors = errors->next;
+    }
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
     return;
   }
-  rasterBufferObj rb;
 
   if(image->format->vtable->supports_pixel_buffer) {
-    image->format->vtable->getRasterBufferHandle(image,&rb);
+    if( MS_SUCCESS != image->format->vtable->getRasterBufferHandle(image,&rb)) {
+      ctx->set_error(ctx,500,"failed to get mapserver raster buffer handle");
+      mapcache_connection_pool_invalidate_connection(ctx,pc);
+      return;
+    }
   } else {
     ctx->set_error(ctx,500,"format %s has no pixel export",image->format->name);
-    _release_mapboj(ctx,map,mcmap);
+    mapcache_connection_pool_invalidate_connection(ctx,pc);
     return;
   }
 
@@ -208,11 +186,11 @@ void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *
   memcpy(map->raw_image->data,rb.data.rgba.pixels,map->width*map->height*4);
   apr_pool_cleanup_register(ctx->pool, map->raw_image->data,(void*)free, apr_pool_cleanup_null);
   msFreeImage(image);
-  _release_mapboj(ctx,map,mcmap);
+  mapcache_connection_pool_release_connection(ctx,pc);
 
 }
 
-void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_feature_info *fi)
+void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_source *psource, mapcache_feature_info *fi)
 {
   ctx->set_error(ctx,500,"mapserver source does not support queries");
 }
@@ -238,6 +216,7 @@ void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapca
     mapcache_source *source)
 {
   mapcache_source_mapserver *src = (mapcache_source_mapserver*)source;
+  mapObj *map;
   /* check all required parameters are configured */
   if(!src->mapfile) {
     ctx->set_error(ctx, 400, "mapserver source %s has no <mapfile> configured",source->name);
@@ -250,7 +229,7 @@ void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapca
   msSetup();
 
   /* do a test load to check the mapfile is correct */
-  mapObj *map = msLoadMap(src->mapfile, NULL);
+  map = msLoadMap(src->mapfile, NULL);
   if(!map) {
     msWriteError(stderr);
     ctx->set_error(ctx,400,"failed to load mapfile \"%s\"",src->mapfile);
@@ -278,6 +257,7 @@ mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
 mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
 {
   ctx->set_error(ctx, 500, "mapserver source not configured for this build");
+  return NULL;
 }
 #endif
 

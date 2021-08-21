@@ -77,7 +77,6 @@ mapcache_http_response *mapcache_http_response_create(apr_pool_t *pool)
 
 void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int ntiles)
 {
-
   apr_thread_t **threads;
   apr_threadattr_t *thread_attrs;
   int nthreads;
@@ -98,7 +97,6 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
     }
     return;
   }
-
 
   /* allocate a thread struct for each tile. Not all will be used */
   thread_tiles = (_thread_tile*)apr_pcalloc(ctx->pool,ntiles*sizeof(_thread_tile));
@@ -196,40 +194,33 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
 {
   int expires = 0;
   mapcache_http_response *response;
-  int i,is_empty=1; /* response image is initially empty */;
-  int header_only=0;
-  mapcache_tile *ht = NULL;
   char *timestr;
-  mapcache_image *base=NULL;
-  mapcache_image_format *format = NULL;
+  mapcache_image *base;
+  mapcache_image_format *format;
+  mapcache_image_format_type t;
+  int i,is_empty=1; /* response image is initially empty */;
+  base=NULL;
+  format = NULL;
 
 #ifdef DEBUG
-  if(req_tile->ntiles ==0) {
+  if(req_tile->ntiles == 0) {
     ctx->set_error(ctx,500,"BUG: get_tile called with 0 tiles");
     return NULL;
   }
 #endif
   response = mapcache_http_response_create(ctx->pool);
-  
-  if(ctx->supports_redirects && req_tile->ntiles == 1) {
-    ht = req_tile->tiles[0];
-    if(ht->tileset->read_only && ht->tileset->cache->type == MAPCACHE_CACHE_REST) {
-      mapcache_cache_rest *rc = (mapcache_cache_rest*)ht->tileset->cache;
-      if(rc->use_redirects) {
-        ht->allow_redirect = 1;
-        header_only = 1;
-      }
-    }
-  }
 
+  if(ctx->supports_redirects && req_tile->ntiles == 1) {
+    req_tile->tiles[0]->allow_redirect = 1;
+  }
 
   mapcache_prefetch_tiles(ctx,req_tile->tiles,req_tile->ntiles);
   if(GC_HAS_ERROR(ctx))
     return NULL;
 
-  if(header_only && ht->redirect) {
+  if(req_tile->tiles[0]->redirect) {
     response->code = 302;
-    apr_table_set(response->headers,"Location",ht->redirect);
+    apr_table_set(response->headers,"Location",req_tile->tiles[0]->redirect);
     response->data = mapcache_buffer_create(0, ctx->pool);
     return response;
   }
@@ -242,7 +233,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
     if(tile->expires && (tile->expires < expires || expires == 0)) {
       expires = tile->expires;
     }
-    
+
     if(tile->nodata) {
       /* treat the special case where the cache explicitely stated that the
        tile was empty, and we don't have any vertical merging to do */
@@ -253,8 +244,8 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       }
       continue;
     }
-    
-    /* treat the most common case: 
+
+    /* treat the most common case:
      - we have a single tile request (i.e. isempty is true)
      - the cache returned the encoded image
      */
@@ -291,7 +282,7 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
       mapcache_image_merge(ctx, base, tile->raw_image);
     } else {
       /* we don't need to merge onto an existing tile and don't have access to the tile's encoded data.
-       * 
+       *
        * we don't encode the tile's raw image data just yet because we might need to merge another one on top
        * of it later.
        */
@@ -301,10 +292,10 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
   }
 
   if(!response->data) {
-    /* we need to encode the raw image data*/
+    /* we need to encode the raw image data */
     if(base) {
-      if(req_tile->format) {
-        format = req_tile->format;
+      if(req_tile->image_request.format) {
+        format = req_tile->image_request.format;
       } else {
         format = req_tile->tiles[0]->tileset->format;
         if(!format) {
@@ -316,24 +307,38 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
         return NULL;
       }
     } else {
+      unsigned char empty[5] = {'#',0,0,0,0};
 #ifdef DEBUG
       if(!is_empty) {
         ctx->set_error(ctx,500,"BUG: no image data to encode, but tile not marked as empty");
         return NULL;
       }
 #endif
-      unsigned char empty[5] = {'#',0,0,0,0};
-      response->data = mapcache_empty_png_decode(ctx,empty,&is_empty); /* is_empty is unchanged and left to 1 */
+      response->data = mapcache_empty_png_decode(ctx,req_tile->tiles[0]->grid_link->grid->tile_sx, req_tile->tiles[0]->grid_link->grid->tile_sy, empty,&is_empty); /* is_empty is unchanged and left to 1 */
       format = mapcache_configuration_get_image_format(ctx->config,"PNG8");
     }
+  } else {
+    /* set format, not an image type (e.g. GC_RAW) */
+    if(req_tile->image_request.format) {
+      format = req_tile->image_request.format;
+    } else {
+      format = req_tile->tiles[0]->tileset->format;
+      if(!format) {
+        format = ctx->config->default_image_format; /* this one is always defined */
+      }
+    }
   }
-  
+
   /* compute the content-type */
-  mapcache_image_format_type t = mapcache_imageio_header_sniff(ctx,response->data);
-  if(t == GC_PNG)
-    apr_table_set(response->headers,"Content-Type","image/png");
-  else if(t == GC_JPEG)
-    apr_table_set(response->headers,"Content-Type","image/jpeg");
+  if(format && format->type == GC_RAW) {
+    apr_table_set(response->headers,"Content-Type",format->mime_type);
+  } else {
+    t = mapcache_imageio_header_sniff(ctx,response->data);
+    if(t == GC_PNG)
+      apr_table_set(response->headers,"Content-Type","image/png");
+    else if(t == GC_JPEG)
+      apr_table_set(response->headers,"Content-Type","image/jpeg");
+  }
 
   /* compute expiry headers */
   if(expires) {
@@ -354,15 +359,19 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
   mapcache_tile ***maptiles;
   int *nmaptiles;
   mapcache_tile **tiles;
+  mapcache_grid_link **effectively_used_grid_links;
   mapcache_map *basemap = NULL;
   int ntiles = 0;
   int i;
   maptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_tile**));
   nmaptiles = apr_pcalloc(ctx->pool,nmaps*sizeof(int));
+  effectively_used_grid_links = apr_pcalloc(ctx->pool,nmaps*sizeof(mapcache_grid_link*));
   for(i=0; i<nmaps; i++) {
     mapcache_tileset_get_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
                                    &maps[i]->extent, maps[i]->width, maps[i]->height,
-                                   &(nmaptiles[i]), &(maptiles[i]));
+                                   &(nmaptiles[i]), &(maptiles[i]), &(effectively_used_grid_links[i]),
+                                   maps[i]->dimensions);
+    if(GC_HAS_ERROR(ctx)) return NULL;
     ntiles += nmaptiles[i];
   }
   tiles = apr_pcalloc(ctx->pool,ntiles * sizeof(mapcache_tile*));
@@ -371,7 +380,7 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
     int j;
     for(j=0; j<nmaptiles[i]; j++) {
       tiles[ntiles] = maptiles[i][j];
-      tiles[ntiles]->dimensions = maps[i]->dimensions;
+      tiles[ntiles]->dimensions = mapcache_requested_dimensions_clone(ctx->pool, maps[i]->dimensions);
       ntiles++;
     }
   }
@@ -399,7 +408,7 @@ mapcache_map* mapcache_assemble_maps(mapcache_context *ctx, mapcache_map **maps,
       }
     }
     if(hasdata) {
-      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,maps[i]->grid_link,
+      maps[i]->raw_image = mapcache_tileset_assemble_map_tiles(ctx,maps[i]->tileset,effectively_used_grid_links[i],
                            &maps[i]->extent, maps[i]->width, maps[i]->height,
                            nmaptiles[i], maptiles[i],
                            mode);
@@ -431,13 +440,13 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   mapcache_http_response *response;
   mapcache_map *basemap = NULL;
   char *timestr;
+
 #ifdef DEBUG
   if(req_map->nmaps ==0) {
     ctx->set_error(ctx,500,"BUG: get_map called with 0 maps");
     return NULL;
   }
 #endif
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ERROR) {
     ctx->set_error(ctx, 404, "full wms support disabled");
@@ -446,7 +455,6 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
 
   format = NULL;
   response = mapcache_http_response_create(ctx->pool);
-
 
   if(req_map->getmap_strategy == MAPCACHE_GETMAP_ASSEMBLE) {
     basemap = mapcache_assemble_maps(ctx, req_map->maps, req_map->nmaps, req_map->resample_mode);
@@ -461,7 +469,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
         return NULL;
       }
     }
-    basemap->tileset->source->render_map(ctx, basemap);
+    mapcache_source_render_map(ctx, basemap->tileset->source, basemap);
     if(GC_HAS_ERROR(ctx)) return NULL;
     if(req_map->nmaps>1) {
       if(!basemap->raw_image) {
@@ -470,7 +478,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
       }
       for(i=1; i<req_map->nmaps; i++) {
         mapcache_map *overlaymap = req_map->maps[i];
-        overlaymap->tileset->source->render_map(ctx, overlaymap);
+        mapcache_source_render_map(ctx, overlaymap->tileset->source, overlaymap);
         if(GC_HAS_ERROR(ctx)) return NULL;
         if(!overlaymap->raw_image) {
           overlaymap->raw_image = mapcache_imageio_decode(ctx,overlaymap->encoded_data);
@@ -488,7 +496,7 @@ mapcache_http_response *mapcache_core_get_map(mapcache_context *ctx, mapcache_re
   }
 
   if(basemap->raw_image) {
-    format = req_map->getmap_format; /* always defined, defaults to JPEG */
+    format = req_map->image_request.format; /* always defined, defaults to JPEG */
     response->data = format->write(ctx,basemap->raw_image,format);
     if(GC_HAS_ERROR(ctx)) {
       return NULL;
@@ -536,16 +544,21 @@ mapcache_http_response *mapcache_core_proxy_request(mapcache_context *ctx, mapca
   mapcache_http *http;
   mapcache_http_response *response = mapcache_http_response_create(ctx->pool);
   response->data = mapcache_buffer_create(30000,ctx->pool);
-  http = req_proxy->http;
+  http = mapcache_http_clone(ctx, req_proxy->rule->http);
   if(req_proxy->pathinfo) {
-    http = mapcache_http_clone(ctx,http);
     if( (*(req_proxy->pathinfo)) == '/' ||
         http->url[strlen(http->url)-1] == '/')
       http->url = apr_pstrcat(ctx->pool,http->url,req_proxy->pathinfo,NULL);
     else
       http->url = apr_pstrcat(ctx->pool,http->url,"/",req_proxy->pathinfo,NULL);
   }
-  mapcache_http_do_request_with_params(ctx,http,req_proxy->params,response->data,response->headers,&response->code);
+  http->url = mapcache_http_build_url(ctx,http->url,req_proxy->params);
+  http->post_body = req_proxy->post_buf;
+  http->post_len = req_proxy->post_len;
+  if(req_proxy->headers) {
+    apr_table_overlap(http->headers, req_proxy->headers, APR_OVERLAP_TABLES_SET);
+  }
+  mapcache_http_do_request(ctx,http, response->data,response->headers,&response->code);
   if(response->code !=0 && GC_HAS_ERROR(ctx)) {
     /* the http request was successful, but the server returned an error */
     ctx->clear_errors(ctx);
@@ -577,7 +590,7 @@ mapcache_http_response *mapcache_core_get_featureinfo(mapcache_context *ctx,
       ctx->set_error(ctx,404, "unsupported feature info format %s",fi->format);
       return NULL;
     }
-    tileset->source->query_info(ctx,fi);
+    mapcache_source_query_info(ctx, tileset->source, fi);
     if(GC_HAS_ERROR(ctx)) return NULL;
     response = mapcache_http_response_create(ctx->pool);
     response->data = fi->data;
@@ -618,7 +631,7 @@ mapcache_http_response* mapcache_core_respond_to_error(mapcache_context *ctx)
 
   msg = ctx->_errmsg;
   if(!msg) {
-    msg = apr_pstrdup(ctx->pool,"an unspecified error has occured");
+    msg = apr_pstrdup(ctx->pool,"an unspecified error has occurred");
   }
   ctx->log(ctx,MAPCACHE_ERROR,msg);
 

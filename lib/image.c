@@ -56,7 +56,7 @@ mapcache_image* mapcache_image_create_with_data(mapcache_context *ctx, int width
   return img;
 }
 
-int mapcache_image_has_alpha(mapcache_image *img)
+int mapcache_image_has_alpha(mapcache_image *img, unsigned int cutoff)
 {
   size_t i,j;
   if(img->has_alpha == MC_ALPHA_UNKNOWN) {
@@ -64,7 +64,7 @@ int mapcache_image_has_alpha(mapcache_image *img)
     for(i=0; i<img->h; i++) {
       ptr = rptr;
       for(j=0; j<img->w; j++) {
-        if(ptr[3]<(unsigned char)255) {
+        if(ptr[3]<(unsigned char)cutoff) {
           img->has_alpha = MC_ALPHA_YES;
           return 1;
         }
@@ -85,7 +85,11 @@ int mapcache_image_has_alpha(mapcache_image *img)
 void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_image *overlay)
 {
   int starti,startj;
-#ifndef USE_PIXMAN
+#ifdef USE_PIXMAN
+  pixman_image_t *si;
+  pixman_image_t *bi;
+  pixman_transform_t transform;
+#else
   int i,j;
   unsigned char *browptr, *orowptr, *bptr, *optr;
 #endif
@@ -94,20 +98,22 @@ void mapcache_image_merge(mapcache_context *ctx, mapcache_image *base, mapcache_
     ctx->set_error(ctx, 500, "attempting to merge an larger image onto another");
     return;
   }
+  
   starti = (base->h - overlay->h)/2;
   startj = (base->w - overlay->w)/2;
 #ifdef USE_PIXMAN
-  pixman_image_t *si = pixman_image_create_bits(PIXMAN_a8r8g8b8,overlay->w,overlay->h,
+  si = pixman_image_create_bits(PIXMAN_a8r8g8b8,overlay->w,overlay->h,
                        (uint32_t*)overlay->data,overlay->stride);
-  pixman_image_t *bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
+  bi = pixman_image_create_bits(PIXMAN_a8r8g8b8,base->w,base->h,
                        (uint32_t*)base->data,base->stride);
-  pixman_transform_t transform;
-  pixman_transform_init_translate(&transform,
-                                  pixman_int_to_fixed(-startj),
-                                  pixman_int_to_fixed(-starti));
   pixman_image_set_filter(si,PIXMAN_FILTER_NEAREST, NULL, 0);
-  pixman_image_set_transform (si, &transform);
-  pixman_image_composite (PIXMAN_OP_OVER, si, si, bi,
+  if(starti || startj) {
+    pixman_transform_init_translate(&transform,
+                                    pixman_int_to_fixed(-startj),
+                                    pixman_int_to_fixed(-starti));
+    pixman_image_set_transform (si, &transform);
+  }
+  pixman_image_composite (PIXMAN_OP_OVER, si, NULL, bi,
                           0, 0, 0, 0, 0, 0, base->w,base->h);
   pixman_image_unref(si);
   pixman_image_unref(bi);
@@ -274,12 +280,22 @@ void mapcache_image_copy_resampled_bilinear(mapcache_context *ctx, mapcache_imag
 
 void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
 {
+
   if(mt->map.tileset->format) {
     /* the tileset has a format defined, we will use it to encode the data */
     mapcache_image *tileimg;
     mapcache_image *metatile;
     int i,j;
     int sx,sy;
+
+    /*
+    ** No metatile support for raw format types...
+    */
+    if(mt->map.tileset->format->type == GC_RAW) {
+      mt->tiles[0].encoded_data = mt->map.encoded_data;
+      return;
+    }
+
     if(mt->map.raw_image) {
       metatile = mt->map.raw_image;
     } else {
@@ -289,6 +305,12 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
       ctx->set_error(ctx, 500, "failed to load image data from metatile");
       return;
     }
+    if(metatile->w != mt->map.width ||
+       metatile->h != mt->map.height) {
+      ctx->set_error(ctx, 500, "image size does not correspond to metatile size");
+      return;
+    }
+
     for(i=0; i<mt->metasize_x; i++) {
       for(j=0; j<mt->metasize_y; j++) {
         tileimg = mapcache_image_create(ctx);
@@ -312,6 +334,9 @@ void mapcache_image_metatile_split(mapcache_context *ctx, mapcache_metatile *mt)
             sx = mt->map.tileset->metabuffer + i * tileimg->w;
             sy = mt->map.height - (mt->map.tileset->metabuffer + (j+1) * tileimg->h);
             break;
+          default:
+            ctx->set_error(ctx,500,"BUG: unknown grid origin");
+            return;
         }
         tileimg->data = &(metatile->data[sy*metatile->stride + 4 * sx]);
         if(mt->map.tileset->watermark) {
@@ -359,5 +384,24 @@ int mapcache_image_blank_color(mapcache_image* image)
     return MAPCACHE_FALSE;
 }
 
+
+void mapcache_image_fill(mapcache_context *ctx, mapcache_image *image, const unsigned char *fill_color) {
+#if 0 && defined(USE_PIXMAN)
+  pixman_fill((uint32_t*)image->data, image->stride, 32, 0, 0, image->w, image->h, *((int*)fill_color) );
+#else
+  int r,c;
+  unsigned char *pixptr;
+  for(r=0;r<image->h;r++) {
+    pixptr = image->data + image->stride * r;
+    for(c=0;c<image->w;c++) {
+      pixptr[0]=fill_color[0];
+      pixptr[1]=fill_color[1];
+      pixptr[2]=fill_color[2];
+      pixptr[3]=fill_color[3];
+      pixptr+=4;
+    }
+  }
+#endif
+}
 /* vim: ts=2 sts=2 et sw=2
 */
