@@ -414,23 +414,10 @@ mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx);
  */
 mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx);
 
-#ifdef USE_REDIS
-typedef struct mapcache_cache_redis mapcache_cache_redis;
-/**\class mapcache_cache_redis
- * \brief a mapcache_cache on redis server
- * \implements mapcache_cache
- */
-struct mapcache_cache_redis {
-  mapcache_cache cache;
-  char *host;
-  unsigned long int port;
-};
-
 /**
  * \memberof mapcache_cache_redis
  */
 mapcache_cache* mapcache_cache_redis_create(mapcache_context* ctx);
-#endif
 
 /** @} */
 
