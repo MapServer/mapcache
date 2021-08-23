@@ -158,7 +158,7 @@ static int _mapcache_cache_redis_get(mapcache_context *ctx, mapcache_cache *pcac
   mapcache_pooled_connection *pc;
   mapcache_cache_redis *cache = (mapcache_cache_redis*)pcache;
 
-  char* key = REDIS_GET_TILE_KEY(ctx, tile);
+  char* key = mapcache_util_get_tile_key(ctx, tile, cache->key_template, " \r\n\t\f\e\a\b", "#");
   if(GC_HAS_ERROR(ctx)) {
     return MAPCACHE_FAILURE;
   }
@@ -213,7 +213,6 @@ static void _mapcache_cache_redis_set(mapcache_context *ctx, mapcache_cache *pca
   redisReply *reply;
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
-  cache = REDIS_GET_CACHE(tile);
   key = mapcache_util_get_tile_key(ctx, tile, cache->key_template," \r\n\t\f\e\a\b","#");
   GC_CHECK_ERROR(ctx);
 
