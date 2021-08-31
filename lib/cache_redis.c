@@ -31,6 +31,7 @@
 #include "mapcache.h"
 #ifdef USE_REDIS
 
+#include <hiredis/hiredis.h>
 #include <apr_strings.h>
 #include <limits.h>
 #include <errno.h>
@@ -90,14 +91,6 @@ static mapcache_pooled_connection* _redis_get_connection(mapcache_context *ctx, 
           mapcache_redis_connection_destructor, &params);
 
   return pc;
-
-  // redisContext *conn;
-  // conn = redisConnect(cache->host, cache->port);
-  // if (!conn || conn->err) {
-  //   ctx->set_error(ctx,500, "redis: failed to connect to server %s:%d", cache->host, cache->port);
-  //   return NULL;
-  // }
-  // return conn;
 }
 
 static int _mapcache_cache_redis_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile) {
