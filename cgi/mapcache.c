@@ -39,6 +39,10 @@
 #include <fcgi_stdio.h>
 #endif
 
+#ifndef WIN32
+extern char** environ;
+#endif
+
 typedef struct mapcache_context_fcgi mapcache_context_fcgi;
 typedef struct mapcache_context_fcgi_request mapcache_context_fcgi_request;
 
@@ -158,6 +162,16 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
   }
 }
 
+// Replace all occurrences of substr in string
+char* str_replace_all(apr_pool_t* pool, const char* string,
+    const char* substr, const char* replacement)
+{
+    char* replaced = apr_pstrdup(pool, string);
+    while (strstr(replaced, substr)) {
+        replaced = mapcache_util_str_replace(pool, string, substr, replacement);
+    }
+    return replaced;
+}
 
 apr_time_t mtime;
 char *conffile;
@@ -296,6 +310,41 @@ int main(int argc, const char **argv)
       fcgi_write_response(globalctx, mapcache_core_respond_to_error(ctx));
       goto cleanup;
     }
+
+    // add all environ settings including HTTP headers to
+    // a ctx->headers_in apr_table_t
+
+    int num_env_var = 0;
+    char** env = environ;
+
+    while (env[num_env_var] != NULL)
+        num_env_var++;
+
+    apr_table_t* headers;
+    headers = apr_table_make(ctx->pool, num_env_var);
+
+    char *key, *val, * kvp, *pair;
+    int i;
+
+    for (i = 0; env[i] != NULL; i++) {
+        kvp = env[i];
+
+        // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
+        key = apr_strtok(kvp, "=", &pair);
+        key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
+        key = mapcache_util_str_replace(ctx->pool, key, "_", "-");
+        // key = str_replace_all(ctx->pool, key, "_", "-");
+        val = apr_strtok(NULL, "=", &pair);
+
+        if (val != NULL) {
+            apr_table_addn(headers, key, val);
+        }
+        else {
+            apr_table_addn(headers, key, "");
+        }
+    }
+
+    ctx->headers_in = headers;
 
     http_response = NULL;
     if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
