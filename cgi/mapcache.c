@@ -248,12 +248,12 @@ static void set_headers(mapcache_context* ctx, char** env)
     headers = apr_table_make(ctx->pool, num_env_var);
 
     for (i = 0; env[i] != NULL; i++) {
-        kvp = env[i];
+        kvp = apr_pstrdup(ctx->pool, env[i]);
 
         // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
         key = apr_strtok(kvp, "=", &pair);
         key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
-        //key = mapcache_util_str_replace_all(ctx->pool, key, "_", "-");
+        key = mapcache_util_str_replace_all(ctx->pool, key, "_", "-");
 
         val = apr_strtok(NULL, "=", &pair);
 
@@ -337,7 +337,7 @@ int main(int argc, const char **argv)
       goto cleanup;
     }
 
-    set_headers(ctx, apr_pstrdup(ctx->pool, environ));
+    set_headers(ctx, environ);
 
     http_response = NULL;
     if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
