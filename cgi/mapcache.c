@@ -250,12 +250,12 @@ static void set_headers(mapcache_context* ctx, char** env)
     char* key, * val, * kvp, * pair;
     int i;
     int num_env_var;
+    apr_table_t* headers;
 
     num_env_var = 0;
     while (env[num_env_var] != NULL)
         num_env_var++;
 
-    apr_table_t* headers;
     headers = apr_table_make(ctx->pool, num_env_var);
 
     for (i = 0; env[i] != NULL; i++) {
