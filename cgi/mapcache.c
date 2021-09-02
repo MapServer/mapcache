@@ -242,6 +242,43 @@ failed_load:
 
 }
 
+static void set_headers(mapcache_context* ctx, char** env)
+{
+    // add all environ settings including HTTP headers to
+    // a ctx->headers_in apr_table_t
+
+    char* key, * val, * kvp, * pair;
+    int i;
+    int num_env_var;
+
+    num_env_var = 0;
+    while (env[num_env_var] != NULL)
+        num_env_var++;
+
+    apr_table_t* headers;
+    headers = apr_table_make(ctx->pool, num_env_var);
+
+    for (i = 0; env[i] != NULL; i++) {
+        kvp = env[i];
+
+        // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
+        key = apr_strtok(kvp, "=", &pair);
+        key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
+        key = mapcache_util_str_replace(ctx->pool, key, "_", "-");
+        // key = str_replace_all(ctx->pool, key, "_", "-");
+        val = apr_strtok(NULL, "=", &pair);
+
+        if (val != NULL) {
+            apr_table_addn(headers, key, val);
+        }
+        else {
+            apr_table_addn(headers, key, "");
+        }
+    }
+
+    ctx->headers_in = headers;
+}
+
 int main(int argc, const char **argv)
 {
   mapcache_context_fcgi* globalctx;
@@ -311,40 +348,7 @@ int main(int argc, const char **argv)
       goto cleanup;
     }
 
-    // add all environ settings including HTTP headers to
-    // a ctx->headers_in apr_table_t
-
-    int num_env_var = 0;
-    char** env = environ;
-
-    while (env[num_env_var] != NULL)
-        num_env_var++;
-
-    apr_table_t* headers;
-    headers = apr_table_make(ctx->pool, num_env_var);
-
-    char *key, *val, * kvp, *pair;
-    int i;
-
-    for (i = 0; env[i] != NULL; i++) {
-        kvp = env[i];
-
-        // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
-        key = apr_strtok(kvp, "=", &pair);
-        key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
-        key = mapcache_util_str_replace(ctx->pool, key, "_", "-");
-        // key = str_replace_all(ctx->pool, key, "_", "-");
-        val = apr_strtok(NULL, "=", &pair);
-
-        if (val != NULL) {
-            apr_table_addn(headers, key, val);
-        }
-        else {
-            apr_table_addn(headers, key, "");
-        }
-    }
-
-    ctx->headers_in = headers;
+    set_headers(ctx, environ);
 
     http_response = NULL;
     if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
