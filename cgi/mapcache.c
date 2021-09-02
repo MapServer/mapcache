@@ -236,7 +236,7 @@ static void set_headers(mapcache_context* ctx, char** env)
     // add all environ settings including HTTP headers to
     // a ctx->headers_in apr_table_t
 
-    char* key, * val, * kvp, * pair;
+    char * key, * val, * kvp, * pair;
     int i;
     int num_env_var;
     apr_table_t* headers;
@@ -253,7 +253,8 @@ static void set_headers(mapcache_context* ctx, char** env)
         // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
         key = apr_strtok(kvp, "=", &pair);
         key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
-        key = mapcache_util_str_replace_all(ctx->pool, key, "_", "-");
+        key = mapcache_util_str_replace_all(ctx->pool, apr_pstrdup(ctx->pool, key), "_", "-");
+
         val = apr_strtok(NULL, "=", &pair);
 
         if (val != NULL) {
