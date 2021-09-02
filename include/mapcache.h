@@ -1442,7 +1442,7 @@ MS_DLL_EXPORT char *mapcache_util_str_replace(apr_pool_t *pool, const char *stri
                                 const char *replacement );
 char *mapcache_util_dbl_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 double replacement );
-char *mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr,
+MS_DLL_EXPORT char *mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr,
                                     const char *replacement );
 char *mapcache_util_dbl_replace_all(apr_pool_t *pool, const char *string, const char *substr,
                                     double replacement );

@@ -39,6 +39,10 @@
 #include <fcgi_stdio.h>
 #endif
 
+#ifndef WIN32
+extern char** environ;
+#endif
+
 typedef struct mapcache_context_fcgi mapcache_context_fcgi;
 typedef struct mapcache_context_fcgi_request mapcache_context_fcgi_request;
 
@@ -158,7 +162,6 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
   }
 }
 
-
 apr_time_t mtime;
 char *conffile;
 
@@ -226,6 +229,43 @@ failed_load:
     apr_pool_destroy(tmp_config_pool);
   }
 
+}
+
+static void set_headers(mapcache_context* ctx, char** env)
+{
+    // add all environ settings including HTTP headers to
+    // a ctx->headers_in apr_table_t
+
+    char * key, * val, * kvp, * pair;
+    int i;
+    int num_env_var;
+    apr_table_t* headers;
+
+    num_env_var = 0;
+    while (env[num_env_var] != NULL)
+        num_env_var++;
+
+    headers = apr_table_make(ctx->pool, num_env_var);
+
+    for (i = 0; env[i] != NULL; i++) {
+        kvp = apr_pstrdup(ctx->pool, env[i]);
+
+        // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
+        key = apr_strtok(kvp, "=", &pair);
+        key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
+        key = mapcache_util_str_replace_all(ctx->pool, key, "_", "-");
+
+        val = apr_strtok(NULL, "=", &pair);
+
+        if (val != NULL) {
+            apr_table_addn(headers, key, val);
+        }
+        else {
+            apr_table_addn(headers, key, "");
+        }
+    }
+
+    ctx->headers_in = headers;
 }
 
 int main(int argc, const char **argv)
@@ -296,6 +336,8 @@ int main(int argc, const char **argv)
       fcgi_write_response(globalctx, mapcache_core_respond_to_error(ctx));
       goto cleanup;
     }
+
+    set_headers(ctx, environ);
 
     http_response = NULL;
     if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
