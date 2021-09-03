@@ -181,7 +181,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   apr_table_add(grid->metadata,"profile","global-mercator");
   apr_table_add(grid->metadata,"wellKnownScaleSet","urn:ogc:def:wkss:OGC:1.0:GoogleMapsCompatible");
   grid->tile_sx = grid->tile_sy = 256;
-  grid->nlevels = 19;
+  grid->nlevels = 22;
   grid->unit = MAPCACHE_UNIT_METERS;
   grid->extent = google_extent;
   grid->levels = (mapcache_grid_level**)apr_pcalloc(pool,
@@ -206,7 +206,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
   apr_table_add(grid->metadata,"profile","global-mercator");
   apr_table_add(grid->metadata,"wellKnownScaleSet","urn:ogc:def:wkss:OGC:1.0:GoogleMapsCompatible");
   grid->tile_sx = grid->tile_sy = 256;
-  grid->nlevels = 19;
+  grid->nlevels = 22;
   grid->unit = MAPCACHE_UNIT_METERS;
   grid->extent = google_extent;
   grid->levels = (mapcache_grid_level**)apr_pcalloc(pool,
