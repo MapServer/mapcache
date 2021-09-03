@@ -41,7 +41,7 @@ void mapcache_configuration_parse(mapcache_context *ctx, const char *filename, m
 
   GC_CHECK_ERROR(ctx);
 
-  /* if we were suppplied with an onlineresource, make sure it ends with a / */
+  /* if we were supplied with an onlineresource, make sure it ends with a / */
   if(NULL != (url = (char*)apr_table_get(config->metadata,"url"))) {
     char *urlend = url + strlen(url)-1;
     if(*urlend != '/') {
@@ -91,7 +91,7 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
     5.36441802978516e-6
   };
 
-  double google_resolutions[19] = {
+  double google_resolutions[22] = {
     156543.0339280410,
     78271.51696402048,
     39135.75848201023,
@@ -110,7 +110,10 @@ mapcache_cfg* mapcache_configuration_create(apr_pool_t *pool)
     4.777314267823516,
     2.388657133911758,
     1.194328566955879,
-    0.5971642834779395
+    0.5971642834779395,
+    0.2985821417389697,
+    0.1492910708694849,
+    0.0746455354347424
   };
 
 
