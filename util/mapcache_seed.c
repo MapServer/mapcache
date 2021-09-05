@@ -244,6 +244,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "ogr-datasource", 'd', TRUE, "ogr datasource to get features from"},
 #endif
   { "dimension", 'D', TRUE, "set the value of a dimension (format DIMENSIONNAME=VALUE). Can be used multiple times for multiple dimensions" },
+  { "header", 'H', TRUE, "set the value of a header to forward to back-end servers (format HEADERNAME=VALUE). Can be used multiple times for multiple headers" },
   { "extent", 'e', TRUE, "extent to seed, format: minx,miny,maxx,maxy" },
   { "force", 'f', FALSE, "force tile recreation even if it already exists" },
   { "grid", 'g', TRUE, "grid to seed" },
@@ -943,6 +944,30 @@ int usage(const char *progname, char *msg, ...)
   return 1;
 }
 
+static int parseKeyValuePairs(mapcache_context ctx, apr_table_t* argtable, const char* optarg)
+{
+    char* argkey = NULL, * argvalue = NULL, * key, * last, * optargcpy = NULL;
+    int keyidx;
+
+    optargcpy = apr_pstrdup(ctx.pool, optarg);
+    keyidx = 0;
+    for (key = apr_strtok(optargcpy, "=", &last); key != NULL;
+        key = apr_strtok(NULL, "=", &last)) {
+        if (keyidx == 0) {
+            argkey = key;
+        }
+        else {
+            argvalue = key;
+        }
+        keyidx++;
+    }
+    if (keyidx != 2 || !argkey || !argvalue || !*argkey || !*argvalue) {
+        return -1;
+    } else {
+        apr_table_set(argtable, argkey, argvalue);
+        return 0;
+    }
+}
 static int isPowerOfTwo(int x)
 {
   return (x & (x - 1)) == 0;
@@ -966,8 +991,7 @@ int main(int argc, const char **argv)
   const char *old = NULL;
   const char *optarg;
   apr_table_t *argdimensions;
-  char *dimkey=NULL, *dimvalue=NULL,*key, *last, *optargcpy=NULL;
-  int keyidx;
+  apr_table_t* argheaders;
   int *metasizes = NULL;//[2];
   int metax=-1,metay=-1;
   double *extent_array = NULL;
@@ -993,7 +1017,9 @@ int main(int argc, const char **argv)
 
   mapcache_gettimeofday(&starttime,NULL);
   argdimensions = apr_table_make(ctx.pool,3);
+  argheaders = apr_table_make(ctx.pool, 3);
 
+  ctx.headers_in = argheaders;
 
   /* parse the all options based on opt_option[] */
   while ((rv = apr_getopt_long(opt, seed_options, &optch, &optarg)) == APR_SUCCESS) {
@@ -1113,22 +1139,15 @@ int main(int argc, const char **argv)
         old = optarg;
         break;
       case 'D':
-        optargcpy = apr_pstrdup(ctx.pool,optarg);
-        keyidx = 0;
-        for (key = apr_strtok(optargcpy, "=", &last); key != NULL;
-             key = apr_strtok(NULL, "=", &last)) {
-          if(keyidx == 0) {
-            dimkey = key;
-          } else {
-            dimvalue = key;
-          }
-          keyidx++;
+        if(parseKeyValuePairs(ctx, argdimensions, optarg) < 0) {
+            return usage(argv[0], "failed to parse dimension, expecting DIMNAME=DIMVALUE");
         }
-        if(keyidx!=2 || !dimkey || !dimvalue || !*dimkey || !*dimvalue) {
-          return usage(argv[0], "failed to parse dimension, expecting DIMNAME=DIMVALUE");
-        }
-        apr_table_set(argdimensions,dimkey,dimvalue);
         break;
+      case 'H':
+          if (parseKeyValuePairs(ctx, argheaders, optarg) < 0) {
+              return usage(argv[0], "failed to parse headers, expecting HEADERNAME=VALUE");
+          }
+          break;
       case SEEDER_OPT_THREAD_DELAY:
         thread_delay = strtod(optarg, NULL);
         if(thread_delay < 0.0 )
