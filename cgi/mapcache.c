@@ -339,7 +339,6 @@ int main(int argc, const char **argv)
       goto cleanup;
     }
 
-    //set_headers(ctx, apr_pstrdup(ctx->pool, environ));
     set_headers(ctx, environ);
 
     http_response = NULL;
