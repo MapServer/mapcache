@@ -999,7 +999,8 @@ int main(int argc, const char **argv)
   while ((rv = apr_getopt_long(opt, seed_options, &optch, &optarg)) == APR_SUCCESS) {
     switch (optch) {
       case 'h':
-        return usage(argv[0],NULL);
+        usage(argv[0],NULL);
+        return 0;
         break;
       case 'f':
         force = 1;
