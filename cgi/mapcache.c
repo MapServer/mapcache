@@ -126,9 +126,7 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
     int i;
     for(i=0; i<elts->nelts; i++) {
       apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
-      if (!strcasecmp(entry.key, "Content-Type")) {
         printf("%s: %s\r\n", entry.key, entry.val);
-      }
     }
   }
   if(response->mtime) {
@@ -372,6 +370,8 @@ int main(int argc, const char **argv)
     } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
       mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
       http_response = mapcache_core_proxy_request(ctx, req_proxy);
+      // Content-Length is added again in fcgi_write_response
+      apr_table_unset(http_response->headers, "Content-Length");
     } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
       mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
       http_response = mapcache_core_get_map(ctx,req_map);
