@@ -126,7 +126,9 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
     int i;
     for(i=0; i<elts->nelts; i++) {
       apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
-      printf("%s: %s\r\n", entry.key, entry.val);
+      if (!strcasecmp(entry.key, "Content-Type")) {
+        printf("%s: %s\r\n", entry.key, entry.val);
+      }
     }
   }
   if(response->mtime) {
@@ -337,6 +339,7 @@ int main(int argc, const char **argv)
       goto cleanup;
     }
 
+    //set_headers(ctx, apr_pstrdup(ctx->pool, environ));
     set_headers(ctx, environ);
 
     http_response = NULL;
