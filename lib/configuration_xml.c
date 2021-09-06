@@ -741,6 +741,8 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     cache = mapcache_cache_couchbase_create(ctx);
   } else if(!strcmp(type,"riak")) {
     cache = mapcache_cache_riak_create(ctx);
+  } else if(!strcmp(type,"redis")) {
+    cache = mapcache_cache_redis_create(ctx);
   } else {
     ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"", type, name);
     return;
