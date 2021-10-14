@@ -19,7 +19,7 @@ Questions relating to MapCache use and development can be asked on the MapServer
 
   http://www.mapserver.org/community/lists.html  
   
-License
+-License-
 -------
 
 ::
