@@ -11,7 +11,7 @@ jobs:
 
         - run: mkdir build
         - run: cd build
-        - run: cmake ..
+        - run: cmake ${{ github.workspace }}
         - run: make
 
 
