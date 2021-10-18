@@ -9,7 +9,7 @@ jobs:
         - name: Checkout MapCache repository
           uses: actions/checkout@v2
 
-        - name: Install dependencies
+        - name: Install default dependencies
           run: |
             sudo apt-get update -y
             sudo apt-get upgrade -y
@@ -29,11 +29,22 @@ jobs:
         - name: Checkout MapCache repository
           uses: actions/checkout@v2
 
-        - name: Install dependencies
+        - name: Install default dependencies
           run: |
             sudo apt-get update -y
             sudo apt-get upgrade -y
             sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
+
+        - name: Install more dependencies
+          run |
+            sudo apt-get install -y libvibe-redis-dev libdb-dev libmapserver-dev
+
+        - name: Install RIAK dependency
+          run |
+            curl http://apt.basho.com/gpg/basho.apt.key | sudo apt-key add -
+            sudo bash -c "echo deb http://apt.basho.com `lsb_release -sc` main > /etc/apt/sources.list.d/basho.list"
+            sudo apt-get update -y
+            sudo apt-get install -y riak-dev
 
         - name: Build MapCache
           run: |
