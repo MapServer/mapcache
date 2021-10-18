@@ -3,17 +3,51 @@ on: [ push ]
 
 jobs:
 
+    build-minimum-on-bionic:
+      runs-on: ubuntu-18.04
+      steps:
+        - name: Checkout MapCache repository
+          uses: actions/checkout@v2
+
+        - name: Install minimal dependencies
+          run: |
+            sudo apt-get update -y
+            sudo apt-get upgrade -y
+            sudo apt-get install -y libcurl4-openssl-dev apache2-dev
+
+        - name: Build MapCache
+          run: |
+            mkdir build
+            cd build
+            cmake -DWITH_SQLITE=OFF \
+                  -DWITH_PIXMAN=OFF \
+                  -DWITH_GDAL=OFF \
+                  -DWITH_APACHE=OFF \
+                  -DWITH_CGI=OFF \
+                  -DWITH_OGR=OFF \
+                  -DWITH_GEOS=OFF \
+                  -DWITH_MAPCACHE_DETAIL=OFF \
+                  ${{ github.workspace }}
+            make
+            sudo make install
+
     build-default-on-bionic:
       runs-on: ubuntu-18.04
       steps:
         - name: Checkout MapCache repository
           uses: actions/checkout@v2
 
-        - name: Install default dependencies
+        - name: Install minimal dependencies
           run: |
             sudo apt-get update -y
             sudo apt-get upgrade -y
-            sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
+            sudo apt-get install -y libcurl4-openssl-dev apache2-dev
+
+        - name: Install more dependencies
+          run: |
+            sudo apt-get update -y
+            sudo apt-get upgrade -y
+            sudo apt-get install -y libgdal-dev libfcgi-dev
 
         - name: Build MapCache
           run: |
@@ -29,13 +63,19 @@ jobs:
         - name: Checkout MapCache repository
           uses: actions/checkout@v2
 
-        - name: Install default dependencies
+        - name: Install minimal dependencies
           run: |
             sudo apt-get update -y
             sudo apt-get upgrade -y
-            sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
+            sudo apt-get install -y libcurl4-openssl-dev apache2-dev
 
-        - name: Install more dependencies (all but Riak)
+        - name: Install more dependencies
+          run: |
+            sudo apt-get update -y
+            sudo apt-get upgrade -y
+            sudo apt-get install -y libgdal-dev libfcgi-dev
+
+        - name: Install even more dependencies (all but Riak)
           run: |
             sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev
 
