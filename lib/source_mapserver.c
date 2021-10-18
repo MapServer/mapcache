@@ -203,7 +203,7 @@ void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, e
 {
   ezxml_t cur_node;
   mapcache_source_mapserver *src = (mapcache_source_mapserver*)source;
-  if ((cur_node = ezxml_child(node,"mapfile")) != NULL) {
+  if ((cur_node = ezxml_child(cur_node,"mapfile")) != NULL) {
     src->mapfile = apr_pstrdup(ctx->pool,cur_node->txt);
   }
 }
