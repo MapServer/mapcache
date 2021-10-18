@@ -35,16 +35,9 @@ jobs:
             sudo apt-get upgrade -y
             sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
 
-        - name: Install more dependencies
+        - name: Install more dependencies (all but Riak)
           run: |
             sudo apt-get install -y libvibe-redis-dev libdb-dev libmapserver-dev
-
-        - name: Install RIAK dependency
-          run: |
-            curl http://apt.basho.com/gpg/basho.apt.key | sudo apt-key add -
-            echo deb http://apt.basho.com $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/basho.list
-            sudo apt-get update -y
-            sudo apt-get install -y riak-dev
 
         - name: Build MapCache
           run: |
@@ -59,7 +52,7 @@ jobs:
                   -DWITH_GEOTIFF=ON \
                   -DWITH_PCRE=ON \
                   -DWITH_MAPSERVER=ON \
-                  -DWITH_RIAK=ON \
+                  -DWITH_RIAK=OFF \
                   ${{ github.workspace }}
             make
             sudo make install
