@@ -37,7 +37,7 @@ jobs:
 
         - name: Install more dependencies (all but Riak)
           run: |
-            sudo apt-get install -y hiredis-dev libdb-dev libmapserver-dev
+            sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev
 
         - name: Build MapCache
           run: |
