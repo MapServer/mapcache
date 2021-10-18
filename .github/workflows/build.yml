@@ -13,7 +13,7 @@ jobs:
           run: |
             sudo apt update -y
             sudo apt upgrade -y
-            sudo apt install -y libcurl-dev
+            sudo apt install -y curl-dev
 
         - name: Build MapCache
           run: |
