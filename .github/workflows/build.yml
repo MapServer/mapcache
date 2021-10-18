@@ -36,13 +36,13 @@ jobs:
             sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
 
         - name: Install more dependencies
-          run |
+          run: |
             sudo apt-get install -y libvibe-redis-dev libdb-dev libmapserver-dev
 
         - name: Install RIAK dependency
-          run |
-            sudo apt-key add - < $(curl http://apt.basho.com/gpg/basho.apt.key)
-            sudo tee /etc/apt/sources.list.d/basho.list <<< $(echo deb http://apt.basho.com $(lsb_release -sc) main)
+          run: |
+            curl http://apt.basho.com/gpg/basho.apt.key | sudo apt-key add -
+            echo deb http://apt.basho.com $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/basho.list
             sudo apt-get update -y
             sudo apt-get install -y riak-dev
 
