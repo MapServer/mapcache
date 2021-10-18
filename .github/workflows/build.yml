@@ -3,7 +3,7 @@ on: [ push ]
 
 jobs:
 
-    build-on-bionic:
+    build-default-on-bionic:
       runs-on: ubuntu-18.04
       steps:
         - name: Checkout MapCache repository
@@ -20,6 +20,36 @@ jobs:
             mkdir build
             cd build
             cmake ${{ github.workspace }}
+            make
+            sudo make install
+
+    build-maximum-on-bionic:
+      runs-on: ubuntu-18.04
+      steps:
+        - name: Checkout MapCache repository
+          uses: actions/checkout@v2
+
+        - name: Install dependencies
+          run: |
+            sudo apt-get update -y
+            sudo apt-get upgrade -y
+            sudo apt-get install -y libcurl4-openssl-dev apache2-dev libgdal-dev libfcgi-dev
+
+        - name: Build MapCache
+          run: |
+            mkdir build
+            cd build
+            cmake -DWITH_POSTGRESQL=ON \
+                  -DWITH_BERKELEY_DB=ON \
+                  -DWITH_MEMCACHE=ON \
+                  -DWITH_REDIS=ON \
+                  -DWITH_TIFF=ON \
+                  -DWITH_TIFF_WRITE_SUPPORT=ON \
+                  -DWITH_GEOTIFF=ON \
+                  -DWITH_PCRE=ON \
+                  -DWITH_MAPSERVER=ON \
+                  -DWITH_RIAK=ON \
+                  ${{ github.workspace }}
             make
             sudo make install
 
