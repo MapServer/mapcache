@@ -11,9 +11,9 @@ jobs:
 
         - name: Install dependencies
           run: |
-            sudo apt update -y
-            sudo apt upgrade -y
-            sudo apt install -y curl-dev
+            sudo apt-get update -y
+            sudo apt-get upgrade -y
+            sudo apt-get install -y libcurl4-openssl-dev
 
         - name: Build MapCache
           run: |
