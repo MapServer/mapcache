@@ -13,7 +13,7 @@ jobs:
           run: |
             sudo apt-get update -y
             sudo apt-get upgrade -y
-            sudo apt-get install -y libcurl4-openssl-dev libapr1-dev libapu-dev
+            sudo apt-get install -y libcurl4-openssl-dev apache2-dev
 
         - name: Build MapCache
           run: |
