@@ -199,11 +199,11 @@ void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_source *ps
  * \private \memberof mapcache_source_mapserver
  * \sa mapcache_source::configuration_parse()
  */
-void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, ezxml_t xml, mapcache_source * source, mapcache_cfg *config)
+void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source * source, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_source_mapserver *src = (mapcache_source_mapserver*)source;
-  if ((cur_node = ezxml_child(cur_node,"mapfile")) != NULL) {
+  if ((cur_node = ezxml_child(node,"mapfile")) != NULL) {
     src->mapfile = apr_pstrdup(ctx->pool,cur_node->txt);
   }
 }
