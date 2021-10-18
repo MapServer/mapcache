@@ -9,9 +9,17 @@ jobs:
         - name: Checkout MapCache repository
           uses: actions/checkout@v2
 
-        - run: mkdir build
-        - run: cd build
-        - run: cmake ${{ github.workspace }}
-        - run: make
+        - name: Install dependencies
+          run: |
+            sudo apt update -y
+            sudo apt upgrade -y
+            sudo apt install -y libcurl-dev
+
+        - name: Build MapCache
+          run: |
+            mkdir build
+            cd build
+            cmake ${{ github.workspace }}
+            make
 
 
