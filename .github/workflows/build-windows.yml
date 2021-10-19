@@ -8,9 +8,6 @@ jobs:
         matrix:
           os: [ windows-2019 ]
           option: [ default ]
-      defaults:
-        run:
-          shell: bash
       runs-on: ${{ matrix.os }}
       steps:
         - name: Checkout repository
@@ -18,19 +15,17 @@ jobs:
 
         - name: Install dependencies
           run: |
-            mkdir sdk
-            cd sdk
-            pwd
-            sdk=$(pwd)
+            Set-Location -Path ${{ github.workspace }}
+            New-Item -Path . -Name "sdk" -ItemType "directory"
+            Set-Location -Path "sdk"
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
-            echo $sdk
-            cd ..
 
         - name: Build MapCache
           run: |
-            mkdir build
-            cd build
+            Set-Location -Path ${{ github.workspace }}
+            New-Item -Path . -Name "build" -ItemType "directory"
+            Set-Location -Path "build"
             cmake ${{ github.workspace }}
             make
             sudo make install
