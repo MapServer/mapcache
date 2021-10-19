@@ -19,38 +19,13 @@ jobs:
             cd sdk
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip release-1928-x64-dev.zip
+            cd ..
 
         - name: Build MapCache
           run: |
-            if [[ 'minimal' == ${{ matrix.option }} ]]
-            then
-              options="-DWITH_SQLITE=OFF \
-                       -DWITH_PIXMAN=OFF \
-                       -DWITH_GDAL=OFF \
-                       -DWITH_APACHE=OFF \
-                       -DWITH_CGI=OFF \
-                       -DWITH_OGR=OFF \
-                       -DWITH_GEOS=OFF \
-                       -DWITH_MAPCACHE_DETAIL=OFF"
-            elif [[ 'default' == ${{ matrix.option }} ]]
-            then
-              options=""
-            elif [[ 'maximal' == ${{ matrix.option }} ]]
-            then
-              options="-DWITH_POSTGRESQL=ON \
-                       -DWITH_BERKELEY_DB=ON \
-                       -DWITH_MEMCACHE=ON \
-                       -DWITH_REDIS=ON \
-                       -DWITH_TIFF=ON \
-                       -DWITH_TIFF_WRITE_SUPPORT=ON \
-                       -DWITH_GEOTIFF=ON \
-                       -DWITH_PCRE=ON \
-                       -DWITH_MAPSERVER=ON \
-                       -DWITH_RIAK=OFF"
-            fi
             mkdir build
             cd build
-            cmake ${options} ${{ github.workspace }}
+            cmake ${{ github.workspace }}
             make
             sudo make install
 
