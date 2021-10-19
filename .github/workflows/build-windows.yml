@@ -20,13 +20,14 @@ jobs:
             Set-Location -Path "sdk"
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
+            Set-Variable -Name "sdkprefix" -Value "${{ github.workspace }}\sdk\release-1928-x64"
 
         - name: Build MapCache
           run: |
             Set-Location -Path ${{ github.workspace }}
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
-            cmake -DCMAKE_PREFIX_PATH="${{ github.workspace }}\sdk\release-1928-x64" ${{ github.workspace }}
+            cmake -DCMAKE_PREFIX_PATH=$sdkprefix -DWITH_APACHE=OFF -DWITH_FCGI=OFF ${{ github.workspace }}
             make
             sudo make install
 
