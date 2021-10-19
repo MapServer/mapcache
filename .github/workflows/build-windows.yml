@@ -1,4 +1,4 @@
-name: Build MapCache
+name: Build MapCache on Windows
 on: [ push ]
 
 jobs:
@@ -6,8 +6,8 @@ jobs:
     build-matrix:
       strategy:
         matrix:
-          os: [ ubuntu-18.04, ubuntu-20.04 ]
-          option: [ minimal, default, maximal ]
+          os: [ windows-2019 ]
+          option: [ default ]
       runs-on: ${{ matrix.os }}
       steps:
         - name: Checkout repository
@@ -15,20 +15,10 @@ jobs:
 
         - name: Install dependencies
           run: |
-            if [[ 'minimal,default,maximal' =~ ${{ matrix.option }} ]]
-            then
-              sudo apt-get update -y
-              sudo apt-get upgrade -y
-              sudo apt-get install -y libcurl4-openssl-dev apache2-dev
-            fi
-            if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
-            then
-              sudo apt-get install -y libgdal-dev libfcgi-dev
-            fi
-            if [[ 'maximal' =~ ${{ matrix.option }} ]]
-            then
-              sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev
-            fi
+            mkdir sdk
+            cd sdk
+            curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
+            ls -l
 
         - name: Build MapCache
           run: |
