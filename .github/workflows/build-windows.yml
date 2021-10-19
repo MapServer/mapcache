@@ -18,7 +18,7 @@ jobs:
             mkdir sdk
             cd sdk
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
-            unzip release-1928-x64-dev.zip
+            unzip -qq release-1928-x64-dev.zip
             cd ..
 
         - name: Build MapCache
