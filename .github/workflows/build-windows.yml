@@ -8,6 +8,9 @@ jobs:
         matrix:
           os: [ windows-2019 ]
           option: [ default ]
+      defaults:
+        run:
+          shell: bash
       runs-on: ${{ matrix.os }}
       steps:
         - name: Checkout repository
@@ -17,10 +20,11 @@ jobs:
           run: |
             mkdir sdk
             cd sdk
-            set %SDK%=(GetItem .).FullName
+            pwd
+            sdk=$(pwd)
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
-            echo %SDK%
+            echo $sdk
             cd ..
 
         - name: Build MapCache
