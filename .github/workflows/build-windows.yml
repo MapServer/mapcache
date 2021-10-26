@@ -32,7 +32,7 @@ jobs:
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
             Write-Output "sdkprefix: $sdkprefix"
             Get-ChildItem -Path $sdkprefix
-            cmake -DCMAKE_PREFIX_PATH=$sdkprefix -DWITH_APACHE=OFF -DWITH_FCGI=OFF ${{ github.workspace }}
+            cmake -DCMAKE_PREFIX_PATH=($sdkprefix) -DWITH_APACHE=OFF -DWITH_FCGI=OFF ${{ github.workspace }}
             make
             sudo make install
 
