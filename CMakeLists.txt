@@ -59,6 +59,8 @@ check_function_exists("symlink"  HAVE_SYMLINK)
 check_function_exists ("timegm" HAVE_TIMEGM)
 check_function_exists ("strptime" HAVE_STRPTIME)
 
+MESSAGE("CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 if(APPLE)
   set(CMAKE_MACOSX_RPATH ON)
