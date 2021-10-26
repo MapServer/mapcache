@@ -27,6 +27,6 @@ jobs:
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
-            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=OFF ${{ github.workspace }}
+            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=OFF -DWITH_PCRE=ON ${{ github.workspace }}
             cmake --build . --config Release
 
