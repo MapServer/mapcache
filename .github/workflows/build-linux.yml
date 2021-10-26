@@ -1,5 +1,3 @@
-@@INVALID@@
-
 name: Build MapCache on Linux
 on: [ push ]
 
