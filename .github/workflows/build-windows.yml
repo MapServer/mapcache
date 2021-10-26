@@ -20,7 +20,9 @@ jobs:
             Set-Location -Path "sdk"
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
-            Set-Variable -Name "sdkprefix" -Value "${{ github.workspace }}\sdk\release-1928-x64"
+            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
+            Write-Output "sdkprefix: $sdkprefix"
+            Get-ChildItem -Path $sdkprefix
 
         - name: Build MapCache
           run: |
