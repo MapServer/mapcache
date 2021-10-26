@@ -27,6 +27,11 @@ jobs:
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
+            Copy-Item -Path "$sdkprefix\lib\libfcgi.lib" -Destination "$sdkprefix\lib\fcgi.lib"
+            Copy-Item -Path "$sdkprefix\lib\apr-1.lib" -Destination "$sdkprefix\lib\apr-1-1.lib"
+            Copy-Item -Path "$sdkprefix\lib\libapr-1.lib" -Destination "$sdkprefix\lib\apr-1.lib"
+            Copy-Item -Path "$sdkprefix\lib\aprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1-1.lib"
+            Copy-Item -Path "$sdkprefix\lib\libaprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1.lib"
             cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=OFF -DWITH_PCRE=ON ${{ github.workspace }}
             cmake --build . --config Release
 
