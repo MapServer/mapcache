@@ -27,6 +27,8 @@ jobs:
             Set-Location -Path ${{ github.workspace }}
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
+            Write-Output "sdkprefix: $sdkprefix"
+            Get-ChildItem -Path $sdkprefix
             cmake -DCMAKE_PREFIX_PATH=($sdkprefix) -DWITH_APACHE=OFF -DWITH_FCGI=OFF ${{ github.workspace }}
             make
             sudo make install
