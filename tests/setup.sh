@@ -34,7 +34,7 @@ sudo chmod -R a+rw /tmp/mc
 cp data/mapcache.xml data/world.tif /tmp/mc
 
 sudo cp data/mapcache.load data/mapcache.conf /etc/apache2/mods-available
-sudo ln -s ../mods-available/mapcache.load etc/apache2/mods-enabled
-sudo ln -s ../mods-available/mapcache.conf etc/apache2/mods-enabled
+sudo ln -s ../mods-available/mapcache.load /etc/apache2/mods-enabled
+sudo ln -s ../mods-available/mapcache.conf /etc/apache2/mods-enabled
 
 sudo apache2ctl -k restart
