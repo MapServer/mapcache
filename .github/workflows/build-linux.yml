@@ -23,7 +23,7 @@ jobs:
             fi
             if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
             then
-              sudo apt-get install -y libgdal-dev libfcgi-dev
+              sudo apt-get install -y libgdal-dev libfcgi-dev gdal-bin
             fi
             if [[ 'maximal' =~ ${{ matrix.option }} ]]
             then
