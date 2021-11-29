@@ -67,7 +67,7 @@ jobs:
         - name: Setup tests
           run: |
             if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
-               && 'default' == ${{ matrix.option }} ]]
+               && [[ 'default' == ${{ matrix.option }} ]]
             then
               cd ${{ github.workspace }}/tests
               mkdir /tmp/mc
@@ -85,7 +85,7 @@ jobs:
         - name: Run tests
           run: |
             if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
-               && 'default' == ${{ matrix.option }} ]]
+               && [[ 'default' == ${{ matrix.option }} ]]
             then
               mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
               gdalinfo -checksum \
