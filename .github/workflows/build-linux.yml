@@ -73,6 +73,8 @@ jobs:
             then
               cd ${{ github.workspace }}/tests
               ./setup.sh
+            else
+              echo No test performed on this target
             fi
 
         - name: Run tests
