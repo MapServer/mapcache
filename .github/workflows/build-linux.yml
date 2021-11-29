@@ -66,23 +66,13 @@ jobs:
             sudo make install
             sudo ldconfig
 
-        - name: Setup tests
-          run: |
-            if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
-               && [[ 'default' == ${{ matrix.option }} ]]
-            then
-              cd ${{ github.workspace }}/tests
-              ./setup.sh
-            else
-              echo No test performed on this target
-            fi
-
         - name: Run tests
           run: |
             if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
                && [[ 'default' == ${{ matrix.option }} ]]
             then
               cd ${{ github.workspace }}/tests
+              ./setup.sh
               ./run.sh
             else
               echo No test performed on this target
