@@ -23,7 +23,8 @@ jobs:
             fi
             if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
             then
-              sudo apt-get install -y libgdal-dev libfcgi-dev gdal-bin
+              sudo apt-get install -y libgdal-dev libfcgi-dev libpixman-1-dev
+              sudo apt-get install -y gdal-bin libxml2-utils
             fi
             if [[ 'maximal' =~ ${{ matrix.option }} ]]
             then
@@ -71,16 +72,7 @@ jobs:
                && [[ 'default' == ${{ matrix.option }} ]]
             then
               cd ${{ github.workspace }}/tests
-              mkdir /tmp/mc
-              sudo chmod -R a+rw /tmp/mc
-              cp data/mapcache.xml /tmp/mc
-              cp data/world.tif /tmp/mc
-              sudo cp data/mapcache.load /etc/apache2/mods-available
-              sudo cp data/mapcache.conf /etc/apache2/mods-available
-              cd /etc/apache2/mods-enabled/
-              sudo ln -s ../mapcache.load mapcache.load
-              sudo ln -s ../mapcache.conf mapcache.conf
-              sudo service apache2 restart
+              ./setup.sh
             fi
 
         - name: Run tests
@@ -88,7 +80,6 @@ jobs:
             if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
                && [[ 'default' == ${{ matrix.option }} ]]
             then
-              mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
-              gdalinfo -checksum \
-                /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg
+              cd ${{ github.workspace }}/tests
+              ./run.sh
             fi
