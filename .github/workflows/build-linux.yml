@@ -63,6 +63,7 @@ jobs:
             cmake ${options} ${{ github.workspace }}
             make
             sudo make install
+            sudo ldconfig
 
         - name: Setup tests
           run: |
