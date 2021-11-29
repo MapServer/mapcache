@@ -64,3 +64,21 @@ jobs:
             make
             sudo make install
 
+        - name: Setup tests
+          run: |
+            cd ../tests
+            mkdir /tmp/mc
+            sudo chmod -R a+rw /tmp/mc
+            cp data/mapcache.xml /tmp/mc
+            cp data/world.tif /tmp/mc
+            sudo cp data/mapcache.load /etc/apache2/mods-available
+            sudo cp data/mapcache.conf /etc/apache2/mods-available
+            sudo ln -s ../mapcache.load /etc/apache2/mods-enabled/mapcache.conf
+            sudo ln -s ../mapcache.conf /etc/apache2/mods-enabled/mapcache.conf
+            sudo service apache2 restart
+
+        - name: Run tests
+          run: |
+            mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
+            gdalinfo -checksum \
+              /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg
