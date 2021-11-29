@@ -32,9 +32,16 @@ MAPCACHE_CONF=/tmp/mc/mapcache.xml
 
 sudo rm -rf /tmp/mc/global
 mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
-gdalinfo -checksum /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg | grep Checksum=20250 >/dev/null || (echo "Did not get expected checksum"; gdalinfo -checksum /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg; /bin/false)
-sudo rm -rf /tmp/mc/global
+if gdalinfo -checksum /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg | grep -q Checksum=20250
+then
+  echo Success
+else
+  echo "Failure: Did not get expected checksum"
+  gdalinfo -checksum /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg
+  /bin/false
+fi
 
+sudo rm -rf /tmp/mc/global
 curl -s "http://localhost/mapcache/?SERVICE=WMS&REQUEST=GetCapabilities" | xmllint --format - > /tmp/wms_capabilities.xml
 diff -u /tmp/wms_capabilities.xml expected
 
@@ -42,7 +49,14 @@ curl -s "http://localhost/mapcache/wmts?SERVICE=WMTS&REQUEST=GetCapabilities" | 
 diff -u /tmp/wmts_capabilities.xml expected
 
 curl -s "http://localhost/mapcache/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg" > /tmp/0.jpg
-gdalinfo -checksum /tmp/0.jpg | grep Checksum=20250 >/dev/null || (echo "Did not get expected checksum"; gdalinfo -checksum /tmp/0.jpg; /bin/false)
+if gdalinfo -checksum /tmp/0.jpg | grep -q Checksum=20250
+then
+  echo Success
+else
+  echo "Failure: Did not get expected checksum"
+  gdalinfo -checksum /tmp/0.jpg
+  /bin/false
+fi
 
 curl -s "http://localhost/mapcache/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg" > /tmp/0_bis.jpg
 diff /tmp/0.jpg /tmp/0_bis.jpg

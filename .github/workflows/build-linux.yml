@@ -84,4 +84,6 @@ jobs:
             then
               cd ${{ github.workspace }}/tests
               ./run.sh
+            else
+              echo No test performed on this target
             fi
