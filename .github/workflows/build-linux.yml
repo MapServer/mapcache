@@ -66,7 +66,7 @@ jobs:
 
         - name: Setup tests
           run: |
-            cd ../tests
+            cd ${{ github.workspace }}/tests
             mkdir /tmp/mc
             sudo chmod -R a+rw /tmp/mc
             cp data/mapcache.xml /tmp/mc
@@ -79,6 +79,10 @@ jobs:
 
         - name: Run tests
           run: |
-            mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
-            gdalinfo -checksum \
-              /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg
+            if [[ 'default' == ${{ matrix.option }} ]] \
+               && 'default' == ${{ matrix.option }} ]]
+            then
+              mapcache_seed -c /tmp/mc/mapcache.xml -t global --force -z 0,1
+              gdalinfo -checksum \
+                /tmp/mc/global/GoogleMapsCompatible/00/000/000/000/000/000/000.jpg
+            fi
