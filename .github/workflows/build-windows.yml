@@ -34,4 +34,10 @@ jobs:
             Copy-Item -Path "$sdkprefix\lib\libaprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1.lib"
             cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{ github.workspace }}
             cmake --build . --config Release
+            Copy-Item -Path Release\mapcache.dll -Destination .
+            Copy-Item -Path cgi\Release\mapcache.fcgi.exe -Destination .
+            Copy-Item -Path util\Release\mapcache_seed.exe -Destination .
+            Copy-Item -Path contrib\mapcache_detail\Release\mapcache_detail.exe -Destination .
+            Compress-Archive -DestinationPath mapcache.zip -Path mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
+            Get-ChildItem
 
