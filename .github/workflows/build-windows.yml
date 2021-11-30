@@ -49,6 +49,6 @@ jobs:
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
-            Start-Process -NoNewWindow -Wait -FilePath "mapcache.fcgi.exe"
-            Start-Process -NoNewWindow -Wait -FilePath "mapcache_seed.exe" -ArgumentList "-h"
+            Start-Process -NoNewWindow -Wait -FilePath ".\mapcache.fcgi.exe"
+            Start-Process -NoNewWindow -Wait -FilePath ".\mapcache_seed.exe" -ArgumentList "-h"
 
