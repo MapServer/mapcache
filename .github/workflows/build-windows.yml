@@ -32,6 +32,6 @@ jobs:
             Copy-Item -Path "$sdkprefix\lib\libapr-1.lib" -Destination "$sdkprefix\lib\apr-1.lib"
             Copy-Item -Path "$sdkprefix\lib\aprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1-1.lib"
             Copy-Item -Path "$sdkprefix\lib\libaprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1.lib"
-            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=OFF -DWITH_PCRE=ON ${{ github.workspace }}
+            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{ github.workspace }}
             cmake --build . --config Release
 
