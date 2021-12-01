@@ -65,4 +65,5 @@ jobs:
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
-            Get-ChildItem -Path "proj"
+            Get-ChildItem -Path "proj" -Recurse
+            Get-ChildItem -Path "proj7" -Recurse
