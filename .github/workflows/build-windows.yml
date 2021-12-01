@@ -53,6 +53,7 @@ jobs:
             .\mapcache.fcgi.exe
             Stop-Transcript
             Get-ChildItem -Path "${{ github.workspace }}\build"
+            Get-Content -Path "${{ github.workspace }}\build\fcgi.out" | Format-Hex
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
