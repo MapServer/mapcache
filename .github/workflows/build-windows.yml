@@ -50,6 +50,7 @@ jobs:
             Set-Content -Path "mapcache.xml" -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><mapcache><source name=`"global-tif`" type=`"gdal`"><data>${{ github.workspace }}\build\world.tif</data></source>"
             Add-Content -Path "mapcache.xml" -Value "<cache name=`"disk`" type=`"disk`"><base>${{ github.workspace }}\build</base></cache>"
             Add-Content -Path "mapcache.xml" -Value "<tileset name=`"global`"><cache>disk</cache><source>global-tif</source><grid maxzoom=`"17`">GoogleMapsCompatible</grid><format>JPEG</format><metatile>1 1</metatile></tileset>"
+            Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{ github.workspace }}\build</directory></locker>"
             Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
             Set-Location -Path "$sdkprefix\bin"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
