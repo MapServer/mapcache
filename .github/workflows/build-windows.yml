@@ -62,6 +62,7 @@ jobs:
             Start-Transcript -Path "${{ github.workspace }}\build\fcgi.out"
             .\mapcache.fcgi.exe
             Stop-Transcript
+            Get-Content -Path "${{ github.workspace }}\build\fcgi.out"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
