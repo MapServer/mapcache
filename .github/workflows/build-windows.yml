@@ -44,5 +44,5 @@ jobs:
         - name: Run tests
           run: |
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
-            Get-ChildItem -Path "$sdkprefix\bin"
+            Set-Location -Path "$sdkprefix\bin"
             .\mapcache_seed.exe -h
