@@ -44,6 +44,7 @@ jobs:
         - name: Run tests
           shell: cmd
           run: |
+            set PATH=%PATH%;${{ github.workspace }}\build
             cd ${{ github.workspace }}\build
             dir
-            .\mapcache_seed.exe -h
+            mapcache_seed.exe -h
