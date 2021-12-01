@@ -60,14 +60,14 @@ jobs:
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
             .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
-            Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
+            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            ( .\mapcache.fcgi.exe | Select-Object -Skip 12 ) | Set-Content "${{ github.workspace }}\build\fcgi.out"
-            Get-ChildItem -Path "${{ github.workspace }}\build"
-            Get-Content -Path "${{ github.workspace }}\build\fcgi.out"
+            ( .\mapcache.fcgi.exe | Select-Object -Skip 12 ) | Set-Content "${{ github.workspace }}\build\fcgi.out.jpg"
+            Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
+            Get-Content -Path "${{ github.workspace }}\build\fcgi.out.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
