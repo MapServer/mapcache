@@ -45,11 +45,14 @@ jobs:
           run: |
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
             Set-Location -Path "$sdkprefix\bin"
-            $MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\mapcache.xml"
-            $PATH_INFO = "/"
-            $REQUEST_METHOD = "GET"
-            $QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
+            $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\mapcache.xml"
+            $env:PATH_INFO = "/"
+            $env:REQUEST_METHOD = "GET"
+            $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/png&SRS=EPSG:4326&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=test&TRANSPARENT=TRUE"
+            Start-Transcript -Path "${{ github.workspace }}\build\fcgi.out"
             .\mapcache.fcgi.exe
+            Stop-Transcript
+            Get-ChildItem -Path "${{ github.workspace }}\build"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
