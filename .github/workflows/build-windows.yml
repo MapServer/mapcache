@@ -41,7 +41,7 @@ jobs:
             Set-Location -Path "$sdkprefix\bin"
             Compress-Archive -DestinationPath "${{ github.workspace }}\build\mapcache.zip" -Path "${{ github.workspace }}\mapcache.xml", mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
 
-        - name: Run tests
+        - name: Setup tests
           run: |
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
             Set-Location -Path "${{ github.workspace }}\build"
@@ -52,16 +52,20 @@ jobs:
             Add-Content -Path "mapcache.xml" -Value "<tileset name=`"global`"><cache>disk</cache><source>global-tif</source><grid maxzoom=`"17`">GoogleMapsCompatible</grid><format>JPEG</format><metatile>1 1</metatile></tileset>"
             Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{ github.workspace }}\build</directory></locker>"
             Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
+
+        - name: Run tests
+          run: |
+            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
             Set-Location -Path "$sdkprefix\bin"
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
+            .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
+            Get-ChildItem -Path "${{ github.workspace }}\build"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            #Start-Transcript -Path "${{ github.workspace }}\build\fcgi.out"
             ( .\mapcache.fcgi.exe | Select-Object -Skip 12 ) | Set-Content "${{ github.workspace }}\build\fcgi.out"
-            #Stop-Transcript
             Get-ChildItem -Path "${{ github.workspace }}\build"
             Get-Content -Path "${{ github.workspace }}\build\fcgi.out"
             .\mapcache_seed.exe -h
