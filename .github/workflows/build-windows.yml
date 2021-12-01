@@ -34,14 +34,15 @@ jobs:
             Copy-Item -Path "$sdkprefix\lib\libaprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1.lib"
             cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{ github.workspace }}
             cmake --build . --config Release
-            Copy-Item -Path ..\mapcache.xml -Destination .
-            Copy-Item -Path Release\mapcache.dll -Destination .
-            Copy-Item -Path cgi\Release\mapcache.fcgi.exe -Destination .
-            Copy-Item -Path util\Release\mapcache_seed.exe -Destination .
-            Copy-Item -Path contrib\mapcache_detail\Release\mapcache_detail.exe -Destination .
-            Compress-Archive -DestinationPath mapcache.zip -Path mapcache.xml, mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
+            Copy-Item -Path Release\mapcache.dll -Destination "$sdkprefix\bin"
+            Copy-Item -Path cgi\Release\mapcache.fcgi.exe -Destination "$sdkprefix\bin"
+            Copy-Item -Path util\Release\mapcache_seed.exe -Destination "$sdkprefix\bin"
+            Copy-Item -Path contrib\mapcache_detail\Release\mapcache_detail.exe -Destination "$sdkprefix\bin"
+            Set-Location -Path "$sdkprefix\bin"
+            Compress-Archive -DestinationPath "${{ github.workspace }}\build\mapcache.zip" -Path "${{ github.workspace }}\mapcache.xml", mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
 
         - name: Run tests
           run: |
             $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
-            Get-ChildItem -Path "$sdkprefix"
+            Get-ChildItem -Path "$sdkprefix\bin"
+            .\mapcache_seed.exe -h
