@@ -42,11 +42,6 @@ jobs:
             Compress-Archive -DestinationPath mapcache.zip -Path mapcache.xml, mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
 
         - name: Run tests
-          shell: cmd
           run: |
-            cd $sdkprefix\bin
-            dir
-            set PATH=%PATH%;${{ github.workspace }}\build
-            cd ${{ github.workspace }}\build
-            dir
-            mapcache_seed.exe -h
+            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
+            Get-ChildItem -Path "$sdkprefix"
