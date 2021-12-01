@@ -23,6 +23,7 @@ jobs:
 
         - name: Build MapCache
           run: |
+            $ErrorView = "NormalView"
             Set-Location -Path ${{ github.workspace }}
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
