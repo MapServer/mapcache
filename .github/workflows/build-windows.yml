@@ -64,4 +64,5 @@ jobs:
             Stop-Transcript
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
-            Get-ChildItem -Path "proj.7"
+            Get-ChildItem -Path .
+            Get-ChildItem -Path "proj"
