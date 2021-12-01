@@ -60,7 +60,7 @@ jobs:
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
             .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
-            Get-ChildItem -Path "${{ github.workspace }}\build"
+            Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
