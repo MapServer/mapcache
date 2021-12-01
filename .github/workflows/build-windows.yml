@@ -44,7 +44,7 @@ jobs:
         - name: Run tests
           shell: cmd
           run: |
-            cd ${{ github.workspace }}\sdk
+            cd $sdkprefix\bin
             dir
             set PATH=%PATH%;${{ github.workspace }}\build
             cd ${{ github.workspace }}\build
