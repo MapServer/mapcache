@@ -60,7 +60,7 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             #Start-Transcript -Path "${{ github.workspace }}\build\fcgi.out"
-            .\mapcache.fcgi.exe
+            .\mapcache.fcgi.exe | Set-Content "${{ github.workspace }}\build\fcgi.out"
             #Stop-Transcript
             #Get-Content -Path "${{ github.workspace }}\build\fcgi.out"
             .\mapcache_seed.exe -h
