@@ -53,6 +53,8 @@ jobs:
             Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{ github.workspace }}\build</directory></locker>"
             Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
             Set-Location -Path "$sdkprefix\bin"
+            $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
+            $env:PROJ_LIB = "$sdkprefix\bin\proj.7"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
@@ -62,4 +64,4 @@ jobs:
             Stop-Transcript
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
-            Get-ChildItem -Path .
+            Get-ChildItem -Path "proj.7"
