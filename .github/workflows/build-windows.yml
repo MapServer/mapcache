@@ -52,3 +52,4 @@ jobs:
             .\mapcache.fcgi.exe
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
+            Get-ChildItem -Path .
