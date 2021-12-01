@@ -67,7 +67,7 @@ jobs:
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             ( .\mapcache.fcgi.exe | Select-Object -Skip 12 ) | Set-Content "${{ github.workspace }}\build\fcgi.out.jpg"
             Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
-            Get-Content -Path "${{ github.workspace }}\build\fcgi.out.jpg"
+            \gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi.out.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
             Get-ChildItem -Path .
