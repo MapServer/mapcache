@@ -45,4 +45,4 @@ jobs:
           shell: cmd
           run: |
             cd ${{ github.workspace }}\build
-            mapcache_seed.exe -h
+            dir
