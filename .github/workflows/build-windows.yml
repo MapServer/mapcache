@@ -66,7 +66,11 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             .\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out.jpg"
-            Get-Content -Encoding oem -Path "${{ github.workspace }}\build\fcgi.out.jpg"
-            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi.out.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
+
+          - name: Upload artifacts
+            uses: actions/upload-artifact@v2
+            with:
+              name: test-data
+              path: "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
