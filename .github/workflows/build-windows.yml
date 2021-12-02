@@ -67,7 +67,6 @@ jobs:
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             $procInfo = New-Object System.Diagnostics.ProcessStartInfo -Property @{
               FileName = "mapcache.fcgi.exe"
-              Arguments = ""
               RedirectStandardError = $true
               RedirectStandardOutput = $true
               UseShellExecute = $false
