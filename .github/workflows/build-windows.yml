@@ -66,6 +66,7 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             .\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out"
+            Get-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out"
             Copy-Item -Path "${{ github.workspace }}\build\fcgi.out" -Destination "${{ github.workspace }}\build\fcgi.out.jpg"
             Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi.out.jpg"
