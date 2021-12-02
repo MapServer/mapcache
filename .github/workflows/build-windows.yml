@@ -61,6 +61,7 @@ jobs:
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
             .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
+            Copy-Item -Path "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{ github.workspace }}\0.jpg"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
@@ -73,4 +74,4 @@ jobs:
           uses: actions/upload-artifact@v2
           with:
             name: test-data
-            path: "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
+            path: 0.jpg
