@@ -79,10 +79,10 @@ jobs:
             $length = $proc.StandardOutput.Length
             $s = New-Object 'char[]' $length
             $proc.StandardOutput.Read($s, 0, $length - 1)
-            Set-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out" -Value "$s"
+            Set-Content -Encoding oem -Path "${{ github.workspace }}\build\fcgi.out" -Value "$s"
 
             #.\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out"
-            Get-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out"
+            Get-Content -Encoding oem -Path "${{ github.workspace }}\build\fcgi.out"
             Copy-Item -Path "${{ github.workspace }}\build\fcgi.out" -Destination "${{ github.workspace }}\build\fcgi.out.jpg"
             Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi.out.jpg"
