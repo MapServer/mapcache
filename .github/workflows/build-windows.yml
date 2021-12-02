@@ -65,24 +65,7 @@ jobs:
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            $procInfo = New-Object System.Diagnostics.ProcessStartInfo -Property @{
-              FileName = "cmd.exe"
-              Arguments = "mapcache.fcgi.exe"
-              RedirectStandardError = $true
-              RedirectStandardOutput = $true
-              UseShellExecute = $false
-            }
-            $proc = New-Object System.Diagnostics.Process
-            $proc.StartInfo = $procInfo
-            $proc.Start() | Out-Null
-            $proc.WaitForExit()
-            $length = $proc.StandardOutput.Length
-            $s = New-Object 'char[]' $length
-            $proc.StandardOutput.Read($s, 0, $length - 1)
-            $s
-            Set-Content -Encoding oem -Path "${{ github.workspace }}\build\fcgi.out" -Value "$s"
-
-            #.\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out"
+            .\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out"
             Get-Content -Encoding oem -Path "${{ github.workspace }}\build\fcgi.out"
             Copy-Item -Path "${{ github.workspace }}\build\fcgi.out" -Destination "${{ github.workspace }}\build\fcgi.out.jpg"
             Get-ChildItem -Path "${{ github.workspace }}\build\global" -Recurse
