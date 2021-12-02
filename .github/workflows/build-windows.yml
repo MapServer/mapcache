@@ -79,7 +79,7 @@ jobs:
             $length = $proc.StandardOutput.Length
             $s = New-Object 'char[]' $length
             $proc.StandardOutput.Read($s, 0, $length - 1)
-            Set-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out"" -Value "$s"
+            Set-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out" -Value "$s"
 
             #.\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out"
             Get-Content -AsByteStream -Path "${{ github.workspace }}\build\fcgi.out"
