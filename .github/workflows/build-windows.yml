@@ -67,7 +67,8 @@ jobs:
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            .\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out.jpg"
+            #.\mapcache.fcgi.exe | Out-File -Encoding oem -FilePath "${{ github.workspace }}\build\fcgi.out.jpg"
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgi.out" -NoNewWindow -Wait
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
 
@@ -77,4 +78,4 @@ jobs:
             name: test-data
             path: |
               0.jpg
-              build/fcgi.out.jpg
+              build/fcgi.out
