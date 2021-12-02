@@ -68,7 +68,7 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=0,0,10,10&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgi.jpg" -NoNewWindow -Wait
-            perl.exe -ni -e 'print unless /: / or /^\s*$/' "${{ github.workspace }}\build\fcgi.jpg"
+            perl.exe -0777 -pi -e 's/\s*.*: .*\s*//g' "${{ github.workspace }}\build\fcgi.jpg"
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
