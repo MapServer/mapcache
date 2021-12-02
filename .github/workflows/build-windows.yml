@@ -69,8 +69,8 @@ jobs:
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
 
-          - name: Upload artifacts
-            uses: actions/upload-artifact@v2
-            with:
-              name: test-data
-              path: "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
+        - name: Upload artifacts
+          uses: actions/upload-artifact@v2
+          with:
+            name: test-data
+            path: "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
