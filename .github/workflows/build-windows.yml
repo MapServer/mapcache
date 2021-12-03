@@ -75,7 +75,7 @@ jobs:
             Copy-Item -Path "${{ github.workspace }}\build\fcgi-1.out" -Destination "${{ github.workspace }}\build\fcgi-2.out"
             perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g' "${{ github.workspace }}\build\fcgi-2.out"
             Copy-Item -Path "${{ github.workspace }}\build\fcgi-2.out" -Destination "${{ github.workspace }}\build\fcgi-3.out"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\r\n//' "${{ github.workspace }}\build\fcgi-3.out"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\n//' "${{ github.workspace }}\build\fcgi-3.out"
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi-3.out"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
