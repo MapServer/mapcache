@@ -67,9 +67,15 @@ jobs:
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgiwms.raw" -NoNewWindow -Wait
-            Copy-Item -Path "${{ github.workspace }}\build\fcgiwms.raw" -Destination "${{ github.workspace }}\build\fcgiwms.jpg"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\r\n/\n/g;s/[A-Z][-:; ,\/=A-Za-z0-9]*\n//g;s/\n//' "${{ github.workspace }}\build\fcgiwms.jpg"
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgi-0.out" -NoNewWindow -Wait
+            Copy-Item -Path "${{ github.workspace }}\build\fcgi-0.out" -Destination "${{ github.workspace }}\build\fcgi-a.out"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/A/A/g' "${{ github.workspace }}\build\fcgi-a.out"
+            Copy-Item -Path "${{ github.workspace }}\build\fcgi-0.out" -Destination "${{ github.workspace }}\build\fcgi-1.out"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\r\n/\n/g' "${{ github.workspace }}\build\fcgi-1.out"
+            Copy-Item -Path "${{ github.workspace }}\build\fcgi-1.out" -Destination "${{ github.workspace }}\build\fcgi-2.out"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\n//g' "${{ github.workspace }}\build\fcgi-2.out"
+            Copy-Item -Path "${{ github.workspace }}\build\fcgi-2.out" -Destination "${{ github.workspace }}\build\fcgi-3.out"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\n//' "${{ github.workspace }}\build\fcgi-3.out"
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgiwms.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
@@ -80,5 +86,8 @@ jobs:
             name: test-data
             path: |
               0.jpg
-              build/fcgiwms.raw
-              build/fcgiwms.jpg
+              build/fcgi-0.out
+              build/fcgi-a.out
+              build/fcgi-1.out
+              build/fcgi-2.out
+              build/fcgi-3.out
