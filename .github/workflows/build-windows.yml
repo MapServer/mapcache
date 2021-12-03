@@ -60,23 +60,20 @@ jobs:
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
             .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
-            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
+            Copy-Item -Path "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{ github.workspace }}\seed.jpg"
+            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             $match
-            Copy-Item -Path "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{ github.workspace }}\0.jpg"
             $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
-            $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
-            $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgi-0.out" -NoNewWindow -Wait
-            Copy-Item -Path "${{ github.workspace }}\build\fcgi-0.out" -Destination "${{ github.workspace }}\build\fcgi.jpg"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{ github.workspace }}\build\fcgi.jpg"
-            Copy-Item -Path "${{ github.workspace }}\build\fcgi-0.out" -Destination "${{ github.workspace }}\build\fcgi-1.out"
-            Copy-Item -Path "${{ github.workspace }}\build\fcgi-1.out" -Destination "${{ github.workspace }}\build\fcgi-2.out"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g' "${{ github.workspace }}\build\fcgi-2.out"
-            Copy-Item -Path "${{ github.workspace }}\build\fcgi-2.out" -Destination "${{ github.workspace }}\build\fcgi-3.out"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\n//' "${{ github.workspace }}\build\fcgi-3.out"
-            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgi-3.out"
-            .\mapcache_seed.exe -h
+            #$env:PATH_INFO = "/"
+            #$env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
+            $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
+            $env:QUERY_STRING = ""
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\fcgi.jpg" -NoNewWindow -Wait
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{ github.workspace }}\fcgi.jpg"
+            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\fcgi.jpg"
+            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
+            $match
             .\mapcache_detail.exe --help
 
         - name: Upload artifacts
@@ -84,9 +81,5 @@ jobs:
           with:
             name: test-data
             path: |
-              0.jpg
-              build/fcgi-0.out
-              build/fcgi-1.out
-              build/fcgi-2.out
-              build/fcgi-3.out
-              build/fcgi.jpg
+              seed.jpg
+              fcgi.jpg
