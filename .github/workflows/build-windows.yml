@@ -67,20 +67,13 @@ jobs:
             $env:PATH_INFO = "/"
             $env:REQUEST_METHOD = "GET"
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgiwms.jpg" -NoNewWindow -Wait
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgiwms.raw" -NoNewWindow -Wait
             perl.exe -version
-            Copy-Item -Path "${{ github.workspace }}\build\fcgiwms.jpg" -Destination "${{ github.workspace }}\build\fcgiwms.raw"
-            perl.exe -0777 -pi -e "s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\r\n//g" "${{ github.workspace }}\build\fcgiwms.jpg"
-            perl.exe -0777 -pi -e "s/\r\r\n//" "${{ github.workspace }}\build\fcgiwms.jpg"
-            perl.exe -0777 -pi -e "s/\r\n/\n/g" "${{ github.workspace }}\build\fcgiwms.jpg"
+            Copy-Item -Path "${{ github.workspace }}\build\fcgiwms.raw" -Destination "${{ github.workspace }}\build\fcgiwms.jpg"
+            perl.exe -0777 -pi -e "s/[A-Z][-:; ,\/=A-Za-z0-9]*\\r\\r\\n//g" "${{ github.workspace }}\build\fcgiwms.jpg"
+            perl.exe -0777 -pi -e "s/\\r\\r\\n//" "${{ github.workspace }}\build\fcgiwms.jpg"
+            perl.exe -0777 -pi -e "s/\\r\\n/\\n/g" "${{ github.workspace }}\build\fcgiwms.jpg"
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgiwms.jpg"
-            $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
-            $env:QUERY_STRING = ""
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgiwmts.jpg" -NoNewWindow -Wait
-            perl.exe -0777 -pi -e "s/\r\n/\n/g" "${{ github.workspace }}\build\fcgiwmts.jpg"
-            perl.exe -0777 -pi -e "s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g" "${{ github.workspace }}\build\fcgiwmts.jpg"
-            perl.exe -0777 -pi -e "s/\r\n//" "${{ github.workspace }}\build\fcgiwmts.jpg"
-            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgiwmts.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
 
@@ -92,4 +85,3 @@ jobs:
               0.jpg
               build/fcgiwms.raw
               build/fcgiwms.jpg
-              build/fcgiwmts.jpg
