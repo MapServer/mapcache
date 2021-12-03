@@ -70,17 +70,21 @@ jobs:
             .\mapcache_seed.exe -c "${{github.workspace}}\build\mapcache.xml" -t global --force -z 0,1
             Copy-Item -Path "${{github.workspace}}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{github.workspace}}\seed.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
-            $match
+            if ( -Not $match ) {
+              "Failure: Did not get expected checksum"
+              exit 1
+            }
             $env:MAPCACHE_CONFIG_FILE = "${{github.workspace}}\build\mapcache.xml"
             $env:REQUEST_METHOD = "GET"
             $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
             $env:QUERY_STRING = ""
             Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
             perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{github.workspace}}\fcgi.jpg"
-            .\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
-            $match
-            .\mapcache_detail.exe --help
+            if ( -Not $match ) {
+              "Failure: Did not get expected checksum"
+              exit 1
+            }
 
         - name: Upload test artifacts
           uses: actions/upload-artifact@v2
