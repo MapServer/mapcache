@@ -8,78 +8,84 @@ jobs:
         matrix:
           os: [ windows-2019 ]
           option: [ default ]
-      runs-on: ${{ matrix.os }}
+      runs-on: ${{matrix.os}}
       steps:
         - name: Checkout repository
           uses: actions/checkout@v2
 
         - name: Install dependencies
           run: |
-            Set-Location -Path ${{ github.workspace }}
+            Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "sdk" -ItemType "directory"
             Set-Location -Path "sdk"
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
+            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            Set-Location -Path "$sdkprefix"
+            Copy-Item -Path "libfcgi.lib" -Destination "fcgi.lib"
+            Copy-Item -Path "apr-1.lib" -Destination "apr-1-1.lib"
+            Copy-Item -Path "libapr-1.lib" -Destination "apr-1.lib"
+            Copy-Item -Path "aprutil-1.lib" -Destination "aprutil-1-1.lib"
+            Copy-Item -Path "libaprutil-1.lib" -Destination "aprutil-1.lib"
 
         - name: Build MapCache
           run: |
-            Set-Location -Path ${{ github.workspace }}
+            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
-            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
-            Copy-Item -Path "$sdkprefix\lib\libfcgi.lib" -Destination "$sdkprefix\lib\fcgi.lib"
-            Copy-Item -Path "$sdkprefix\lib\apr-1.lib" -Destination "$sdkprefix\lib\apr-1-1.lib"
-            Copy-Item -Path "$sdkprefix\lib\libapr-1.lib" -Destination "$sdkprefix\lib\apr-1.lib"
-            Copy-Item -Path "$sdkprefix\lib\aprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1-1.lib"
-            Copy-Item -Path "$sdkprefix\lib\libaprutil-1.lib" -Destination "$sdkprefix\lib\aprutil-1.lib"
-            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{ github.workspace }}
+            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{github.workspace}}
             cmake --build . --config Release
-            Copy-Item -Path Release\mapcache.dll -Destination "$sdkprefix\bin"
-            Copy-Item -Path cgi\Release\mapcache.fcgi.exe -Destination "$sdkprefix\bin"
-            Copy-Item -Path util\Release\mapcache_seed.exe -Destination "$sdkprefix\bin"
-            Copy-Item -Path contrib\mapcache_detail\Release\mapcache_detail.exe -Destination "$sdkprefix\bin"
+            Copy-Item -Path "Release\mapcache.dll" -Destination "$sdkprefix\bin"
+            Copy-Item -Path "cgi\Release\mapcache.fcgi.exe" -Destination "$sdkprefix\bin"
+            Copy-Item -Path "util\Release\mapcache_seed.exe" -Destination "$sdkprefix\bin"
+            Copy-Item -Path "contrib\mapcache_detail\Release\mapcache_detail.exe" -Destination "$sdkprefix\bin"
             Set-Location -Path "$sdkprefix\bin"
-            Compress-Archive -DestinationPath "${{ github.workspace }}\build\mapcache.zip" -Path "${{ github.workspace }}\mapcache.xml", mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
+            Compress-Archive -DestinationPath "${{github.workspace}}\mapcache.zip" -Path "${{github.workspace}}\mapcache.xml", mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
+
+        - name: Upload binary artifacts
+          uses: actions/upload-artifact@v2
+          with:
+            name: binaries
+            path: mapcache.zip
 
         - name: Setup tests
           run: |
-            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
-            Set-Location -Path "${{ github.workspace }}\build"
+            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            Set-Location -Path "${{github.workspace}}\build"
             Copy-Item -Path "..\tests\data\world.tif" -Destination .
             New-Item -Path "mapcache.xml"
-            Set-Content -Path "mapcache.xml" -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><mapcache><source name=`"global-tif`" type=`"gdal`"><data>${{ github.workspace }}\build\world.tif</data></source>"
-            Add-Content -Path "mapcache.xml" -Value "<cache name=`"disk`" type=`"disk`"><base>${{ github.workspace }}\build</base></cache>"
+            Set-Content -Path "mapcache.xml" -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><mapcache><source name=`"global-tif`" type=`"gdal`"><data>${{github.workspace}}\build\world.tif</data></source>"
+            Add-Content -Path "mapcache.xml" -Value "<cache name=`"disk`" type=`"disk`"><base>${{github.workspace}}\build</base></cache>"
             Add-Content -Path "mapcache.xml" -Value "<tileset name=`"global`"><cache>disk</cache><source>global-tif</source><grid maxzoom=`"17`">GoogleMapsCompatible</grid><format>JPEG</format><metatile>1 1</metatile></tileset>"
-            Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{ github.workspace }}\build</directory></locker>"
+            Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{github.workspace}}\build</directory></locker>"
             Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
 
         - name: Run tests
           run: |
-            $sdkprefix = "${{ github.workspace }}\sdk\release-1928-x64"
+            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
             Set-Location -Path "$sdkprefix\bin"
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
-            .\mapcache_seed.exe -c "${{ github.workspace }}\build\mapcache.xml" -t global --force -z 0,1
-            Copy-Item -Path "${{ github.workspace }}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{ github.workspace }}\seed.jpg"
-            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
+            .\mapcache_seed.exe -c "${{github.workspace}}\build\mapcache.xml" -t global --force -z 0,1
+            Copy-Item -Path "${{github.workspace}}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{github.workspace}}\seed.jpg"
+            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             $match
-            $env:MAPCACHE_CONFIG_FILE = "${{ github.workspace }}\build\mapcache.xml"
+            $env:MAPCACHE_CONFIG_FILE = "${{github.workspace}}\build\mapcache.xml"
             $env:REQUEST_METHOD = "GET"
-            #$env:PATH_INFO = "/"
-            #$env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
             $env:QUERY_STRING = ""
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\fcgi.jpg" -NoNewWindow -Wait
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{ github.workspace }}\fcgi.jpg"
-            .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\fcgi.jpg"
-            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{github.workspace}}\fcgi.jpg"
+            .\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg"
+            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             $match
             .\mapcache_detail.exe --help
 
-        - name: Upload artifacts
+        - name: Upload test artifacts
           uses: actions/upload-artifact@v2
           with:
-            name: test-data
+            name: test-results
             path: |
               seed.jpg
               fcgi.jpg
