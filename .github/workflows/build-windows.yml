@@ -69,7 +69,7 @@ jobs:
             $env:QUERY_STRING = "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&FORMAT=image/jpeg&SRS=EPSG:3857&BBOX=-20000000,-20000000,20000000,20000000&WIDTH=256&HEIGHT=256&LAYERS=global&TRANSPARENT=TRUE"
             Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{ github.workspace }}\build\fcgiwms.raw" -NoNewWindow -Wait
             Copy-Item -Path "${{ github.workspace }}\build\fcgiwms.raw" -Destination "${{ github.workspace }}\build\fcgiwms.jpg"
-            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\r\n/\n/g;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{ github.workspace }}\build\fcgiwms.jpg"
+            perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/\r\n/\n/g;s/[A-Z][-:; ,\/=A-Za-z0-9]*\n//g;s/\n//' "${{ github.workspace }}\build\fcgiwms.jpg"
             .\gdal\apps\gdalinfo.exe -checksum "${{ github.workspace }}\build\fcgiwms.jpg"
             .\mapcache_seed.exe -h
             .\mapcache_detail.exe --help
