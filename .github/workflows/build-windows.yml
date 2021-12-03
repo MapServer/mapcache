@@ -21,7 +21,7 @@ jobs:
             curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
             unzip -qq release-1928-x64-dev.zip
             $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
-            Set-Location -Path "$sdkprefix"
+            Set-Location -Path "$sdkprefix\lib"
             Copy-Item -Path "libfcgi.lib" -Destination "fcgi.lib"
             Copy-Item -Path "apr-1.lib" -Destination "apr-1-1.lib"
             Copy-Item -Path "libapr-1.lib" -Destination "apr-1.lib"
