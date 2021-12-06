@@ -34,12 +34,7 @@ jobs:
             Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
-            cmake -DCMAKE_PREFIX_PATH="$sdkprefix"
-                  -DWITH_APACHE=OFF
-                  -DWITH_FCGI=ON
-                  -DWITH_PCRE=ON
-                  -DWITH_TIFF=OFF
-                  "${{github.workspace}}"
+            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON -DWITH_TIFF=OFF "${{github.workspace}}"
             cmake --build . --config Release
             # Copy-Item -Path "Release\mapcache.dll" -Destination "$sdkprefix\bin"
             # Copy-Item -Path "cgi\Release\mapcache.fcgi.exe" -Destination "$sdkprefix\bin"
