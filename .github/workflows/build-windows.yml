@@ -34,20 +34,27 @@ jobs:
             Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
-            cmake -DCMAKE_PREFIX_PATH="$sdkprefix" -DWITH_APACHE=OFF -DWITH_FCGI=ON -DWITH_PCRE=ON ${{github.workspace}}
+            cmake -DCMAKE_PREFIX_PATH="$sdkprefix"
+                  -DWITH_APACHE=OFF
+                  -DWITH_FCGI=ON
+                  -DWITH_PCRE=ON
+                  -DWITH_TIFF=OFF
+                  "${{github.workspace}}"
             cmake --build . --config Release
-            Copy-Item -Path "Release\mapcache.dll" -Destination "$sdkprefix\bin"
-            Copy-Item -Path "cgi\Release\mapcache.fcgi.exe" -Destination "$sdkprefix\bin"
-            Copy-Item -Path "util\Release\mapcache_seed.exe" -Destination "$sdkprefix\bin"
-            Copy-Item -Path "contrib\mapcache_detail\Release\mapcache_detail.exe" -Destination "$sdkprefix\bin"
+            # Copy-Item -Path "Release\mapcache.dll" -Destination "$sdkprefix\bin"
+            # Copy-Item -Path "cgi\Release\mapcache.fcgi.exe" -Destination "$sdkprefix\bin"
+            # Copy-Item -Path "util\Release\mapcache_seed.exe" -Destination "$sdkprefix\bin"
+            # Copy-Item -Path "contrib\mapcache_detail\Release\mapcache_detail.exe" -Destination "$sdkprefix\bin"
+            Copy-Item -Destination "$sdkprefix\bin" -Path "Release\mapcache.dll", "cgi\Release\mapcache.fcgi.exe", "util\Release\mapcache_seed.exe", "contrib\mapcache_detail\Release\mapcache_detail.exe"
             Set-Location -Path "$sdkprefix\bin"
-            Compress-Archive -DestinationPath "${{github.workspace}}\mapcache.zip" -Path "${{github.workspace}}\mapcache.xml", mapcache.dll, mapcache.fcgi.exe, mapcache_seed.exe, mapcache_detail.exe
+            Compress-Archive -DestinationPath "${{github.workspace}}\mapcache.zip" -Path "${{github.workspace}}\mapcache.xml", "mapcache.dll", "mapcache.fcgi.exe", "mapcache_seed.exe", "mapcache_detail.exe"
 
         - name: Upload binary artifacts
           uses: actions/upload-artifact@v2
           with:
             name: binaries
             path: mapcache.zip
+            retention-days: 15
 
         - name: Setup tests
           run: |
@@ -55,11 +62,35 @@ jobs:
             Set-Location -Path "${{github.workspace}}\build"
             Copy-Item -Path "..\tests\data\world.tif" -Destination .
             New-Item -Path "mapcache.xml"
-            Set-Content -Path "mapcache.xml" -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><mapcache><source name=`"global-tif`" type=`"gdal`"><data>${{github.workspace}}\build\world.tif</data></source>"
-            Add-Content -Path "mapcache.xml" -Value "<cache name=`"disk`" type=`"disk`"><base>${{github.workspace}}\build</base></cache>"
-            Add-Content -Path "mapcache.xml" -Value "<tileset name=`"global`"><cache>disk</cache><source>global-tif</source><grid maxzoom=`"17`">GoogleMapsCompatible</grid><format>JPEG</format><metatile>1 1</metatile></tileset>"
-            Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{github.workspace}}\build</directory></locker>"
-            Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
+            # Set-Content -Path "mapcache.xml" -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><mapcache><source name=`"global-tif`" type=`"gdal`"><data>${{github.workspace}}\build\world.tif</data></source>"
+            # Add-Content -Path "mapcache.xml" -Value "<cache name=`"disk`" type=`"disk`"><base>${{github.workspace}}\build</base></cache>"
+            # Add-Content -Path "mapcache.xml" -Value "<tileset name=`"global`"><cache>disk</cache><source>global-tif</source><grid maxzoom=`"17`">GoogleMapsCompatible</grid><format>JPEG</format><metatile>1 1</metatile></tileset>"
+            # Add-Content -Path "mapcache.xml" -Value "<locker type=`"disk`"><directory>${{github.workspace}}\build</directory></locker>"
+            # Add-Content -Path "mapcache.xml" -Value "<service type=`"wms`" enabled=`"true`"/><service type=`"wmts`" enabled=`"true`"/><log_level>debug</log_level></mapcache>"
+            Set-Content -Path "mapcache.xml" -Value @"
+            <?xml version=`"1.0`" encoding=`"UTF-8`"?>
+            <mapcache>
+              <source name=`"global-tif`" type=`"gdal`">
+                <data>${{github.workspace}}\build\world.tif</data>
+              </source>
+              <cache name=`"disk`" type=`"disk`">
+                <base>${{github.workspace}}\build</base>
+              </cache>
+              <tileset name=`"global`">
+                <cache>disk</cache>
+                <source>global-tif</source>
+                <grid maxzoom=`"17`">GoogleMapsCompatible</grid>
+                <format>JPEG</format>
+                <metatile>1 1</metatile>
+              </tileset>
+              <locker type=`"disk`">
+                <directory>${{github.workspace}}\build</directory>
+              </locker>
+              <service type=`"wms`" enabled=`"true`"/>
+              <service type=`"wmts`" enabled=`"true`"/>
+              <log_level>debug</log_level>
+            </mapcache>
+            "@
 
         - name: Run tests
           run: |
@@ -68,7 +99,8 @@ jobs:
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
             .\mapcache_seed.exe -c "${{github.workspace}}\build\mapcache.xml" -t global --force -z 0,1
-            Copy-Item -Path "${{github.workspace}}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{github.workspace}}\seed.jpg"
+            Copy-Item -Path "${{github.workspace}}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg"
+                      -Destination "${{github.workspace}}\seed.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             if ( $match ) {
               "Success"
@@ -80,7 +112,9 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
             $env:QUERY_STRING = ""
-            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
+            Start-Process -FilePath ".\mapcache.fcgi.exe"
+                          -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg"
+                          -NoNewWindow -Wait
             perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{github.workspace}}\fcgi.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             if ( $match ) {
@@ -97,3 +131,4 @@ jobs:
             path: |
               seed.jpg
               fcgi.jpg
+            retention-days: 2
