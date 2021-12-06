@@ -106,9 +106,7 @@ jobs:
             $env:REQUEST_METHOD = "GET"
             $env:PATH_INFO = "/wmts/1.0.0/global/default/GoogleMapsCompatible/0/0/0.jpg"
             $env:QUERY_STRING = ""
-            Start-Process -FilePath ".\mapcache.fcgi.exe"
-                          -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg"
-                          -NoNewWindow -Wait
+            Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
             perl.exe -0777 -pi -e 'binmode ARV;binmode ARGVOUT;s/[A-Z][-:; ,\/=A-Za-z0-9]*\r\n//g;s/\r\n//' "${{github.workspace}}\fcgi.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             if ( $match ) {
