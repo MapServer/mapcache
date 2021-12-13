@@ -112,6 +112,7 @@ if(JPEG_FOUND)
   include_directories(${JPEG_INCLUDE_DIR})
   target_link_libraries(mapcache ${JPEG_LIBRARY})
 else(JPEG_FOUND)
+  report_mandatory_not_found(JPEG)
 endif(JPEG_FOUND)
    
 find_package(CURL)
