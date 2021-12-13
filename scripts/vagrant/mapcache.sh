@@ -5,9 +5,11 @@ export NUMTHREADS
 
 cd /vagrant
 
-mkdir build_vagrant
+mkdir -p build_vagrant
 cd build_vagrant
-cmake -DWITH_MEMCACHE=1 ..
+cmake ..
 
 make -j $NUMTHREADS
 make install
+
+ldconfig
