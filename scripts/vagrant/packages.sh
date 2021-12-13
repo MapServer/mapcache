@@ -1,17 +1,9 @@
 #!/bin/sh
 
-sed -i 's#deb http://us.archive.ubuntu.com/ubuntu/#deb mirror://mirrors.ubuntu.com/mirrors.txt#' /etc/apt/sources.list
-
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y python-software-properties
-add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
-apt-get update
-apt-get -y upgrade
+apt-get install -y cmake apache2
+apt-get install -y libcurl4-openssl-dev apache2-dev
+apt-get install -y libgdal-dev libfcgi-dev libpixman-1-dev gdal-bin libxml2-utils
 
-# install packages we need
-apt-get install -q -y build-essential pkg-config cmake libgeos-dev rake vim \
-    bison flex libgdal1-dev libproj-dev libpng12-dev libjpeg-dev libfcgi-dev \
-    libcurl4-gnutls-dev apache2-prefork-dev libtiff4-dev libpixman-1-dev \
-    libsqlite3-dev libmemcached-dev

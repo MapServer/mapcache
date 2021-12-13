@@ -28,13 +28,20 @@
 
 set -e
 
-mkdir /tmp/mc
+mkdir -p /tmp/mc
 sudo chmod -R a+rw /tmp/mc
 
 cp data/mapcache.xml data/world.tif /tmp/mc
 
 sudo cp data/mapcache.load data/mapcache.conf /etc/apache2/mods-available
-sudo ln -s ../mods-available/mapcache.load /etc/apache2/mods-enabled
-sudo ln -s ../mods-available/mapcache.conf /etc/apache2/mods-enabled
+if [ ! -L /etc/apache2/mods-enabled/mapcache.load ]
+then
+  sudo ln -s ../mods-available/mapcache.load /etc/apache2/mods-enabled
+fi
+if [ ! -L /etc/apache2/mods-enabled/mapcache.conf ]
+then
+  sudo ln -s ../mods-available/mapcache.conf /etc/apache2/mods-enabled
+fi
 
-sudo apache2ctl -k restart
+sudo apache2ctl -k stop
+sudo apache2ctl -k start
