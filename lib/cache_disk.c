@@ -533,12 +533,18 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
   }
 
 #ifdef HAVE_SYMLINK
-  if(cache->symlink_blank) {
-    if(tile->tileset->format->type != GC_RAW && !tile->raw_image) {
+  if ( cache->symlink_blank
+      && (!tile->tileset->format || tile->tileset->format->type != GC_RAW) )
+  {
+    // <symlink_blank> is handled when tileset's format, if set, is not RAW
+
+    if (!tile->raw_image)
+    {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
     }
-    if(tile->tileset->format->type != GC_RAW && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+    if (mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE)
+    {
       char *blankname;
       int retry_count_create_symlink = 0;
       char *blankname_rel = NULL;
