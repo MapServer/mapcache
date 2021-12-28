@@ -99,7 +99,7 @@ static mapcache_pooled_connection* _mapserver_get_connection(mapcache_context *c
  * \private \memberof mapcache_source_mapserver
  * \sa mapcache_source::render_map()
  */
-void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_map *map)
+void _mapcache_source_mapserver_render_map(mapcache_context *ctx, mapcache_source *psource, mapcache_map *map)
 {
   errorObj *errors = NULL;
   mapcache_pooled_connection *pc;
@@ -199,7 +199,7 @@ void _mapcache_source_mapserver_query(mapcache_context *ctx, mapcache_source *ps
  * \private \memberof mapcache_source_mapserver
  * \sa mapcache_source::configuration_parse()
  */
-void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source *source)
+void _mapcache_source_mapserver_configuration_parse_xml(mapcache_context *ctx, ezxml_t node, mapcache_source * source, mapcache_cfg *config)
 {
   ezxml_t cur_node;
   mapcache_source_mapserver *src = (mapcache_source_mapserver*)source;
@@ -247,10 +247,10 @@ mapcache_source* mapcache_source_mapserver_create(mapcache_context *ctx)
   }
   mapcache_source_init(ctx, &(source->source));
   source->source.type = MAPCACHE_SOURCE_MAPSERVER;
-  source->source.render_map = _mapcache_source_mapserver_render_map;
+  source->source._render_map = _mapcache_source_mapserver_render_map;
   source->source.configuration_check = _mapcache_source_mapserver_configuration_check;
   source->source.configuration_parse_xml = _mapcache_source_mapserver_configuration_parse_xml;
-  source->source.query_info = _mapcache_source_mapserver_query;
+  source->source._query_info = _mapcache_source_mapserver_query;
   return (mapcache_source*)source;
 }
 #else

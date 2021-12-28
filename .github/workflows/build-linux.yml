@@ -1,0 +1,79 @@
+name: Build MapCache on Linux
+on: [ push, pull_request ]
+
+jobs:
+
+    build-matrix:
+      strategy:
+        matrix:
+          os: [ ubuntu-18.04, ubuntu-20.04 ]
+          option: [ minimal, default, maximal ]
+      runs-on: ${{ matrix.os }}
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v2
+
+        - name: Install dependencies
+          run: |
+            if [[ 'minimal,default,maximal' =~ ${{ matrix.option }} ]]
+            then
+              sudo apt-get update -y
+              sudo apt-get upgrade -y
+              sudo apt-get install -y libcurl4-openssl-dev apache2-dev
+            fi
+            if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
+            then
+              sudo apt-get install -y libgdal-dev libfcgi-dev libpixman-1-dev
+              sudo apt-get install -y gdal-bin libxml2-utils
+            fi
+            if [[ 'maximal' =~ ${{ matrix.option }} ]]
+            then
+              sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev
+            fi
+
+        - name: Build MapCache
+          run: |
+            if [[ 'minimal' == ${{ matrix.option }} ]]
+            then
+              options="-DWITH_SQLITE=OFF \
+                       -DWITH_PIXMAN=OFF \
+                       -DWITH_GDAL=OFF \
+                       -DWITH_APACHE=OFF \
+                       -DWITH_CGI=OFF \
+                       -DWITH_OGR=OFF \
+                       -DWITH_GEOS=OFF \
+                       -DWITH_MAPCACHE_DETAIL=OFF"
+            elif [[ 'default' == ${{ matrix.option }} ]]
+            then
+              options=""
+            elif [[ 'maximal' == ${{ matrix.option }} ]]
+            then
+              options="-DWITH_POSTGRESQL=ON \
+                       -DWITH_BERKELEY_DB=ON \
+                       -DWITH_MEMCACHE=ON \
+                       -DWITH_REDIS=ON \
+                       -DWITH_TIFF=ON \
+                       -DWITH_TIFF_WRITE_SUPPORT=ON \
+                       -DWITH_GEOTIFF=ON \
+                       -DWITH_PCRE=ON \
+                       -DWITH_MAPSERVER=ON \
+                       -DWITH_RIAK=OFF"
+            fi
+            mkdir build
+            cd build
+            cmake ${options} ${{ github.workspace }}
+            make
+            sudo make install
+            sudo ldconfig
+
+        - name: Run tests
+          run: |
+            if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
+               && [[ 'default' == ${{ matrix.option }} ]]
+            then
+              cd ${{ github.workspace }}/tests
+              ./setup.sh
+              ./run.sh
+            else
+              echo No test performed on this target
+            fi
