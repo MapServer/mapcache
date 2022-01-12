@@ -59,10 +59,12 @@ check_function_exists("symlink"  HAVE_SYMLINK)
 check_function_exists ("timegm" HAVE_TIMEGM)
 check_function_exists ("strptime" HAVE_STRPTIME)
 
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 if(APPLE)
   set(CMAKE_MACOSX_RPATH ON)
 endif()
+  
 set(CMAKE_LINK_INTERFACE_LIBRARY "")
 
 file(GLOB mapcache_SOURCES lib/*.c )
