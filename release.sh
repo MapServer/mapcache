@@ -40,7 +40,7 @@ else
 fi
 
 echo "git add CMakeLists.txt"
-echo "git commit -m \"update for $ms_version release\""
+echo "git commit -m \"Update for $ms_version release\""
 echo "git tag -a $tagname -m \"Create $ms_version tag\""
 echo "git push origin branch-$ms_version_major-$ms_version_minor --tags"
 echo "git archive --format=tar.gz --prefix=mapcache-$ms_version/ $tagname >/tmp/mapcache-$ms_version.tar.gz"
