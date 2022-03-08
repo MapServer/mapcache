@@ -402,7 +402,7 @@ void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffe
   png_read_end(png_ptr,NULL);
   png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
 
-  /* switch buffer from rgba to premultiplied argb */
+  /* switch buffer from rgba to argb */
   for(i=0; i<img->h; i++) {
     unsigned int j;
     unsigned char pixel[4];
@@ -413,21 +413,13 @@ void _mapcache_imageio_png_decode_to_image(mapcache_context *ctx, mapcache_buffe
 
       memcpy (pixel, pixptr, sizeof (uint32_t));
       alpha = pixel[3];
-      if(alpha == 255) {
-        pixptr[0] = pixel[2];
-        pixptr[1] = pixel[1];
-        pixptr[2] = pixel[0];
-      } else if (alpha == 0) {
+      if(alpha < 255){
         img->has_alpha = MC_ALPHA_YES;
-        pixptr[0] = 0;
-        pixptr[1] = 0;
-        pixptr[2] = 0;
-      } else {
-        img->has_alpha = MC_ALPHA_YES;
-        PREMULTIPLY(pixptr[0],pixel[2],alpha);
-        PREMULTIPLY(pixptr[1],pixel[1],alpha);
-        PREMULTIPLY(pixptr[2],pixel[0],alpha);
       }
+
+      pixptr[0] = pixel[2];
+      pixptr[1] = pixel[1];
+      pixptr[2] = pixel[0];
       pixptr += 4;
     }
   }
@@ -444,7 +436,7 @@ mapcache_image* _mapcache_imageio_png_decode(mapcache_context *ctx, mapcache_buf
   return img;
 }
 
-/* png transform function to switch from premultiplied argb to png expected rgba */
+/* png transform function to switch from argb to png expected rgba */
 static void
 argb_to_rgba (png_structp png, png_row_infop row_info, png_bytep data)
 {
@@ -457,19 +449,10 @@ argb_to_rgba (png_structp png, png_row_infop row_info, png_bytep data)
 
     memcpy (&pixel, b, sizeof (uint32_t));
     alpha = (pixel & 0xff000000) >> 24;
-    if (alpha == 0) {
-      b[0] = b[1] = b[2] = b[3] = 0;
-    } else if (alpha == 255) {
-      b[0] = (pixel & 0xff0000) >> 16;
-      b[1] = (pixel & 0x00ff00) >>  8;
-      b[2] = (pixel & 0x0000ff) >>  0;
-      b[3] = 255;
-    } else {
-      b[0] = (((pixel & 0xff0000) >> 16) * 255 + alpha / 2) / alpha;
-      b[1] = (((pixel & 0x00ff00) >>  8) * 255 + alpha / 2) / alpha;
-      b[2] = (((pixel & 0x0000ff) >>  0) * 255 + alpha / 2) / alpha;
-      b[3] = alpha;
-    }
+    b[0] = (pixel & 0xff0000) >> 16;
+    b[1] = (pixel & 0x00ff00) >>  8;
+    b[2] = (pixel & 0x0000ff) >>  0;
+    b[3] = alpha;
   }
 }
 
