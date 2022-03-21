@@ -465,6 +465,11 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
     return hDstDS;
 }
 
+#define PREMULTIPLY(out,color,alpha)\
+{\
+  int temp = ((alpha) * (color)) + 0x80;\
+  out =((temp + (temp >> 8)) >> 8);\
+}
 
 /**
  * \private \memberof mapcache_source_gdal
@@ -587,9 +592,42 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
   map->raw_image->w = map->width;
   map->raw_image->h = map->height;
   map->raw_image->stride = map->width * 4;
-  map->raw_image->data = rasterdata;
   map->raw_image->has_alpha = MC_ALPHA_UNKNOWN;
 
+  // Handling of premulitiplication for GDAL sources.
+  // Since the data is already in BGRA order, there is no need to swap the bytes around.
+
+  unsigned char* rowptr = rasterdata;
+  unsigned char** row_pointers;
+
+  row_pointers = malloc(map->raw_image->h * sizeof(unsigned char*));
+  apr_pool_cleanup_register(ctx->pool, row_pointers, (void*)free, apr_pool_cleanup_null);
+  for(int i = 0; i < map->raw_image->h; i++) {
+    row_pointers[i] = rowptr;
+    rowptr += map->raw_image->stride;
+  }
+
+  for(int i = 0; i < map->raw_image->h; i++) {
+    unsigned char pixel[4];
+    unsigned char alpha;
+    unsigned char* pixptr = row_pointers[i];
+    for(int j = 0; j < map->raw_image->w; j++) {
+      memcpy(pixel, pixptr, sizeof(unsigned int));
+      alpha = pixel[3];
+      if(alpha == 0) {
+        pixptr[0] = 0;
+        pixptr[1] = 0;
+        pixptr[2] = 0;
+      } else if (alpha < 255) {
+        PREMULTIPLY(pixptr[0], pixel[0], alpha);
+        PREMULTIPLY(pixptr[1], pixel[1], alpha);
+        PREMULTIPLY(pixptr[2], pixel[2], alpha);
+      }
+      pixptr += 4;
+    }
+  }
+
+  map->raw_image->data = rasterdata;
   GDALClose( hDstDS ); /* close first this one, as it references hTmpDS or hSrcDS */
   if( hTmpDS )
     GDALClose(hTmpDS); /* references hSrcDS, so close before */
