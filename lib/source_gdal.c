@@ -597,13 +597,14 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
   // Handling of premulitiplication for GDAL sources.
   // Since the data is already in BGRA order, there is no need to swap the bytes around.
 
-  unsigned char* rowptr = rasterdata;
+  unsigned char* rowptr;
   unsigned char** row_pointers;
   int i, j;
 
   row_pointers = malloc(map->raw_image->h * sizeof(unsigned char*));
   apr_pool_cleanup_register(ctx->pool, row_pointers, (void*)free, apr_pool_cleanup_null);
 
+  rowptr = rasterdata;
   for(i = 0; i < map->raw_image->h; i++) {
     row_pointers[i] = rowptr;
     rowptr += map->raw_image->stride;
