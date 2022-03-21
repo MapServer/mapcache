@@ -599,19 +599,21 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
 
   unsigned char* rowptr = rasterdata;
   unsigned char** row_pointers;
+  int i, j;
 
   row_pointers = malloc(map->raw_image->h * sizeof(unsigned char*));
   apr_pool_cleanup_register(ctx->pool, row_pointers, (void*)free, apr_pool_cleanup_null);
-  for(int i = 0; i < map->raw_image->h; i++) {
+
+  for(i = 0; i < map->raw_image->h; i++) {
     row_pointers[i] = rowptr;
     rowptr += map->raw_image->stride;
   }
-
-  for(int i = 0; i < map->raw_image->h; i++) {
+  
+  for(i = 0; i < map->raw_image->h; i++) {
     unsigned char pixel[4];
     unsigned char alpha;
     unsigned char* pixptr = row_pointers[i];
-    for(int j = 0; j < map->raw_image->w; j++) {
+    for(j = 0; j < map->raw_image->w; j++) {
       memcpy(pixel, pixptr, sizeof(unsigned int));
       alpha = pixel[3];
       if(alpha == 0) {
