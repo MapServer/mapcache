@@ -483,6 +483,9 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
   GDALDatasetH hTmpDS = NULL;
   mapcache_buffer *data;
   unsigned char *rasterdata;
+  unsigned char* rowptr;
+  unsigned char** row_pointers;
+  int i, j;
   CPLErr eErr;
   mapcache_pooled_connection *pc = NULL;
   int bands_bgra[] = { 3, 2, 1, 4 }; /* mapcache buffer order is BGRA */
@@ -596,10 +599,6 @@ void _mapcache_source_gdal_render_metatile(mapcache_context *ctx, mapcache_sourc
 
   // Handling of premulitiplication for GDAL sources.
   // Since the data is already in BGRA order, there is no need to swap the bytes around.
-
-  unsigned char* rowptr;
-  unsigned char** row_pointers;
-  int i, j;
 
   row_pointers = malloc(map->raw_image->h * sizeof(unsigned char*));
   apr_pool_cleanup_register(ctx->pool, row_pointers, (void*)free, apr_pool_cleanup_null);
