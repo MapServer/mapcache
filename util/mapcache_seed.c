@@ -614,7 +614,16 @@ void feed_worker()
       if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
         //remove all items from the queue
         struct seed_cmd entry;
-        while (trypop_queue(&entry)!=APR_EAGAIN) /* do nothing */;
+        int retry = 0;
+        while (trypop_queue(&entry)!=APR_EAGAIN) {
+            // threads can be stuck
+            retry++;
+            if (retry > 10) {
+                apr_queue_interrupt_all(&entry);
+                break;
+            }
+            apr_sleep(retry * 1000000);
+        }
         break;
       }
       if(iteration_mode == MAPCACHE_ITERATION_LOG) {
