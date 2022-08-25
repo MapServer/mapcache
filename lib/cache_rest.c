@@ -1426,6 +1426,12 @@ static void _mapcache_cache_rest_configuration_post_config(mapcache_context *ctx
   }
 }
 
+/**
+ * \private \memberof mapcache_cache_rest
+ */
+static void _mapcache_cache_rest_child_init(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
+};
+
 void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache) {
   cache->use_redirects = 0;
   cache->rest.get_tile.method = MAPCACHE_REST_METHOD_GET;
@@ -1441,6 +1447,7 @@ void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache)
   cache->cache._tile_set = _mapcache_cache_rest_set;
   cache->cache.configuration_post_config = _mapcache_cache_rest_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_rest_configuration_parse_xml;
+  cache->cache.child_init = _mapcache_cache_rest_child_init;
 }
 /**
  * \brief creates and initializes a mapcache_rest_cache

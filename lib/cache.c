@@ -174,3 +174,16 @@ void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache,
     }
   }
 }
+
+void mapcache_cache_child_init(mapcache_context *ctx, mapcache_cfg *config, apr_pool_t *pchild)
+{
+  apr_hash_index_t *cachei = apr_hash_first(pchild,config->caches);
+  while(cachei) {
+    mapcache_cache *cache;
+    const void *key;
+    apr_ssize_t keylen;
+    apr_hash_this(cachei,&key,&keylen,(void**)&cache);
+    cache->child_init(ctx,cache,pchild);
+    cachei = apr_hash_next(cachei);
+  }
+}

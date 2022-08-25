@@ -748,6 +748,12 @@ static void _mapcache_cache_disk_configuration_post_config(mapcache_context *ctx
 }
 
 /**
+ * \private \memberof mapcache_cache_disk
+ */
+static void _mapcache_cache_disk_child_init(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
+};
+
+/**
  * \brief creates and initializes a mapcache_disk_cache
  */
 mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
@@ -768,6 +774,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
   cache->cache._tile_set = _mapcache_cache_disk_set;
   cache->cache.configuration_post_config = _mapcache_cache_disk_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_disk_configuration_parse_xml;
+  cache->cache.child_init = _mapcache_cache_disk_child_init;
   return (mapcache_cache*)cache;
 }
 

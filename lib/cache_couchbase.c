@@ -449,6 +449,12 @@ static void _mapcache_cache_couchbase_configuration_post_config(mapcache_context
 }
 
 /**
+ * \private \memberof mapcache_cache_couchbase
+ */
+static void _mapcache_cache_couchbase_child_init(mapcache_cache *cache, apr_pool_t *pchild) {
+};
+
+/**
  * \brief creates and initializes a mapcache_couchbase_cache
  */
 mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx) {
@@ -466,6 +472,7 @@ mapcache_cache* mapcache_cache_couchbase_create(mapcache_context *ctx) {
    cache->cache.tile_delete = _mapcache_cache_couchbase_delete;
    cache->cache.configuration_parse_xml = _mapcache_cache_couchbase_configuration_parse_xml;
    cache->cache.configuration_post_config = _mapcache_cache_couchbase_configuration_post_config;
+   cache->cache.child_init = _mapcache_cache_couchbase_child_init;
    cache->host = NULL;
    cache->username = NULL;
    cache->password = NULL;

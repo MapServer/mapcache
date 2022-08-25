@@ -1189,6 +1189,9 @@ int main(int argc, const char **argv)
     mapcache_configuration_post_config(&ctx,cfg);
     if(ctx.get_error(&ctx))
       return usage(argv[0],ctx.get_error_message(&ctx));
+    mapcache_cache_child_init(&ctx,cfg,ctx.pool);
+    if (GC_HAS_ERROR(&ctx))
+      return usage(argv[0],ctx.get_error_message(&ctx));
     mapcache_connection_pool_create(cfg, &ctx.connection_pool, ctx.pool);
   }
 

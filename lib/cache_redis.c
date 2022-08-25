@@ -279,6 +279,12 @@ static void _mapcache_cache_redis_configuration_post_config(mapcache_context *ct
 }
 
 /**
+ * \private \memberof mapcache_cache_redis
+ */
+static void _mapcache_cache_redis_child_init(mapcache_cache *cache, apr_pool_t *pchild) {
+};
+
+/**
  * \brief creates and initializes a mapcache_redis_cache
  */
 mapcache_cache* mapcache_cache_redis_create(mapcache_context *ctx)
@@ -297,6 +303,7 @@ mapcache_cache* mapcache_cache_redis_create(mapcache_context *ctx)
   cache->cache._tile_delete = _mapcache_cache_redis_delete;
   cache->cache.configuration_post_config = _mapcache_cache_redis_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_redis_configuration_parse_xml;
+  cache->cache.child_init = _mapcache_cache_redis_child_init;
   cache->host = NULL;
   cache->port = 6379;
   cache->bucket_template = NULL;
