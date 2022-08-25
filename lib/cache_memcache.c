@@ -352,12 +352,6 @@ static void _mapcache_cache_memcache_configuration_post_config(mapcache_context 
 }
 
 /**
- * \private \memberof mapcache_cache_memcache
- */
-static void _mapcache_cache_memcache_child_init(mapcache_cache *cache, apr_pool_t *pchild) {
-};
-
-/**
  * \brief creates and initializes a mapcache_memcache_cache
  */
 mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx)
@@ -375,7 +369,7 @@ mapcache_cache* mapcache_cache_memcache_create(mapcache_context *ctx)
   cache->cache._tile_delete = _mapcache_cache_memcache_delete;
   cache->cache.configuration_post_config = _mapcache_cache_memcache_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_memcache_configuration_parse_xml;
-  cache->cache.child_init = _mapcache_cache_memcache_child_init;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   return (mapcache_cache*)cache;
 }
 

@@ -1041,12 +1041,6 @@ static void _mapcache_cache_sqlite_configuration_post_config(mapcache_context *c
 /**
  * \private \memberof mapcache_cache_sqlite
  */
-static void _mapcache_cache_sqlite_child_init(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
-};
-
-/**
- * \private \memberof mapcache_cache_sqlite
- */
 static void _mapcache_cache_mbtiles_configuration_post_config(mapcache_context *ctx,
     mapcache_cache *pcache, mapcache_cfg *cfg)
 {
@@ -1076,12 +1070,6 @@ static void _mapcache_cache_mbtiles_configuration_post_config(mapcache_context *
 #endif
 }
 
-/**
- * \private \memberof mapcache_cache_sqlite
- */
-static void _mapcache_cache_mbtiles_child_init(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
-};
-
 mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx)
 {
   mapcache_cache_sqlite *cache = apr_pcalloc(ctx->pool, sizeof (mapcache_cache_sqlite));
@@ -1098,7 +1086,7 @@ mapcache_cache* mapcache_cache_sqlite_create(mapcache_context *ctx)
   cache->cache._tile_multi_set = _mapcache_cache_sqlite_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_sqlite_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_sqlite_configuration_parse_xml;
-  cache->cache.child_init = _mapcache_cache_sqlite_child_init;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   cache->create_stmt.sql = apr_pstrdup(ctx->pool,
                                        "create table if not exists tiles(tileset text, grid text, x integer, y integer, z integer, data blob, dim text, ctime datetime, primary key(tileset,grid,x,y,z,dim))");
   cache->exists_stmt.sql = apr_pstrdup(ctx->pool,
@@ -1134,7 +1122,7 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx)
     return NULL;
   }
   cache->cache.configuration_post_config = _mapcache_cache_mbtiles_configuration_post_config;
-  cache->cache.child_init = _mapcache_cache_mbtiles_child_init;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   cache->cache._tile_set = _mapcache_cache_mbtiles_set;
   cache->cache._tile_multi_set = _mapcache_cache_mbtiles_multi_set;
   cache->cache._tile_delete = _mapcache_cache_mbtiles_delete;
