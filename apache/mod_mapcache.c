@@ -316,7 +316,7 @@ static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
       mapcache_alias_entry *alias_entry = APR_ARRAY_IDX(cfg->aliases,i,mapcache_alias_entry*);
       mapcache_cache_child_init(ctx,alias_entry->cfg,pool);
       if (GC_HAS_ERROR(ctx)) {
-        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, ctx->get_error_message(ctx));
+        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "%s", ctx->get_error_message(ctx));
       }
       rv = mapcache_connection_pool_create(alias_entry->cfg, &(alias_entry->cp),pool);
       ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a child process mapcache connection pool on server %s for alias %s", s->server_hostname, alias_entry->endpoint);
@@ -328,7 +328,7 @@ static void mod_mapcache_child_init(apr_pool_t *pool, server_rec *s)
       mapcache_alias_entry *alias_entry = APR_ARRAY_IDX(cfg->quickaliases,i,mapcache_alias_entry*);
       mapcache_cache_child_init(ctx,alias_entry->cfg,pool);
       if (GC_HAS_ERROR(ctx)) {
-        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, ctx->get_error_message(ctx));
+        ap_log_error(APLOG_MARK, APLOG_CRIT, 0, s, "%s", ctx->get_error_message(ctx));
       }
       rv = mapcache_connection_pool_create(alias_entry->cfg, &(alias_entry->cp),pool);
       ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "creating a child process mapcache connection pool on server %s for alias %s", s->server_hostname, alias_entry->endpoint);
