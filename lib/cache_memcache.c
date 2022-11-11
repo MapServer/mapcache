@@ -118,7 +118,7 @@ static int _mapcache_cache_memcache_has_tile(mapcache_context *ctx, mapcache_cac
   if(GC_HAS_ERROR(ctx))
     return MAPCACHE_FALSE;
   mpc = pc->connection;
-  
+
   key = mapcache_util_get_tile_key(ctx, tile, NULL, " \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) {
     rv = MAPCACHE_FALSE;
@@ -152,7 +152,7 @@ static void _mapcache_cache_memcache_delete(mapcache_context *ctx, mapcache_cach
   mpc = pc->connection;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) goto cleanup;
-  
+
   rv = apr_memcache_delete(mpc->memcache,key,0);
   if(rv != APR_SUCCESS && rv!= APR_NOTFOUND) {
     ctx->set_error(ctx,500,"memcache: failed to delete key %s: %s", key, apr_strerror(rv,errmsg,120));
@@ -204,7 +204,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
     &tile->mtime,
     &(((char*)encoded_data->buf)[encoded_data->size-sizeof(apr_time_t)]),
     sizeof(apr_time_t));
-  
+
   ((char*)encoded_data->buf)[encoded_data->size-sizeof(apr_time_t)]='\0';
   encoded_data->avail = encoded_data->size;
   encoded_data->size -= sizeof(apr_time_t);
@@ -214,10 +214,10 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
     tile->encoded_data = encoded_data;
   }
   rv = MAPCACHE_SUCCESS;
-  
+
 cleanup:
   _mapcache_memcache_release_conn(ctx,pc);
-  
+
   return rv;
 }
 
@@ -246,7 +246,7 @@ static void _mapcache_cache_memcache_set(mapcache_context *ctx, mapcache_cache *
   mpc = pc->connection;
   key = mapcache_util_get_tile_key(ctx, tile,NULL," \r\n\t\f\e\a\b","#");
   if(GC_HAS_ERROR(ctx)) goto cleanup;
-  
+
   if(tile->tileset->auto_expire)
     expires = tile->tileset->auto_expire;
 
@@ -330,7 +330,7 @@ static void _mapcache_cache_memcache_configuration_parse_xml(mapcache_context *c
     }
     i++;
   }
-  
+
   dcache->detect_blank = 0;
   if ((cur_node = ezxml_child(node, "detect_blank")) != NULL) {
     if(!strcasecmp(cur_node->txt,"true")) {
@@ -350,6 +350,7 @@ static void _mapcache_cache_memcache_configuration_post_config(mapcache_context 
     ctx->set_error(ctx,400,"cache %s has no servers configured",cache->name);
   }
 }
+
 
 /**
  * \brief creates and initializes a mapcache_memcache_cache

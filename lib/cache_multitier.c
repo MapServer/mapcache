@@ -74,7 +74,7 @@ static int _mapcache_cache_multitier_tile_get(mapcache_context *ctx, mapcache_ca
   int i,ret;
   subcache = APR_ARRAY_IDX(cache->caches,0,mapcache_cache*);
   ret = mapcache_cache_tile_get(ctx, subcache, tile);
-  
+
   if(ret == MAPCACHE_CACHE_MISS) {
     for(i=1; i<cache->caches->nelts; i++) {
       subcache = APR_ARRAY_IDX(cache->caches,i,mapcache_cache*);
@@ -139,6 +139,7 @@ static void _mapcache_cache_multitier_configuration_post_config(mapcache_context
     mapcache_cfg *cfg)
 {
 }
+
 
 /**
  * \brief creates and initializes a mapcache_cache_multitier

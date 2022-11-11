@@ -58,7 +58,7 @@ static mapcache_cache_composite_cache_link* _mapcache_cache_link_create(apr_pool
  * returns the mapcache_cache to use for a given tile
  * @param ctx
  * @param tile
- * @return 
+ * @return
  */
 static mapcache_cache* _mapcache_composite_cache_get(mapcache_context *ctx, mapcache_cache_composite *cache, mapcache_tile *tile) {
   int i;
@@ -81,7 +81,7 @@ static mapcache_cache* _mapcache_composite_cache_get(mapcache_context *ctx, mapc
       apr_table_entry_t *elts = (apr_table_entry_t *) array->elts;
       int j;
       if(!tile->dimensions) continue; /* the cache link refers to dimensions, but this tile does not have any, it cannot match */
-      
+
       for (j = 0; j < array->nelts; j++) {
         char *dim = elts[j].key;
         char *dimval = elts[j].val;
@@ -229,7 +229,7 @@ static void _mapcache_cache_composite_configuration_parse_xml(mapcache_context *
         apr_table_set(cachelink->dimensions,dimname,key);
       }
     }
-    
+
     APR_ARRAY_PUSH(cache->cache_links,mapcache_cache_composite_cache_link*) = cachelink;
   }
 }
@@ -241,6 +241,7 @@ static void _mapcache_cache_composite_configuration_post_config(mapcache_context
     mapcache_cfg *cfg)
 {
 }
+
 
 /**
  * \brief creates and initializes a mapcache_cache_composite
