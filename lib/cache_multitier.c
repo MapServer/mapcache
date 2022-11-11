@@ -140,7 +140,6 @@ static void _mapcache_cache_multitier_configuration_post_config(mapcache_context
 {
 }
 
-
 /**
  * \brief creates and initializes a mapcache_cache_multitier
  */

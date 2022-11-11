@@ -217,6 +217,10 @@ BDB_LIB=$(BDB_DIR)/build_windows/Win32/Release/libdb53.lib
 BDB_INC=-I$(BDB_DIR)/build_windows
 !ENDIF
 
+!IFDEF LMDB_DIR
+LMDB_LIB=$(LMDB_DIR)/build_windows/Win32/Release/liblmdb.lib
+LMDB_INC=-I$(LMDB_DIR)/build_windows
+!ENDIF
 
 ########################################################################
 # Section VII: Variable Setup
@@ -253,13 +257,13 @@ REGEX_OPT=-DHAVE_STRING_H -DREGEX_MALLOC
 ########################################################################
 
 !IFNDEF EXTERNAL_LIBS
-EXTERNAL_LIBS= $(PNG_LIB) $(CURL_LIB) $(JPEG_LIB) $(APR_LIB) $(APACHE_LIB) $(FRIBIDI_LIB) $(SQLITE_LIB) $(TIFF_LIB) $(GEOTIFF_LIB) $(FCGI_LIB) $(GDAL_LIB) $(GEOS_LIB) $(BDB_LIB)
+EXTERNAL_LIBS= $(PNG_LIB) $(CURL_LIB) $(JPEG_LIB) $(APR_LIB) $(APACHE_LIB) $(FRIBIDI_LIB) $(SQLITE_LIB) $(TIFF_LIB) $(GEOTIFF_LIB) $(FCGI_LIB) $(GDAL_LIB) $(GEOS_LIB) $(BDB_LIB) $(LMDB_LIB)
 !ENDIF
 
 LIBS=$(MAPCACHE_LIB) $(EXTERNAL_LIBS)
 
 !IFNDEF INCLUDES
-INCLUDES=$(MAPCACHE_INC) $(APR_INC) $(APACHE_INC) $(REGEX_INC) $(PNG_INC) $(ZLIB_INC) $(CURL_INC) $(JPEG_INC) $(SQLITE_INC) $(TIFF_INC) $(GEOTIFF_INC) $(FCGI_INC) $(GDAL_INC) $(GEOS_INC) $(BDB_INC)
+INCLUDES=$(MAPCACHE_INC) $(APR_INC) $(APACHE_INC) $(REGEX_INC) $(PNG_INC) $(ZLIB_INC) $(CURL_INC) $(JPEG_INC) $(SQLITE_INC) $(TIFF_INC) $(GEOTIFF_INC) $(FCGI_INC) $(GDAL_INC) $(GEOS_INC) $(BDB_INC) $(LMDB_INC)
 !ENDIF
 
 

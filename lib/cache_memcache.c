@@ -351,7 +351,6 @@ static void _mapcache_cache_memcache_configuration_post_config(mapcache_context 
   }
 }
 
-
 /**
  * \brief creates and initializes a mapcache_memcache_cache
  */
