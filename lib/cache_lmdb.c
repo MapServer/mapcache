@@ -379,7 +379,7 @@ static void _mapcache_cache_lmdb_child_init(mapcache_context *ctx, mapcache_cach
 {
   mapcache_cache_lmdb *dcache = (mapcache_cache_lmdb*)cache;
 
-  int rc;
+  int rc, dead=0;
   MDB_txn *txn;
 
   lmdb_env_s *var = apr_pcalloc(ctx->pool,sizeof(lmdb_env_s));
@@ -403,6 +403,16 @@ static void _mapcache_cache_lmdb_child_init(mapcache_context *ctx, mapcache_cach
       mdb_env_close(lmdb_env->env);
       return;
     }
+  }
+  /* Clean out any stale reader entries from lock table */
+  rc = mdb_reader_check(lmdb_env->env, &dead);
+  if (rc) {
+    ctx->set_error(ctx,500,"lmdb failed to clear stale readers of database %s:%s",dcache->basedir,mdb_strerror(rc));
+    mdb_env_close(lmdb_env->env);
+    return;
+  }
+  if (dead) {
+    ctx->log(ctx,MAPCACHE_NOTICE,"lmdb cleared %d stale readers of database %s",dead,dcache->basedir);
   }
   rc = mdb_env_open(lmdb_env->env, dcache->basedir, 0, 0664);
   if (rc) {
