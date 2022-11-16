@@ -125,8 +125,13 @@ static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *p
   key.mv_size = strlen(skey)+1;
   key.mv_data = skey;
   rc = mdb_del(txn, lmdb_env->dbi, &key, &data);
-  if(rc) {
-    ctx->set_error(ctx,500,"lmdb failed to delete for tile_delete in %s:%s",cache->basedir,mdb_strerror(rc));
+  if (rc) {
+    if (rc == MDB_NOTFOUND) {
+      ctx->log(ctx,MAPCACHE_DEBUG,"attempt to delete tile %s absent in the db %s",skey,cache->basedir);
+    }
+    else {
+      ctx->set_error(ctx,500,"lmdb failed to delete for tile_delete in %s:%s",cache->basedir,mdb_strerror(rc));
+    }
   }
 
   rc = mdb_txn_commit(txn);
