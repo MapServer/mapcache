@@ -190,6 +190,7 @@ mapcache_cache* mapcache_cache_fallback_create(mapcache_context *ctx)
   cache->cache._tile_multi_set = _mapcache_cache_fallback_tile_multi_set;
   cache->cache.configuration_post_config = _mapcache_cache_fallback_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_fallback_configuration_parse_xml;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   return (mapcache_cache*)cache;
 }
 

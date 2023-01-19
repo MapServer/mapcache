@@ -1441,6 +1441,7 @@ void mapcache_cache_rest_init(mapcache_context *ctx, mapcache_cache_rest *cache)
   cache->cache._tile_set = _mapcache_cache_rest_set;
   cache->cache.configuration_post_config = _mapcache_cache_rest_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_rest_configuration_parse_xml;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
 }
 /**
  * \brief creates and initializes a mapcache_rest_cache

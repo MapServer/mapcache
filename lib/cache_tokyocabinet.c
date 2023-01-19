@@ -219,6 +219,7 @@ mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx)
   cache->cache.tile_set = _mapcache_cache_tc_set;
   cache->cache.configuration_post_config = _mapcache_cache_tc_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_tc_configuration_parse_xml;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   cache->basedir = NULL;
   cache->key_template = NULL;
   return (mapcache_cache*)cache;

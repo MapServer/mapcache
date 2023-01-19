@@ -213,6 +213,8 @@ static void load_config(mapcache_context *ctx, char *filename)
     apr_pool_destroy(config_pool);
   }
   config_pool = tmp_config_pool;
+  mapcache_cache_child_init(ctx,cfg,config_pool);
+  if (GC_HAS_ERROR(ctx)) goto failed_load;
   mapcache_connection_pool_create(cfg, &ctx->connection_pool, config_pool);
 
   return;

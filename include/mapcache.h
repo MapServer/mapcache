@@ -369,6 +369,7 @@ struct mapcache_cache {
 
   void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
+  void (*child_init)(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild);
 };
 
 MS_DLL_EXPORT int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
@@ -377,6 +378,9 @@ MS_DLL_EXPORT int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cac
 MS_DLL_EXPORT void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
+MS_DLL_EXPORT void mapcache_cache_child_init(mapcache_context *ctx, mapcache_cfg *config, apr_pool_t *pchild);
+static inline void mapcache_cache_child_init_noop(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
+};
 
 
 /**
