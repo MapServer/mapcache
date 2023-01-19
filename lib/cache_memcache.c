@@ -214,7 +214,7 @@ static int _mapcache_cache_memcache_get(mapcache_context *ctx, mapcache_cache *p
     tile->encoded_data = encoded_data;
   }
   rv = MAPCACHE_SUCCESS;
-
+  
 cleanup:
   _mapcache_memcache_release_conn(ctx,pc);
   
