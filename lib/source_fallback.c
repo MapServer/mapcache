@@ -72,7 +72,7 @@ void _mapcache_source_fallback_render_map(mapcache_context *ctx, mapcache_source
       }
     }
     /* all backends failed, return primary error message */
-    ctx->set_error(ctx,first_error,first_error_message);
+    ctx->set_error(ctx,first_error,"%s",first_error_message);
     return;
   }
 }
@@ -106,7 +106,7 @@ void _mapcache_source_fallback_query(mapcache_context *ctx, mapcache_source *pso
       }
     }
     /* all backends failed, return primary error message */
-    ctx->set_error(ctx,first_error,first_error_message);
+    ctx->set_error(ctx,first_error,"%s",first_error_message);
     return;
   }
   ctx->set_error(ctx,500,"fallback source does not support queries");

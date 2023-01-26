@@ -958,7 +958,7 @@ proxies:
    * or there was an error parsing the request and no rules to proxy it elsewhere
    */
   if(errcode != 200) {
-    ctx->set_error(ctx,errcode,errmsg);
+    ctx->set_error(ctx,errcode,"%s",errmsg);
     return;
   }
 #ifdef DEBUG
