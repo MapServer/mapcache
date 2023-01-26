@@ -272,7 +272,7 @@ void _mapcache_service_kml_parse_request(mapcache_context *ctx, mapcache_service
           }
           endptr++;
           if(strcmp(endptr,"kml")) {
-            ctx->set_error(ctx,404, "received kml request with invalid extension %s", pathinfo, endptr);
+            ctx->set_error(ctx,404, "received kml request %s with invalid extension %s", pathinfo, endptr);
             return;
           }
           break;

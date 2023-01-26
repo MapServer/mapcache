@@ -905,7 +905,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
     req->tiles[0] = mapcache_tileset_tile_create(ctx->pool, tileset, grid_link);
     if(!req->tiles[0]) {
       ctx->set_error(ctx, 500, "failed to allocate tile");
-      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","");
+      if(kvp) ctx->set_exception(ctx,"NoApplicableCode","%s","");
       return;
     }
 
@@ -953,7 +953,7 @@ void _mapcache_service_wmts_parse_request(mapcache_context *ctx, mapcache_servic
 
     if(!tileset->source || !tileset->source->info_formats) {
       ctx->set_error(ctx,400,"tileset %s does not support featureinfo requests", tileset->name);
-      if(kvp) ctx->set_exception(ctx,"OperationNotSupported","");
+      if(kvp) ctx->set_exception(ctx,"OperationNotSupported","%s","");
       return;
     }
     req_fi = (mapcache_request_get_feature_info*)apr_pcalloc(
