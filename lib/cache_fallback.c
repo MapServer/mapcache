@@ -86,7 +86,7 @@ static int _mapcache_cache_fallback_tile_get(mapcache_context *ctx, mapcache_cac
       }
     }
     /* all backends failed, return primary error message */
-    ctx->set_error(ctx,first_error,first_error_message);
+    ctx->set_error(ctx,first_error,"%s",first_error_message);
     return MAPCACHE_FAILURE;
   } else {
     /* success or notfound */
@@ -113,7 +113,7 @@ static void _mapcache_cache_fallback_tile_set(mapcache_context *ctx, mapcache_ca
     }
   }
   if(first_error) {
-    ctx->set_error(ctx,first_error,first_error_message);
+    ctx->set_error(ctx,first_error,"%s",first_error_message);
   }
 }
 
@@ -136,7 +136,7 @@ static void _mapcache_cache_fallback_tile_multi_set(mapcache_context *ctx, mapca
     }
   }
   if(first_error) {
-    ctx->set_error(ctx,first_error,first_error_message);
+    ctx->set_error(ctx,first_error,"%s",first_error_message);
   }
 }
 
