@@ -151,6 +151,7 @@ void mapcache_prefetch_tiles(mapcache_context *ctx, mapcache_tile **tiles, int n
     if(GC_HAS_ERROR(thread_tiles[i].ctx)) {
       /* transfer error message from child thread to main context */
       ctx->set_error(ctx,thread_tiles[i].ctx->get_error(thread_tiles[i].ctx),
+                     "%s",
                      thread_tiles[i].ctx->get_error_message(thread_tiles[i].ctx));
     }
   }
@@ -597,7 +598,8 @@ mapcache_http_response *mapcache_core_get_featureinfo(mapcache_context *ctx,
     apr_table_set(response->headers,"Content-Type",fi->format);
     return response;
   } else {
-    ctx->set_error(ctx,404, "tileset %s does not support feature info requests");
+    ctx->set_error(ctx,404, "tileset %s does not support feature info requests",
+                   tileset->name);
     return NULL;
   }
 }

@@ -964,7 +964,7 @@ void mapcache_tileset_tile_set_get_with_subdimensions(mapcache_context *ctx, map
       if(GC_HAS_ERROR(thread_subtiles[i].ctx)) {                                           
         /* transfer error message from child thread to main context */                     
         ctx->set_error(ctx,thread_subtiles[i].ctx->get_error(thread_subtiles[i].ctx),      
-            thread_subtiles[i].ctx->get_error_message(thread_subtiles[i].ctx));            
+            "%s",thread_subtiles[i].ctx->get_error_message(thread_subtiles[i].ctx));            
       }                                                                                    
     }                                                                                      
   }

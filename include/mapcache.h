@@ -148,7 +148,13 @@ struct mapcache_extent_i {
   int maxy;
 };
 
-
+#ifdef __GNUC__
+/** Tag a function to have printf() formatting */
+#define MAPCACHE_PRINT_FUNC_FORMAT(format_idx, arg_idx) \
+    __attribute__((__format__(__printf__, format_idx, arg_idx)))
+#else
+#define MAPCACHE_PRINT_FUNC_FORMAT(format_idx, arg_idx)
+#endif
 
 mapcache_image *mapcache_error_image(mapcache_context *ctx, int width, int height, char *msg);
 
@@ -164,9 +170,9 @@ struct mapcache_context {
    * \param code the error code
    * \param message human readable message of what happened
    */
-  void (*set_error)(mapcache_context *ctx, int code, char *message, ...);
+  void (*set_error)(mapcache_context *ctx, int code, char *message, ...) MAPCACHE_PRINT_FUNC_FORMAT(3, 4);
 
-  void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
+  void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...) MAPCACHE_PRINT_FUNC_FORMAT(3, 4);
 
   /**
    * \brief query context to know if an error has occurred
