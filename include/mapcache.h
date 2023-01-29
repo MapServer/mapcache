@@ -334,6 +334,7 @@ typedef enum {
   ,MAPCACHE_CACHE_COUCHBASE
   ,MAPCACHE_CACHE_RIAK
   ,MAPCACHE_CACHE_REDIS
+  ,MAPCACHE_CACHE_LMDB
 
 } mapcache_cache_type;
 
@@ -399,6 +400,11 @@ mapcache_cache* mapcache_cache_mbtiles_create(mapcache_context *ctx);
  * \memberof mapcache_cache_bdb
  */
 mapcache_cache *mapcache_cache_bdb_create(mapcache_context *ctx);
+
+/**
+ * \memberof mapcache_cache_lmdb
+ */
+mapcache_cache *mapcache_cache_lmdb_create(mapcache_context *ctx);
 
 /**
  * \memberof mapcache_cache_memcache
