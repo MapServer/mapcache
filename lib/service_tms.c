@@ -461,7 +461,7 @@ void _mapcache_service_tms_parse_request(mapcache_context *ctx, mapcache_service
     *request = (mapcache_request*)req;
     return;
   } else {
-    ctx->set_error(ctx,404, "received request with wrong number of arguments", pathinfo);
+    ctx->set_error(ctx,404, "received request %s with wrong number of arguments", pathinfo);
     return;
   }
 }

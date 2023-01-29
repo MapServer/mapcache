@@ -429,9 +429,9 @@ static int _mapcache_cache_disk_get(mapcache_context *ctx, mapcache_cache *pcach
     size = finfo.size;
     /*
      * at this stage, we have a handle to an open file that contains data.
-     * idealy, we should aquire a read lock, in case the data contained inside the file
+     * idealy, we should acquire a read lock, in case the data contained inside the file
      * is incomplete (i.e. if another process is currently writing to the tile).
-     * currently such a lock is not set, as we don't want to loose performance on tile accesses.
+     * currently such a lock is not set, as we don't want to lose performance on tile accesses.
      * any error that might happen at this stage should only occur if the tile isn't already cached,
      * i.e. normally only once.
      */
@@ -533,12 +533,18 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
   }
 
 #ifdef HAVE_SYMLINK
-  if(cache->symlink_blank) {
-    if(tile->tileset->format->type != GC_RAW && !tile->raw_image) {
+  if ( cache->symlink_blank
+      && (!tile->tileset->format || tile->tileset->format->type != GC_RAW) )
+  {
+    // <symlink_blank> is handled when tileset's format, if set, is not RAW
+
+    if (!tile->raw_image)
+    {
       tile->raw_image = mapcache_imageio_decode(ctx, tile->encoded_data);
       GC_CHECK_ERROR(ctx);
     }
-    if(tile->tileset->format->type != GC_RAW && mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE) {
+    if (mapcache_image_blank_color(tile->raw_image) != MAPCACHE_FALSE)
+    {
       char *blankname;
       int retry_count_create_symlink = 0;
       char *blankname_rel = NULL;
@@ -554,7 +560,7 @@ static void _mapcache_cache_disk_set(mapcache_context *ctx, mapcache_cache *pcac
         mapcache_make_parent_dirs(ctx,blankname);
         GC_CHECK_ERROR(ctx);
 
-        /* aquire a lock on the blank file */
+        /* acquire a lock on the blank file */
         isLocked = mapcache_lock_or_wait_for_resource(ctx,ctx->config->locker,blankname, &lock);
 
         if(isLocked == MAPCACHE_TRUE) {
@@ -762,6 +768,7 @@ mapcache_cache* mapcache_cache_disk_create(mapcache_context *ctx)
   cache->cache._tile_set = _mapcache_cache_disk_set;
   cache->cache.configuration_post_config = _mapcache_cache_disk_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_disk_configuration_parse_xml;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   return (mapcache_cache*)cache;
 }
 

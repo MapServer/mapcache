@@ -1397,6 +1397,7 @@ mapcache_cache* mapcache_cache_tiff_create(mapcache_context *ctx)
   cache->cache._tile_set = _mapcache_cache_tiff_set;
   cache->cache.configuration_post_config = _mapcache_cache_tiff_configuration_post_config;
   cache->cache.configuration_parse_xml = _mapcache_cache_tiff_configuration_parse_xml;
+  cache->cache.child_init = mapcache_cache_child_init_noop;
   cache->count_x = 10;
   cache->count_y = 10;
   cache->x_fmt = cache->y_fmt = cache->z_fmt

@@ -60,6 +60,16 @@ void parseMetadata(mapcache_context *ctx, ezxml_t node, apr_table_t *metadata)
   }
 }
 
+void parseEnvironment(mapcache_context* ctx, ezxml_t node)
+{
+    ezxml_t cur_node;
+    for (cur_node = node->child; cur_node; cur_node = cur_node->ordered) {
+        if (!cur_node->child) {
+            putenv(apr_psprintf(ctx->pool, "%s=%s", cur_node->name, cur_node->txt));
+        }
+    }
+}
+
 void parseDimensions(mapcache_context *ctx, ezxml_t node, mapcache_tileset *tileset)
 {
   ezxml_t dimension_node;
@@ -741,6 +751,8 @@ void parseCache(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     cache = mapcache_cache_couchbase_create(ctx);
   } else if(!strcmp(type,"riak")) {
     cache = mapcache_cache_riak_create(ctx);
+  } else if(!strcmp(type,"redis")) {
+    cache = mapcache_cache_redis_create(ctx);
   } else {
     ctx->set_error(ctx, 400, "unknown cache type %s for cache \"%s\"", type, name);
     return;
@@ -1263,6 +1275,11 @@ void mapcache_configuration_parse_xml(mapcache_context *ctx, const char *filenam
   for(node = ezxml_child(doc,"metadata"); node; node = node->next) {
     parseMetadata(ctx, node, config->metadata);
     if(GC_HAS_ERROR(ctx)) goto cleanup;
+  }
+
+  for (node = ezxml_child(doc, "environment"); node; node = node->next) {
+      parseEnvironment(ctx, node);
+      if (GC_HAS_ERROR(ctx)) goto cleanup;
   }
 
   for(node = ezxml_child(doc,"source"); node; node = node->next) {

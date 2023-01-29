@@ -104,10 +104,16 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   CURL *curl_handle;
   char error_msg[CURL_ERROR_SIZE];
   int ret;
+  const char* ca_bundle = NULL;
   struct curl_slist *curl_headers=NULL;
   struct _header_struct h;
   curl_handle = curl_easy_init();
 
+  ca_bundle = getenv("CURL_CA_BUNDLE");
+
+  if (ca_bundle) {
+    curl_easy_setopt(curl_handle, CURLOPT_CAINFO, ca_bundle);
+  }
 
   /* specify URL to get */
   curl_easy_setopt(curl_handle, CURLOPT_URL, req->url);
@@ -133,7 +139,6 @@ void mapcache_http_do_request(mapcache_context *ctx, mapcache_http *req, mapcach
   curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, req->connection_timeout);
   curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, req->timeout);
   curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1);
-
 
 
   if(req->headers) {

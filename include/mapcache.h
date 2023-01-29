@@ -148,7 +148,13 @@ struct mapcache_extent_i {
   int maxy;
 };
 
-
+#ifdef __GNUC__
+/** Tag a function to have printf() formatting */
+#define MAPCACHE_PRINT_FUNC_FORMAT(format_idx, arg_idx) \
+    __attribute__((__format__(__printf__, format_idx, arg_idx)))
+#else
+#define MAPCACHE_PRINT_FUNC_FORMAT(format_idx, arg_idx)
+#endif
 
 mapcache_image *mapcache_error_image(mapcache_context *ctx, int width, int height, char *msg);
 
@@ -164,9 +170,9 @@ struct mapcache_context {
    * \param code the error code
    * \param message human readable message of what happened
    */
-  void (*set_error)(mapcache_context *ctx, int code, char *message, ...);
+  void (*set_error)(mapcache_context *ctx, int code, char *message, ...) MAPCACHE_PRINT_FUNC_FORMAT(3, 4);
 
-  void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...);
+  void (*set_exception)(mapcache_context *ctx, char *key, char *message, ...) MAPCACHE_PRINT_FUNC_FORMAT(3, 4);
 
   /**
    * \brief query context to know if an error has occurred
@@ -327,6 +333,8 @@ typedef enum {
   ,MAPCACHE_CACHE_COMPOSITE
   ,MAPCACHE_CACHE_COUCHBASE
   ,MAPCACHE_CACHE_RIAK
+  ,MAPCACHE_CACHE_REDIS
+
 } mapcache_cache_type;
 
 /** \interface mapcache_cache
@@ -367,6 +375,7 @@ struct mapcache_cache {
 
   void (*configuration_parse_xml)(mapcache_context *ctx, ezxml_t xml, mapcache_cache * cache, mapcache_cfg *config);
   void (*configuration_post_config)(mapcache_context *ctx, mapcache_cache * cache, mapcache_cfg *config);
+  void (*child_init)(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild);
 };
 
 MS_DLL_EXPORT int mapcache_cache_tile_get(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
@@ -375,6 +384,9 @@ MS_DLL_EXPORT int mapcache_cache_tile_exists(mapcache_context *ctx, mapcache_cac
 MS_DLL_EXPORT void mapcache_cache_tile_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tile);
 void mapcache_cache_tile_multi_set(mapcache_context *ctx, mapcache_cache *cache, mapcache_tile *tiles, int ntiles);
 
+MS_DLL_EXPORT void mapcache_cache_child_init(mapcache_context *ctx, mapcache_cfg *config, apr_pool_t *pchild);
+static inline void mapcache_cache_child_init_noop(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild) {
+};
 
 
 /**
@@ -407,6 +419,11 @@ mapcache_cache* mapcache_cache_tc_create(mapcache_context *ctx);
  * \memberof mapcache_cache_riak
  */
 mapcache_cache* mapcache_cache_riak_create(mapcache_context *ctx);
+
+/**
+ * \memberof mapcache_cache_redis
+ */
+mapcache_cache* mapcache_cache_redis_create(mapcache_context* ctx);
 
 /** @} */
 
@@ -1442,7 +1459,7 @@ MS_DLL_EXPORT char *mapcache_util_str_replace(apr_pool_t *pool, const char *stri
                                 const char *replacement );
 char *mapcache_util_dbl_replace(apr_pool_t *pool, const char *string, const char *substr,
                                 double replacement );
-char *mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr,
+MS_DLL_EXPORT char *mapcache_util_str_replace_all(apr_pool_t *pool, const char *string, const char *substr,
                                     const char *replacement );
 char *mapcache_util_dbl_replace_all(apr_pool_t *pool, const char *string, const char *substr,
                                     double replacement );

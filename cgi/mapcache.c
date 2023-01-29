@@ -39,6 +39,10 @@
 #include <fcgi_stdio.h>
 #endif
 
+#ifndef WIN32
+extern char** environ;
+#endif
+
 typedef struct mapcache_context_fcgi mapcache_context_fcgi;
 typedef struct mapcache_context_fcgi_request mapcache_context_fcgi_request;
 
@@ -122,7 +126,7 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
     int i;
     for(i=0; i<elts->nelts; i++) {
       apr_table_entry_t entry = APR_ARRAY_IDX(elts,i,apr_table_entry_t);
-      printf("%s: %s\r\n", entry.key, entry.val);
+       printf("%s: %s\r\n", entry.key, entry.val);
     }
   }
   if(response->mtime) {
@@ -157,7 +161,6 @@ static void fcgi_write_response(mapcache_context_fcgi *ctx, mapcache_http_respon
     fwrite((char*)response->data->buf, response->data->size,1,stdout);
   }
 }
-
 
 apr_time_t mtime;
 char *conffile;
@@ -210,6 +213,8 @@ static void load_config(mapcache_context *ctx, char *filename)
     apr_pool_destroy(config_pool);
   }
   config_pool = tmp_config_pool;
+  mapcache_cache_child_init(ctx,cfg,config_pool);
+  if (GC_HAS_ERROR(ctx)) goto failed_load;
   mapcache_connection_pool_create(cfg, &ctx->connection_pool, config_pool);
 
   return;
@@ -226,6 +231,43 @@ failed_load:
     apr_pool_destroy(tmp_config_pool);
   }
 
+}
+
+static void set_headers(mapcache_context* ctx, char** env)
+{
+    // add all environ settings including HTTP headers to
+    // a ctx->headers_in apr_table_t
+
+    char * key, * val, * kvp, * pair;
+    int i;
+    int num_env_var;
+    apr_table_t* headers;
+
+    num_env_var = 0;
+    while (env[num_env_var] != NULL)
+        num_env_var++;
+
+    headers = apr_table_make(ctx->pool, num_env_var);
+
+    for (i = 0; env[i] != NULL; i++) {
+        kvp = apr_pstrdup(ctx->pool, env[i]);
+
+        // convert HTTP header keys from the form HTTP_MY_HEADER to MY-HEADER
+        key = apr_strtok(kvp, "=", &pair);
+        key = mapcache_util_str_replace(ctx->pool, key, "HTTP_", "");
+        key = mapcache_util_str_replace_all(ctx->pool, key, "_", "-");
+
+        val = apr_strtok(NULL, "=", &pair);
+
+        if (val != NULL) {
+            apr_table_addn(headers, key, val);
+        }
+        else {
+            apr_table_addn(headers, key, "");
+        }
+    }
+
+    ctx->headers_in = headers;
 }
 
 int main(int argc, const char **argv)
@@ -297,6 +339,8 @@ int main(int argc, const char **argv)
       goto cleanup;
     }
 
+    set_headers(ctx, environ);
+
     http_response = NULL;
     if(request->type == MAPCACHE_REQUEST_GET_CAPABILITIES) {
       mapcache_request_get_capabilities *req = (mapcache_request_get_capabilities*)request;
@@ -328,6 +372,8 @@ int main(int argc, const char **argv)
     } else if( request->type == MAPCACHE_REQUEST_PROXY ) {
       mapcache_request_proxy *req_proxy = (mapcache_request_proxy*)request;
       http_response = mapcache_core_proxy_request(ctx, req_proxy);
+      // Content-Length is added again in fcgi_write_response
+      apr_table_unset(http_response->headers, "Content-Length");
     } else if( request->type == MAPCACHE_REQUEST_GET_MAP) {
       mapcache_request_get_map *req_map = (mapcache_request_get_map*)request;
       http_response = mapcache_core_get_map(ctx,req_map);

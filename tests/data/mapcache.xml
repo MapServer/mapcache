@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapcache>
+    <source name="global-tif" type="gdal">
+        <data>/tmp/mc/world.tif</data>
+    </source>
+    <cache name="disk" type="disk">
+        <base>/tmp/mc</base>
+    </cache>
+    <tileset name="global">
+        <cache>disk</cache>
+        <source>global-tif</source>
+        <grid maxzoom="17">GoogleMapsCompatible</grid>
+        <format>JPEG</format>
+        <metatile>1 1</metatile>
+    </tileset>
+    <service type="wmts" enabled="true"/>
+    <service type="wms" enabled="true"/>
+    <log_level>debug</log_level>
+</mapcache>
