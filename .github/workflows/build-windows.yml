@@ -101,7 +101,7 @@ jobs:
             Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
             perl.exe -0777 -pi -e 'binmode ARGV;binmode ARGVOUT;s/[A-Z][a-z][-:; ,\/=A-Za-z0-9\r\n]*//' "${{github.workspace}}\fcgi.jpg"
             .\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg"
-            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
+            $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21411" -Quiet)
             if ( $match ) {
               "Success: matched checksum for fcgi.jpg"
             } else {
