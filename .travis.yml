@@ -59,6 +59,6 @@ script:
 notifications:
   irc:
     channels:
-      - "irc.libera.org#mapcache"
+      - "irc.libera.chat#mapcache"
     use_notice: true
 
