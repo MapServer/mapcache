@@ -89,9 +89,9 @@ jobs:
             .\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21411" -Quiet)
             if ( $match ) {
-              "Success"
+              "Success: matched checksum for seed.jpg"
             } else {
-              "Failure: Did not get expected checksum"
+              "Failure: Did not get expected checksum for seed.jpg"
               exit 1
             }
             $env:MAPCACHE_CONFIG_FILE = "${{github.workspace}}\build\mapcache.xml"
@@ -100,11 +100,12 @@ jobs:
             $env:QUERY_STRING = ""
             Start-Process -FilePath ".\mapcache.fcgi.exe" -RedirectStandardOutput "${{github.workspace}}\fcgi.jpg" -NoNewWindow -Wait
             perl.exe -0777 -pi -e 'binmode ARGV;binmode ARGVOUT;s/[A-Z][a-z][-:; ,\/=A-Za-z0-9\r\n]*//' "${{github.workspace}}\fcgi.jpg"
+            .\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\fcgi.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
             if ( $match ) {
-              "Success"
+              "Success: matched checksum for fcgi.jpg"
             } else {
-              "Failure: Did not get expected checksum"
+              "Failure: Did not get expected checksum for fcgi.jpg"
               exit 1
             }
 
