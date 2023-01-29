@@ -83,7 +83,7 @@ jobs:
             $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
             Set-Location -Path "$sdkprefix\bin"
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
-            $env:PROJ_LIB = "$sdkprefix\bin\proj7\share"
+            $env:PROJ_LIB = "$sdkprefix\bin\proj9\share"
             .\mapcache_seed.exe -c "${{github.workspace}}\build\mapcache.xml" -t global --force -z 0,1
             Copy-Item -Path "${{github.workspace}}\build\global\GoogleMapsCompatible\00\000\000\000\000\000\000.jpg" -Destination "${{github.workspace}}\seed.jpg"
             $match = (.\gdal\apps\gdalinfo.exe -checksum "${{github.workspace}}\seed.jpg" | Select-String -CaseSensitive -Pattern "Checksum=21336" -Quiet)
