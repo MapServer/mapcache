@@ -21,13 +21,13 @@ matrix:
         - DISTRO=focal
         - BUILD_TYPE=minimum
 
-    - os: linux
-      dist: bionic
-      language: c
-      sudo: required
-      env:
-        - DISTRO=bionic
-        - BUILD_TYPE=maximum
+    # - os: linux
+      # dist: bionic
+      # language: c
+      # sudo: required
+      # env:
+        # - DISTRO=bionic
+        # - BUILD_TYPE=maximum
 
 language: c
 
