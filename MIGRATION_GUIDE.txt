@@ -1,9 +1,10 @@
 Migrating from Mapcache 1.12 to 1.14
 ====================================
 
-* No backward compatibility issue is expected.
-  See [MapCache 1.14 Changelog](https://mapserver.org/development/changelog/mapcache/changelog-1-14.html)
-  for a list of bug fixes and new features.
+* This is a security release, to handle a string formatting injection vulnerability, 
+  and includes other changes.
+  No backward compatibility issue is expected.
+  See [MapCache 1.14 Changelog](https://mapserver.org/development/changelog/mapcache/changelog-1-14.html).
 
 Migrating from Mapcache 1.10 to 1.12
 ====================================
