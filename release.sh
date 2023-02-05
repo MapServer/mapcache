@@ -26,7 +26,7 @@ fi
 echo "#"
 echo "# Make sure:"
 echo "# - you are on branch-$ms_version_major-$ms_version_minor"
-echo "# - you have edited MIGRATION_GUIDE.txt with changes related to this release"
+echo "# - you have edited MIGRATION_GUIDE.md with changes related to this release"
 echo "#"
 echo ""
 
