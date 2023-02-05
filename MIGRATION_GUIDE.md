@@ -26,7 +26,7 @@ Migrating from MapCache 1.6 to 1.8
 * <dimensions type="time" ...>...<query>SQL</query> should be replaced by
   <dimensions type="time" ...>...<validate_query>SQL</validate_query><list_query>...</list_query> or
   <dimensions type="sqlite" time="true" ...>...<validate_query>SQL</validate_query><list_query>...</list_query>
-  (see [RFC-121](http://mapserver.org/development/rfc/ms-rfc-121.html) for full examples)
+  (see [RFC-121](https://mapserver.org/development/rfc/ms-rfc-121.html) for full examples)
 
 Migrating from MapCache 1.4 to 1.6
 ==================================
