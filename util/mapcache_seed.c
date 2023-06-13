@@ -616,13 +616,14 @@ void feed_worker()
         struct seed_cmd entry;
         int retry = 0;
         while (trypop_queue(&entry)!=APR_EAGAIN) {
-            // threads can be stuck
-            retry++;
-            if (retry > 10) {
-                apr_queue_interrupt_all(&entry);
-                break;
-            }
-            apr_sleep(retry * 1000000);
+          // threads can be stuck
+          retry++;
+          if (retry > 10) {
+            apr_queue_interrupt_all(&entry);
+            break;
+          }
+          // graceful retreat up to 55 seconds in total
+          apr_sleep(retry * 1000000);
         }
         break;
       }
