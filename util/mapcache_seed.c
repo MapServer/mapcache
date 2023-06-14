@@ -485,7 +485,22 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
   if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
     //remove all items from the queue
     struct seed_cmd entry;
-    while (trypop_queue(&entry)!=APR_EAGAIN) /*do nothing*/;
+    int retry_count = 0;
+    int ret = trypop_queue(&entry);
+    while (ret != APR_EAGAIN) {
+      // try to empty queue with a graceful retreat up to 55 seconds
+      // for retries before forcefully terminating threads
+      if (ret == APR_EOF)
+        break;
+      if (ret != APR_SUCCESS)
+        retry_count++;
+      if (retry_count > 10) {
+        apr_queue_interrupt_all(work_queue);
+        break;
+      }
+      apr_sleep(retry_count * 1000000);
+      ret = trypop_queue(&entry);
+    }
     return;
   }
 
@@ -614,16 +629,21 @@ void feed_worker()
       if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
         //remove all items from the queue
         struct seed_cmd entry;
-        int retry = 0;
-        while (trypop_queue(&entry)!=APR_EAGAIN) {
-          // threads can be stuck
-          retry++;
-          if (retry > 10) {
-            apr_queue_interrupt_all(&entry);
+        int retry_count = 0;
+        int ret = trypop_queue(&entry);
+        while (ret != APR_EAGAIN) {
+          // try to empty queue with a graceful retreat up to 55 seconds
+          // for retries before forcefully terminating threads
+          if (ret == APR_EOF)
+            break;
+          if (ret != APR_SUCCESS)
+            retry_count++;
+          if (retry_count > 10) {
+            apr_queue_interrupt_all(work_queue);
             break;
           }
-          // graceful retreat up to 55 seconds in total
-          apr_sleep(retry * 1000000);
+          apr_sleep(retry_count * 1000000);
+          ret = trypop_queue(&entry);
         }
         break;
       }
