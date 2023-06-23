@@ -892,7 +892,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
           if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
-            mapcache_map_set_cached_dimension(ctx,&fi->map,dimension->name,value);
+            mapcache_map_set_requested_dimension(ctx,&fi->map,dimension->name,value);
             GC_CHECK_ERROR(ctx);
           }
         }
