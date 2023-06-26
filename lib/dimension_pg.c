@@ -357,6 +357,9 @@ static apr_array_header_t* _mapcache_dimension_postgresql_get_default_entries(ma
   int nParams, *paramLengths,*paramFormats,i;
   char **paramValues;
 
+  if (sdim->get_default_value_query == NULL){
+    return NULL;
+  }
   pc = _postgresql_dimension_get_conn(ctx,tileset,sdim);
   if (GC_HAS_ERROR(ctx)) {
     return NULL;
