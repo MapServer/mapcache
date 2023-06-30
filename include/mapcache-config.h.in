@@ -13,6 +13,7 @@
 #cmakedefine USE_TIFF_WRITE 1
 #cmakedefine USE_GEOTIFF 1
 #cmakedefine USE_PCRE 1
+#cmakedefine USE_PCRE2 1
 #cmakedefine USE_MAPSERVER 1
 #cmakedefine USE_RIAK 1
 #cmakedefine USE_GDAL 1

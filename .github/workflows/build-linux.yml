@@ -28,7 +28,7 @@ jobs:
             fi
             if [[ 'maximal' =~ ${{ matrix.option }} ]]
             then
-              sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev
+              sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev libpcre2-dev
             fi
 
         - name: Build MapCache
@@ -55,7 +55,8 @@ jobs:
                        -DWITH_TIFF=ON \
                        -DWITH_TIFF_WRITE_SUPPORT=ON \
                        -DWITH_GEOTIFF=ON \
-                       -DWITH_PCRE=ON \
+                       -DWITH_PCRE=OFF \
+                       -DWITH_PCRE2=ON \
                        -DWITH_MAPSERVER=ON \
                        -DWITH_RIAK=OFF"
             fi
