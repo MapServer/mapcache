@@ -31,7 +31,9 @@
 #include <apr_strings.h>
 #include <math.h>
 #include <sys/types.h>
-#ifdef USE_PCRE
+#if defined(USE_PCRE2)
+#include <pcre2.h>
+#elif defined(USE_PCRE)
 #include <pcre.h>
 #else
 #include <regex.h>
@@ -51,7 +53,9 @@ struct mapcache_dimension_values {
 struct mapcache_dimension_regex {
   mapcache_dimension dimension;
   char *regex_string;
-#ifdef USE_PCRE
+#if defined(USE_PCRE2)
+  pcre2_code *pcregex;
+#elif defined(USE_PCRE)
   pcre *pcregex;
 #else
   regex_t *regex;
@@ -127,7 +131,13 @@ static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapca
 {
   mapcache_dimension_regex *dimension = (mapcache_dimension_regex*)dim;
   apr_array_header_t *values = apr_array_make(ctx->pool,1,sizeof(char*));
-#ifdef USE_PCRE
+#if defined(USE_PCRE2)
+  pcre2_match_data *match_data;
+  int rc = pcre2_match(dimension->pcregex,(PCRE2_SPTR)value,strlen(value),0,0,match_data,NULL);
+  if(rc>0) {
+    APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+  }
+#elif defined(USE_PCRE)
   int ovector[30];
   int rc = pcre_exec(dimension->pcregex,NULL,value,strlen(value),0,0,ovector,30);
   if(rc>0) {
@@ -168,7 +178,18 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
     ctx->set_error(ctx,400,"failed to parse %s regex: no <regex> child supplied",dim->class_name);
     return;
   }
-#ifdef USE_PCRE
+#if defined(USE_PCRE2)
+  {
+    int pcre_err;
+    PCRE2_SIZE *pcre_offset;
+    dimension->pcregex = pcre2_compile((PCRE2_SPTR8)dimension->regex_string,strlen(dimension->regex_string), 0, &pcre_err, pcre_offset, NULL);
+    if(!dimension->pcregex) {
+      ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for %s \"%s\": %d",
+                     dimension->regex_string,dim->class_name,dim->name,pcre_err);
+      return;
+    }
+  }
+#elif defined(USE_PCRE)
   {
     const char *pcre_err;
     int pcre_offset;
@@ -294,7 +315,7 @@ mapcache_dimension* mapcache_dimension_regex_create(mapcache_context *ctx, apr_p
   mapcache_dimension_regex *dimension = apr_pcalloc(pool, sizeof(mapcache_dimension_regex));
   dimension->dimension.type = MAPCACHE_DIMENSION_REGEX;
   dimension->dimension.class_name = "dimension";
-#ifndef USE_PCRE
+#if !defined(USE_PCRE) && !defined(USE_PCRE2)
   dimension->regex = (regex_t*)apr_pcalloc(pool, sizeof(regex_t));
 #endif
   dimension->dimension._get_entries_for_value = _mapcache_dimension_regex_get_entries_for_value;
