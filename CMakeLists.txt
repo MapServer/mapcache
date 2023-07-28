@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.0)
 
 project (MapCache C)
 
@@ -173,7 +173,7 @@ if(WITH_REDIS)
 endif(WITH_REDIS)
 
 if(WITH_PIXMAN)
-  find_package(Pixman)
+  find_package(PIXMAN)
   if(PIXMAN_FOUND)
     include_directories(${PIXMAN_INCLUDE_DIR})
     target_link_libraries(mapcache ${PIXMAN_LIBRARY})
@@ -244,7 +244,7 @@ if(WITH_BERKELEY_DB)
   if(NOT BERKELEYDB_FIND_VERSION)
     set(BERKELEYDB_FIND_VERSION "4.6")
   endif(NOT BERKELEYDB_FIND_VERSION)
-  find_package(BerkeleyDB)
+  find_package(BERKELEYDB)
   if(BERKELEYDB_FOUND)
     include_directories(${BERKELEYDB_INCLUDE_DIR})
     target_link_libraries(mapcache ${BERKELEYDB_LIBRARY})
