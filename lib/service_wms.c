@@ -146,6 +146,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   /*
                 "<GetFeatureInfo>\n"
                   "<Format>text/plain</Format>\n"
+                  "<Format>text/html</Format>\n"
                   "<Format>application/vnd.ogc.gml</Format>\n"
                   "<DCPType>\n"
                     "<HTTP>\n"
@@ -158,6 +159,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
   */
   tmpxml = ezxml_add_child(reqxml,"GetFeatureInfo",0);
   ezxml_set_txt(ezxml_add_child(tmpxml,"Format",0),"text/plain");
+  ezxml_set_txt(ezxml_add_child(tmpxml,"Format",0),"text/html");
   ezxml_set_txt(ezxml_add_child(tmpxml,"Format",0),"application/vnd.ogc.gml");
   tmpxml = ezxml_add_child(tmpxml,"DCPType",0);
   tmpxml = ezxml_add_child(tmpxml,"HTTP",0);
