@@ -495,6 +495,7 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
       if (ret != APR_SUCCESS)
         retry_count++;
       if (retry_count > 10) {
+        printf("Feed worker threads failed to terminate. Stopping forcefully.\n");
         apr_queue_interrupt_all(work_queue);
         break;
       }
@@ -639,6 +640,7 @@ void feed_worker()
           if (ret != APR_SUCCESS)
             retry_count++;
           if (retry_count > 10) {
+            printf("Feed worker threads failed to terminate. Stopping forcefully.\n");
             apr_queue_interrupt_all(work_queue);
             break;
           }
