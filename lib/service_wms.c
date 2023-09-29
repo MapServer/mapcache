@@ -314,6 +314,7 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
     if(tileset->dimensions) {
       for(i=0; i<tileset->dimensions->nelts; i++) {
         apr_array_header_t *values;
+        apr_array_header_t *default_value;
         int value_idx;
         char *dimval = NULL;
         mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
@@ -336,6 +337,11 @@ void _create_capabilities_wms(mapcache_context *ctx, mapcache_request_get_capabi
         }
         if(dimval) {
           ezxml_set_txt(dimxml,dimval);
+        }
+        default_value = dimension->get_default_value(ctx,dimension,tileset,NULL,NULL);
+        if (default_value){
+          dimension->default_value = APR_ARRAY_IDX(default_value,0,char *);
+          ezxml_set_attr(dimxml,"default",dimension->default_value);
         }
       }
     }
@@ -886,7 +892,7 @@ void _mapcache_service_wms_parse_request(mapcache_context *ctx, mapcache_service
           mapcache_dimension *dimension = APR_ARRAY_IDX(tileset->dimensions,i,mapcache_dimension*);
           const char *value;
           if((value = (char*)apr_table_get(params,dimension->name)) != NULL) {
-            mapcache_map_set_cached_dimension(ctx,&fi->map,dimension->name,value);
+            mapcache_map_set_requested_dimension(ctx,&fi->map,dimension->name,value);
             GC_CHECK_ERROR(ctx);
           }
         }
