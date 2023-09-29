@@ -40,8 +40,10 @@ struct mapcache_dimension_postgresql {
   char *dbconnection;
   char *get_values_for_entry_query;
   char *get_all_values_query;
+  char *get_default_value_query;
   apr_hash_t  *get_values_indexes;
   apr_hash_t  *get_all_indexes;
+  apr_hash_t  *get_default_value_indexes;
 };
 
 struct postgresql_dimension_conn {
@@ -74,9 +76,10 @@ static int qparam(mapcache_context *ctx, char *qstring, const char *param, int i
 static void parse_queries(mapcache_context *ctx, mapcache_dimension_postgresql *dim) {
   const char *keys[9] = {":tileset",":dim",":gridsrs",":minx",":maxx",":miny",":maxy",":start_timestamp",":end_timestamp"};
   int i;
-  int gaidx=1,gvidx=1;
+  int gaidx=1,gvidx=1,gdidx=1;
   dim->get_all_indexes = apr_hash_make(ctx->pool);
   dim->get_values_indexes = apr_hash_make(ctx->pool);
+  dim->get_default_value_indexes = apr_hash_make(ctx->pool);
   for(i=0;i<9;i++) {
     if(qparam(ctx,dim->get_all_values_query,keys[i],gaidx)) {
       apr_hash_set(dim->get_all_indexes,keys[i],APR_HASH_KEY_STRING,INT2VOIDP(gaidx));
@@ -85,6 +88,12 @@ static void parse_queries(mapcache_context *ctx, mapcache_dimension_postgresql *
     if(qparam(ctx,dim->get_values_for_entry_query,keys[i],gvidx)) {
       apr_hash_set(dim->get_values_indexes,keys[i],APR_HASH_KEY_STRING,INT2VOIDP(gvidx));
       gvidx++;
+    }
+    if (dim->get_default_value_query){
+      if(qparam(ctx,dim->get_default_value_query,keys[i],gdidx)) {
+        apr_hash_set(dim->get_default_value_indexes,keys[i],APR_HASH_KEY_STRING,INT2VOIDP(gdidx));
+        gdidx++;
+      }
     }
   }
 }
@@ -220,6 +229,14 @@ void mapcache_postgresql_dimension_connection_constructor(mapcache_context *ctx,
     *conn_ = NULL;
     return;
   }
+  if (dim->get_default_value_query){
+    prepare_query(ctx,conn->pgconn, "get_default_value", dim->get_default_value_query, dim->get_default_value_indexes);
+    if(GC_HAS_ERROR(ctx)) {
+      PQfinish(conn->pgconn);
+      *conn_ = NULL;
+      return;
+    }
+  }
 }
 
 void mapcache_postgresql_dimension_connection_destructor(void *conn_)
@@ -330,6 +347,47 @@ static apr_array_header_t* _mapcache_dimension_postgresql_get_all_entries(mapcac
 
 }
 
+static apr_array_header_t* _mapcache_dimension_postgresql_get_default_entries(mapcache_context *ctx, mapcache_dimension *dim,
+       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid) {
+  mapcache_dimension_postgresql *sdim = (mapcache_dimension_postgresql*)dim;
+  PGresult *res;
+  apr_array_header_t *time_ids = NULL;
+  mapcache_pooled_connection *pc;
+  struct postgresql_dimension_conn *conn;
+  int nParams, *paramLengths,*paramFormats,i;
+  char **paramValues;
+
+  if (sdim->get_default_value_query == NULL){
+    return NULL;
+  }
+  pc = _postgresql_dimension_get_conn(ctx,tileset,sdim);
+  if (GC_HAS_ERROR(ctx)) {
+    return NULL;
+  }
+  conn = pc->connection;
+  _mapcache_dimension_postgresql_bind_parameters(ctx,sdim->get_all_indexes,NULL,tileset,extent,grid,0,0,&nParams,&paramValues,&paramLengths,&paramFormats);
+  if(GC_HAS_ERROR(ctx)) {
+    _postgresql_dimension_release_conn(ctx, pc);
+    return NULL;
+  }
+  res = PQexecPrepared(conn->pgconn,"get_default_value",nParams,(const char *const*)paramValues,paramLengths,paramFormats,0);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    //ctx->set_error(ctx, 500, "postgresql query: %s", PQerrorMessage(conn->pgconn));
+    PQclear(res);
+    _postgresql_dimension_release_conn(ctx, pc);
+    return NULL;
+  }
+
+  time_ids = apr_array_make(ctx->pool,0,sizeof(char*));
+  for(i=0;i<PQntuples(res);i++) {
+    APR_ARRAY_PUSH(time_ids, char *) = apr_pstrdup(ctx->pool, PQgetvalue(res,i,0));
+  }
+  PQclear(res);
+  _postgresql_dimension_release_conn(ctx, pc);
+  return time_ids;
+
+}
+
 static void _mapcache_dimension_postgresql_parse_xml(mapcache_context *ctx, mapcache_dimension *dim,
     ezxml_t node)
 {
@@ -359,6 +417,14 @@ static void _mapcache_dimension_postgresql_parse_xml(mapcache_context *ctx, mapc
     ctx->set_error(ctx,400,"postgresql dimension \"%s\" has no <list_query> node", dim->name);
     return;
   }
+  child = ezxml_child(node,"default_query");
+  if(child) {
+    dimension->get_default_value_query = apr_pstrdup(ctx->pool, child->txt);
+  } else {
+    dimension->get_default_value_query = NULL;
+  //   ctx->set_error(ctx,400,"postgresql dimension \"%s\" has no <default_query> node", dim->name);
+  //   return;
+  }
   parse_queries(ctx,dimension);
   //printf("q1: %s\n",dimension->get_all_values_query);
   //printf("q2: %s\n",dimension->get_values_for_entry_query);
@@ -377,6 +443,7 @@ mapcache_dimension* mapcache_dimension_postgresql_create(mapcache_context *ctx, 
   dimension->dimension.configuration_parse_xml = _mapcache_dimension_postgresql_parse_xml;
   dimension->dimension.get_all_entries = _mapcache_dimension_postgresql_get_all_entries;
   dimension->dimension.get_all_ogc_formatted_entries = _mapcache_dimension_postgresql_get_all_entries;
+  dimension->dimension.get_default_value = _mapcache_dimension_postgresql_get_default_entries;
   return (mapcache_dimension*)dimension;
 #else
   ctx->set_error(ctx,400,"postgresql dimension support requires POSTGRESQL support to be built in");

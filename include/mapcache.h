@@ -1750,6 +1750,12 @@ struct mapcache_dimension {
                        mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
 
   /**
+   * \brief return all value to override default value
+   */
+  apr_array_header_t* (*get_default_value)(mapcache_context *ctx, mapcache_dimension *dimension,
+                       mapcache_tileset *tileset, mapcache_extent *extent, mapcache_grid *grid);
+
+  /**
    * \brief parse the value given in the configuration
    */
   void (*configuration_parse_xml)(mapcache_context *context, mapcache_dimension *dim, ezxml_t node);

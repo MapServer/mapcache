@@ -140,6 +140,7 @@ mapcache_pooled_connection* mapcache_connection_pool_get_connection(mapcache_con
   pc->private->next = pcc->head;
   pc->private->pcc = pcc;
   
+  pcc->max_list_size = ctx->config->cp_hmax;
   if(count == pcc->max_list_size) {
     /* max number of connections atained, we must destroy the last one that was used */
     mapcache_pooled_connection *opc;
