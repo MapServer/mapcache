@@ -108,7 +108,7 @@ static int _mapcache_cache_lmdb_has_tile(mapcache_context *ctx, mapcache_cache *
 static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
   int rc;
-  MDB_val key, data;
+  MDB_val key;
   MDB_txn *txn;
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
   char *skey;
@@ -128,7 +128,7 @@ static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *p
     return;
   }
 
-  rc = mdb_del(txn, lmdb_env->dbi, &key, &data);
+  rc = mdb_del(txn, lmdb_env->dbi, &key, NULL);
   if (rc) {
     if (rc == MDB_NOTFOUND) {
       ctx->log(ctx,MAPCACHE_DEBUG,"attempt to delete tile %s absent in the db %s",skey,cache->basedir);
