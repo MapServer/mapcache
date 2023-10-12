@@ -69,23 +69,24 @@ static int _mapcache_cache_lmdb_has_tile(mapcache_context *ctx, mapcache_cache *
   MDB_val key, data;
   MDB_txn *txn;
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
-  char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  char *skey;
 
   if (lmdb_env->is_open == 0) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return MAPCACHE_FALSE;
   }
+
+  skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  key.mv_size = strlen(skey)+1;
+  key.mv_data = skey;
+
   rc = mdb_txn_begin(lmdb_env->env, NULL, MDB_RDONLY, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for has_tile in %s:%s",cache->basedir,mdb_strerror(rc));
     return MAPCACHE_FALSE;
   }
 
-  key.mv_size = strlen(skey)+1;
-  key.mv_data = skey;
-
   rc = mdb_get(txn, lmdb_env->dbi, &key, &data);
-
   if(rc == 0) {
     ret = MAPCACHE_TRUE;
   } else if(rc == MDB_NOTFOUND) {
@@ -110,20 +111,23 @@ static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *p
   MDB_val key, data;
   MDB_txn *txn;
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
-  char *skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  char *skey;
 
   if (lmdb_env->is_open == 0) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
+
+  skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  key.mv_size = strlen(skey)+1;
+  key.mv_data = skey;
+
   rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for delete in %s:%s",cache->basedir,mdb_strerror(rc));
     return;
   }
 
-  key.mv_size = strlen(skey)+1;
-  key.mv_data = skey;
   rc = mdb_del(txn, lmdb_env->dbi, &key, &data);
   if (rc) {
     if (rc == MDB_NOTFOUND) {
@@ -152,18 +156,18 @@ static int _mapcache_cache_lmdb_get(mapcache_context *ctx, mapcache_cache *pcach
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return MAPCACHE_FALSE;
   }
+
+  skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
+  key.mv_size = strlen(skey)+1;
+  key.mv_data = skey;
+
   rc = mdb_txn_begin(lmdb_env->env, NULL, MDB_RDONLY, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for get in %s:%s",cache->basedir,mdb_strerror(rc));
     return MAPCACHE_FALSE;
   }
 
-  skey = mapcache_util_get_tile_key(ctx,tile,cache->key_template,NULL,NULL);
-  key.mv_size = strlen(skey)+1;
-  key.mv_data = skey;
-
   rc = mdb_get(txn, lmdb_env->dbi, &key, &data);
-
   if(rc == 0) {
     if(((char*)(data.mv_data))[0] == '#') {
       tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy, (unsigned char*)data.mv_data,&tile->nodata);
@@ -232,6 +236,7 @@ static void _mapcache_cache_lmdb_set(mapcache_context *ctx, mapcache_cache *pcac
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
+
   rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for set in %s:%s",cache->basedir,mdb_strerror(rc));
@@ -264,6 +269,7 @@ static void _mapcache_cache_lmdb_multiset(mapcache_context *ctx, mapcache_cache 
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
+
   rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for multiset in %s:%s",cache->basedir,mdb_strerror(rc));
