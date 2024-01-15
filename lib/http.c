@@ -31,7 +31,6 @@
 #include <curl/curl.h>
 #include <apr_hash.h>
 #include <apr_strings.h>
-#include <apr_encode.h>
 #include <ctype.h>
 
 #define MAX_STRING_LEN 10000
@@ -40,6 +39,8 @@ struct _header_struct {
   apr_table_t *headers;
   mapcache_context *ctx;
 };
+
+char *base64_encode(apr_pool_t *pool, const unsigned char *data, size_t input_length);
 
 size_t _mapcache_curl_memory_callback(void *ptr, size_t size, size_t nmemb, void *data)
 {
@@ -421,7 +422,7 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
     if (ezxml_attr(http_node, "scheme") &&
         strcmp(ezxml_attr(http_node, "scheme"), "basic") == 0) {
       ezxml_t user_node, pass_node;
-      const char *credentials;
+      char *credentials, *str2enc;
       user_node = ezxml_child(http_node, "user");
       pass_node = ezxml_child(http_node, "pass");
       if (!user_node || !pass_node) {
@@ -430,16 +431,18 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
                        "(<pass>) elements must be provided");
         return NULL;
       }
-      credentials = apr_pencode_base64(
-          ctx->pool,
-          apr_pstrcat(ctx->pool, user_node->txt, ":", pass_node->txt, NULL),
-          APR_ENCODE_STRING, APR_ENCODE_NONE, NULL);
+      str2enc =
+          apr_pstrcat(ctx->pool, user_node->txt, ":", pass_node->txt, NULL);
+      credentials = base64_encode(ctx->pool, (unsigned char *)str2enc,
+                                  sizeof(unsigned char) * strlen(str2enc));
+      memset(str2enc, '\0', sizeof(char) * strlen(str2enc));
       if (credentials == NULL) {
         ctx->set_error(ctx, 400, "error encoding <http> <auth> credentials");
         return NULL;
       }
       apr_table_set(req->headers, "Authorization",
                     apr_pstrcat(ctx->pool, "Basic ", credentials, NULL));
+      memset(credentials, '\0', sizeof(char) * strlen(credentials));
     } else {
       ctx->set_error(ctx, 400,
                      "invalid or missing <http> <auth> scheme (only 'basic' "
