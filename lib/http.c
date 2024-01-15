@@ -31,6 +31,7 @@
 #include <curl/curl.h>
 #include <apr_hash.h>
 #include <apr_strings.h>
+#include <apr_encode.h>
 #include <ctype.h>
 
 #define MAX_STRING_LEN 10000
@@ -414,8 +415,41 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
       apr_table_set(req->headers, header_node->name, header_node->txt);
     }
   }
+
+  /* Parse auth and append to headers for simplicity */
+  if ((http_node = ezxml_child(node, "auth")) != NULL) {
+    if (ezxml_attr(http_node, "scheme") &&
+        strcmp(ezxml_attr(http_node, "scheme"), "basic") == 0) {
+      ezxml_t user_node, pass_node;
+      const char *credentials;
+      user_node = ezxml_child(http_node, "user");
+      pass_node = ezxml_child(http_node, "pass");
+      if (!user_node || !pass_node) {
+        ctx->set_error(ctx, 400,
+                       "both <http> <auth> username (<user>) and pasword "
+                       "(<pass>) must be provided");
+        return NULL;
+      }
+      credentials = apr_pencode_base64(
+          ctx->pool,
+          apr_pstrcat(ctx->pool, user_node->txt, ":", pass_node->txt, NULL),
+          APR_ENCODE_STRING, APR_ENCODE_NONE, NULL);
+      if (credentials == NULL) {
+        ctx->set_error(ctx, 400, "error encoding <http> <auth> credentials");
+        return NULL;
+      }
+      apr_table_set(req->headers, "Authorization",
+                    apr_pstrcat(ctx->pool, "Basic ", credentials, NULL));
+    } else {
+      ctx->set_error(ctx, 400,
+                     "invalid or missing <http> <auth> scheme (only 'basic' "
+                     "scheme supported)");
+      return NULL;
+    }
+  }
+
   return req;
-  /* TODO: parse <proxy> and <auth> elements */
+  /* TODO: parse <proxy> element */
 }
 
 
