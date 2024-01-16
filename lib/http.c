@@ -427,7 +427,7 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
       pass_node = ezxml_child(http_node, "pass");
       if (!user_node || !pass_node) {
         ctx->set_error(ctx, 400,
-                       "both <http> <auth> username (<user>) and pasword "
+                       "both <http> <auth> username (<user>) and password "
                        "(<pass>) elements must be provided");
         return NULL;
       }
