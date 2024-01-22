@@ -1200,7 +1200,7 @@ struct mapcache_tileset {
   int auto_expire;
 
   /**
-   * Cache-Control directives to be set for a TMS response
+   * Cache-Control directives to be set for a tiled response (MAPCACHE_REQUEST_GET_TILE)
    *
    * complements expiration set by the #expires parameter.
    * \sa expires
