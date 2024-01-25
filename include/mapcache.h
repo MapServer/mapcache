@@ -1199,6 +1199,14 @@ struct mapcache_tileset {
    */
   int auto_expire;
 
+  /**
+   * Cache-Control directives to be set for a tiled response (MAPCACHE_REQUEST_GET_TILE)
+   *
+   * complements expiration set by the #expires parameter.
+   * \sa expires
+   */
+  const char *cache_control;
+
   int read_only;
   int subdimension_read_only;
 
