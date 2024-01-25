@@ -196,29 +196,29 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
                          tile->tileset->format?tile->tileset->format->extension:"png");
   } else {
     *path = cache->filename_template;
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{tileset}", tile->tileset->name);
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{ext}",
                                       tile->tileset->format?tile->tileset->format->extension:"png");
     if(strstr(*path,"{x}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{x}",
                                         apr_psprintf(ctx->pool,"%d",tile->x));
     else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_x}",
                                         apr_psprintf(ctx->pool,"%d",
                                             tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1));
     if(strstr(*path,"{y}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{y}",
                                         apr_psprintf(ctx->pool,"%d",tile->y));
     else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_y}",
                                         apr_psprintf(ctx->pool,"%d",
                                             tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1));
     if(strstr(*path,"{z}"))
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{z}",
                                         apr_psprintf(ctx->pool,"%d",tile->z));
     else
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_z}",
                                         apr_psprintf(ctx->pool,"%d",
                                             tile->grid_link->grid->nlevels - tile->z - 1));
     if(tile->dimensions && strstr(*path,"{dim")) {
@@ -245,10 +245,10 @@ static void _mapcache_cache_disk_tilecache_tile_key(mapcache_context *ctx, mapca
         dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",dimval,NULL);
         single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
         if(strstr(*path,single_dim)) {
-          *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+          *path = mapcache_util_str_replace_all(ctx->pool,*path, single_dim, dimval);
         }
       }
-      *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
+      *path = mapcache_util_str_replace_all(ctx->pool,*path, "{dim}", dimstring);
     }
   }
   if(!*path) {
@@ -260,30 +260,30 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
 {
 
   *path = cache->filename_template;
-  *path = mapcache_util_str_replace(ctx->pool,*path, "{tileset}", tile->tileset->name);
-  *path = mapcache_util_str_replace(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
-  *path = mapcache_util_str_replace(ctx->pool,*path, "{ext}",
+  *path = mapcache_util_str_replace_all(ctx->pool,*path, "{tileset}", tile->tileset->name);
+  *path = mapcache_util_str_replace_all(ctx->pool,*path, "{grid}", tile->grid_link->grid->name);
+  *path = mapcache_util_str_replace_all(ctx->pool,*path, "{ext}",
                                     tile->tileset->format?tile->tileset->format->extension:"png");
 
   if(strstr(*path,"{x}"))
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{x}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{x}",
                                       apr_psprintf(ctx->pool,"%d",tile->x));
   else
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_x}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_x}",
                                       apr_psprintf(ctx->pool,"%d",
                                           tile->grid_link->grid->levels[tile->z]->maxx - tile->x - 1));
   if(strstr(*path,"{y}"))
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{y}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{y}",
                                       apr_psprintf(ctx->pool,"%d",tile->y));
   else
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_y}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_y}",
                                       apr_psprintf(ctx->pool,"%d",
                                           tile->grid_link->grid->levels[tile->z]->maxy - tile->y - 1));
   if(strstr(*path,"{z}"))
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{z}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{z}",
                                       apr_psprintf(ctx->pool,"%d",tile->z));
   else
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{inv_z}",
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{inv_z}",
                                       apr_psprintf(ctx->pool,"%d",
                                           tile->grid_link->grid->nlevels - tile->z - 1));
   if(tile->dimensions && strstr(*path,"{dim")) {
@@ -310,10 +310,10 @@ static void _mapcache_cache_disk_template_tile_key(mapcache_context *ctx, mapcac
       dimstring = apr_pstrcat(ctx->pool,dimstring,"#",entry->dimension->name,"#",dimval,NULL);
       single_dim = apr_pstrcat(ctx->pool,"{dim:",entry->dimension->name,"}",NULL);
       if(strstr(*path,single_dim)) {
-        *path = mapcache_util_str_replace(ctx->pool,*path, single_dim, dimval);
+        *path = mapcache_util_str_replace_all(ctx->pool,*path, single_dim, dimval);
       }
     }
-    *path = mapcache_util_str_replace(ctx->pool,*path, "{dim}", dimstring);
+    *path = mapcache_util_str_replace_all(ctx->pool,*path, "{dim}", dimstring);
   }
 
   if(!*path) {
