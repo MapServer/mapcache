@@ -40,6 +40,8 @@ struct _header_struct {
   mapcache_context *ctx;
 };
 
+char *base64_encode(apr_pool_t *pool, const unsigned char *data, size_t input_length);
+
 size_t _mapcache_curl_memory_callback(void *ptr, size_t size, size_t nmemb, void *data)
 {
   mapcache_buffer *buffer = (mapcache_buffer*)data;
@@ -414,8 +416,43 @@ mapcache_http* mapcache_http_configuration_parse_xml(mapcache_context *ctx, ezxm
       apr_table_set(req->headers, header_node->name, header_node->txt);
     }
   }
+
+  /* Parse auth and append to headers for simplicity */
+  if ((http_node = ezxml_child(node, "auth")) != NULL) {
+    if (ezxml_attr(http_node, "scheme") &&
+        strcmp(ezxml_attr(http_node, "scheme"), "basic") == 0) {
+      ezxml_t user_node, pass_node;
+      char *credentials, *str2enc;
+      user_node = ezxml_child(http_node, "user");
+      pass_node = ezxml_child(http_node, "pass");
+      if (!user_node || !pass_node) {
+        ctx->set_error(ctx, 400,
+                       "both <http> <auth> username (<user>) and password "
+                       "(<pass>) elements must be provided");
+        return NULL;
+      }
+      str2enc =
+          apr_pstrcat(ctx->pool, user_node->txt, ":", pass_node->txt, NULL);
+      credentials = base64_encode(ctx->pool, (unsigned char *)str2enc,
+                                  sizeof(unsigned char) * strlen(str2enc));
+      memset(str2enc, '\0', sizeof(char) * strlen(str2enc));
+      if (credentials == NULL) {
+        ctx->set_error(ctx, 400, "error encoding <http> <auth> credentials");
+        return NULL;
+      }
+      apr_table_set(req->headers, "Authorization",
+                    apr_pstrcat(ctx->pool, "Basic ", credentials, NULL));
+      memset(credentials, '\0', sizeof(char) * strlen(credentials));
+    } else {
+      ctx->set_error(ctx, 400,
+                     "invalid or missing <http> <auth> scheme (only 'basic' "
+                     "scheme supported)");
+      return NULL;
+    }
+  }
+
   return req;
-  /* TODO: parse <proxy> and <auth> elements */
+  /* TODO: parse <proxy> element */
 }
 
 
