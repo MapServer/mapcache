@@ -346,10 +346,21 @@ mapcache_http_response *mapcache_core_get_tile(mapcache_context *ctx, mapcache_r
     apr_time_t now = apr_time_now();
     apr_time_t additional = apr_time_from_sec(expires);
     apr_time_t texpires = now + additional;
-    apr_table_set(response->headers, "Cache-Control",apr_psprintf(ctx->pool, "max-age=%d", expires));
     timestr = apr_palloc(ctx->pool, APR_RFC822_DATE_LEN);
     apr_rfc822_date(timestr, texpires);
     apr_table_setn(response->headers, "Expires", timestr);
+  }
+  if (expires || req_tile->tiles[0]->tileset->cache_control) {
+    apr_table_set(
+        response->headers, "Cache-Control",
+        apr_pstrcat(
+            ctx->pool,
+            expires ? apr_psprintf(ctx->pool, "max-age=%d", expires) : "",
+            expires && req_tile->tiles[0]->tileset->cache_control ? ", " : "",
+            req_tile->tiles[0]->tileset->cache_control
+                ? req_tile->tiles[0]->tileset->cache_control
+                : "",
+            NULL));
   }
 
   return response;

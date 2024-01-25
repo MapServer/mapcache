@@ -1163,6 +1163,11 @@ void parseTileset(mapcache_context *ctx, ezxml_t node, mapcache_cfg *config)
     }
   }
 
+  tileset->cache_control = NULL;
+  if ((cur_node = ezxml_child(node,"cache-control")) != NULL) {
+    tileset->cache_control = apr_pstrdup(ctx->pool, cur_node->txt);
+  }
+
   if ((cur_node = ezxml_child(node,"metabuffer")) != NULL) {
     char *endptr;
     tileset->metabuffer = (int)strtol(cur_node->txt,&endptr,10);
