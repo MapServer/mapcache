@@ -318,8 +318,9 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
 {
   mapcache_metatile *mt = mapcache_tileset_metatile_get(ctx,tile);
   GEOSCoordSequence *mtbboxls = GEOSCoordSeq_create(5,2);
-  GEOSGeometry *mtbbox = GEOSGeom_createLinearRing(mtbboxls);
-  GEOSGeometry *mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
+  // linearring and polygon creation moved after coords - more recent GEOS seems to assume coordinates are set
+  GEOSGeometry *mtbbox = NULL;
+  GEOSGeometry *mtbboxg = NULL;
   int i;
   int intersects = 0;
   GEOSCoordSeq_setX(mtbboxls,0,mt->map.extent.minx);
@@ -332,6 +333,10 @@ int ogr_features_intersect_tile(mapcache_context *ctx, mapcache_tile *tile)
   GEOSCoordSeq_setY(mtbboxls,3,mt->map.extent.maxy);
   GEOSCoordSeq_setX(mtbboxls,4,mt->map.extent.minx);
   GEOSCoordSeq_setY(mtbboxls,4,mt->map.extent.miny);
+  // moved after coords - more recent GEOS seems to assume coordinates are set
+  mtbbox = GEOSGeom_createLinearRing(mtbboxls);
+  mtbboxg = GEOSGeom_createPolygon(mtbbox,NULL,0);
+
   for(i=0; i<nClippers; i++) {
     const GEOSPreparedGeometry *clipper = clippers[i];
     if(GEOSPreparedIntersects(clipper,mtbboxg)) {
