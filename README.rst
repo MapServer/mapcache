@@ -1,7 +1,7 @@
 MapCache
 ========
 
-| |Build Status| |Appveyor Build Status|
+| |Build MapCache on Linux Status| |Build MapCache on Windows Status|
 
 -------
 Summary
@@ -53,8 +53,8 @@ License
 	 *****************************************************************************/
 
 
-.. |Build Status| image:: https://travis-ci.org/mapserver/mapcache.svg?branch=master
-   :target: https://travis-ci.org/mapserver/mapcache
+.. |Build MapCache on Linux Status| image:: https://github.com/MapServer/mapcache/actions/workflows/build-linux.yml/badge.svg
+   :target: https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Linux%22%20branch%3Amain
 
-.. |Appveyor Build Status| image:: https://ci.appveyor.com/api/projects/status/7al5utxjh83ig71v?svg=true
-   :target: https://ci.appveyor.com/project/mapserver/mapcache
+.. |Build MapCache on Windows Status| image:: https://github.com/MapServer/mapcache/actions/workflows/build-windows.yml/badge.svg
+   :target: https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Windows%22%20branch%3Amain
