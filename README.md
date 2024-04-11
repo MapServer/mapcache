@@ -1,8 +1,8 @@
 MapCache
 ========
 
-[![Build Status](https://travis-ci.org/MapServer/mapcache.svg?branch=main)](https://travis-ci.org/MapServer/mapcache)
-[![Appveyor Build Status](https://ci.appveyor.com/api/projects/status/7al5utxjh83ig71v?svg=true)](https://ci.appveyor.com/project/mapserver/mapcache)
+[![Build MapCache on Linux Status](https://github.com/MapServer/mapcache/actions/workflows/build-linux.yml/badge.svg)](https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Linux%22%20branch%3Amain)
+[![Build MapCache on Windows Status](https://github.com/MapServer/mapcache/actions/workflows/build-windows.yml/badge.svg)](https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Windows%22%20branch%3Amain)
 
 Summary
 -------
