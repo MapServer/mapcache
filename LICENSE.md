@@ -1,7 +1,7 @@
 MapCache Licensing
 ==================
 
-Copyright (c) 2008-2023 Open Source Geospatial Foundation.  
+Copyright (c) 2008-2024 Open Source Geospatial Foundation.  
 Copyright (c) 1996-2008 Regents of the University of Minnesota.
 
 Permission is hereby granted, free of charge, to any person obtaining a
