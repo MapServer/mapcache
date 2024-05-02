@@ -108,6 +108,7 @@ struct mapcache_cache_s3 {
   mapcache_cache_rest cache;
   char *id;
   char *secret;
+  char *session_token;
   char *region;
   char *credentials_file;
 };
@@ -894,7 +895,7 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
   } else {
     aws_access_key_id = s3->id;
     aws_secret_access_key = s3->secret;
-    aws_security_token = NULL;
+    aws_security_token = s3->session_token;
   }
 
   if(!strcmp(method,"PUT")) {
@@ -1365,6 +1366,13 @@ static void _mapcache_cache_s3_configuration_parse_xml(mapcache_context *ctx, ez
     } else {
       ctx->set_error(ctx,400,"s3 cache (%s) is missing required <secret> child or AWS_SECRET_ACCESS_KEY environment", cache->name);
       return;
+    }
+    if ((cur_node = ezxml_child(node,"session_token")) != NULL) {
+      s3->session_token = apr_pstrdup(ctx->pool, cur_node->txt);
+    } else if ( getenv("AWS_SESSION_TOKEN")) {
+      s3->session_token = apr_pstrdup(ctx->pool,getenv("AWS_SESSION_TOKEN"));
+    } else {
+      s3->session_token = NULL;
     }
   }
   if ((cur_node = ezxml_child(node,"region")) != NULL) {
