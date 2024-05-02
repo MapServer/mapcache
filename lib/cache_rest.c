@@ -869,16 +869,18 @@ static void _mapcache_cache_s3_headers_add(mapcache_context *ctx, const char* me
     if((rv=apr_file_open(&f, s3->credentials_file,
                        APR_FOPEN_READ|APR_FOPEN_BUFFERED|APR_FOPEN_BINARY,APR_OS_DEFAULT,
                        ctx->pool)) == APR_SUCCESS) {
-      char line[2048];
-      if( (rv = apr_file_gets(line,2048,f))== APR_SUCCESS) {
+      // Line length buffer increased to handle longer session tokens; see:
+      // https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html
+      char line[4096];
+      if( (rv = apr_file_gets(line,4096,f))== APR_SUCCESS) {
         _remove_lineends(line);
         aws_access_key_id = apr_pstrdup(ctx->pool,line);
       }
-      if( (rv = apr_file_gets(line,2048,f))== APR_SUCCESS) {
+      if( (rv = apr_file_gets(line,4096,f))== APR_SUCCESS) {
         _remove_lineends(line);
         aws_secret_access_key = apr_pstrdup(ctx->pool,line);
       }
-      if( (rv = apr_file_gets(line,2048,f))== APR_SUCCESS) {
+      if( (rv = apr_file_gets(line,4096,f))== APR_SUCCESS) {
         _remove_lineends(line);
         aws_security_token = apr_pstrdup(ctx->pool,line);
       }
