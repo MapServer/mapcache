@@ -33,10 +33,7 @@
 #include <apr_strings.h>
 
 #ifdef _WIN32
-typedef unsigned char     uint8_t;
-typedef unsigned short    uint16_t;
-typedef unsigned int      uint32_t;
-typedef unsigned long int uint64_t;
+#include <stdint.h>
 #endif
 
 #ifndef Z_BEST_SPEED
