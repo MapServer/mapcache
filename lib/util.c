@@ -45,10 +45,7 @@
 #endif
 
 #ifdef _WIN32
-typedef unsigned char     uint8_t;
-typedef unsigned short    uint16_t;
-typedef unsigned int      uint32_t;
-typedef unsigned long int uint64_t;
+#include <stdint.h>
 #endif
 
 const double mapcache_meters_per_unit[MAPCACHE_UNITS_COUNT] = {1.0,6378137.0 * 2.0 * M_PI / 360,0.3048};
