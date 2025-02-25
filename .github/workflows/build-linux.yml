@@ -6,7 +6,7 @@ jobs:
     build-matrix:
       strategy:
         matrix:
-          os: [ ubuntu-20.04 ]
+          os: [ ubuntu-latest ]
           option: [ minimal, default, maximal ]
       runs-on: ${{ matrix.os }}
       steps:
@@ -17,9 +17,11 @@ jobs:
           run: |
             if [[ 'minimal,default,maximal' =~ ${{ matrix.option }} ]]
             then
+              sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable
               sudo apt-get update -y
               sudo apt-get upgrade -y
               sudo apt-get install -y libcurl4-openssl-dev apache2-dev
+              sudo apt-get install -y libpng-dev libjpeg-dev
             fi
             if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
             then
@@ -69,7 +71,7 @@ jobs:
 
         - name: Run tests
           run: |
-            if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
+            if [[ 'ubuntu-latest' == ${{ matrix.os }} ]] \
                && [[ 'default' == ${{ matrix.option }} ]]
             then
               cd ${{ github.workspace }}/tests
