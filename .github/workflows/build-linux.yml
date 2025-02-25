@@ -6,7 +6,7 @@ jobs:
     build-matrix:
       strategy:
         matrix:
-          os: [ ubuntu-20.04 ]
+          os: [ ubuntu-latest ]
           option: [ minimal, default, maximal ]
       runs-on: ${{ matrix.os }}
       steps:
@@ -69,7 +69,7 @@ jobs:
 
         - name: Run tests
           run: |
-            if [[ 'ubuntu-20.04' == ${{ matrix.os }} ]] \
+            if [[ 'ubuntu-latest' == ${{ matrix.os }} ]] \
                && [[ 'default' == ${{ matrix.option }} ]]
             then
               cd ${{ github.workspace }}/tests
