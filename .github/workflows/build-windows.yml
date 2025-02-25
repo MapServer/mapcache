@@ -11,7 +11,7 @@ jobs:
       runs-on: ${{matrix.os}}
       steps:
         - name: Checkout repository
-          uses: actions/checkout@v2
+          uses: actions/checkout@v4
 
         - name: Install dependencies
           run: |
@@ -41,7 +41,7 @@ jobs:
             Compress-Archive -DestinationPath "${{github.workspace}}\mapcache.zip" -Path "${{github.workspace}}\mapcache.xml", "mapcache.dll", "mapcache.fcgi.exe", "mapcache_seed.exe", "mapcache_detail.exe"
 
         - name: Upload binary artifacts
-          uses: actions/upload-artifact@v2
+          uses: actions/upload-artifact@v4
           with:
             name: binaries
             path: mapcache.zip
@@ -110,7 +110,7 @@ jobs:
             }
 
         - name: Upload test artifacts
-          uses: actions/upload-artifact@v2
+          uses: actions/upload-artifact@v4
           with:
             name: test-results
             path: |
