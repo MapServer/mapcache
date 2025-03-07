@@ -60,7 +60,7 @@ struct mc_mapobj {
 void mapcache_mapserver_connection_constructor(mapcache_context *ctx, void **conn_, void *params) {
   mapcache_source_mapserver *src = (mapcache_source_mapserver*) params;
   struct mc_mapobj *mcmap = calloc(1,sizeof(struct mc_mapobj));
-  mcmap->map = msLoadMap(src->mapfile,NULL);
+  mcmap->map = msLoadMap(src->mapfile,NULL, NULL);
   if(!mcmap->map) {
     errorObj *errors = NULL;
     ctx->set_error(ctx, 500, "Failed to load mapfile '%s'",src->mapfile);
@@ -229,7 +229,7 @@ void _mapcache_source_mapserver_configuration_check(mapcache_context *ctx, mapca
   msSetup();
 
   /* do a test load to check the mapfile is correct */
-  map = msLoadMap(src->mapfile, NULL);
+  map = msLoadMap(src->mapfile, NULL, NULL);
   if(!map) {
     msWriteError(stderr);
     ctx->set_error(ctx,400,"failed to load mapfile \"%s\"",src->mapfile);
