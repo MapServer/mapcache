@@ -3,6 +3,7 @@ MapCache
 
 [![Build MapCache on Linux Status](https://github.com/MapServer/mapcache/actions/workflows/build-linux.yml/badge.svg)](https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Linux%22%20branch%3Amain)
 [![Build MapCache on Windows Status](https://github.com/MapServer/mapcache/actions/workflows/build-windows.yml/badge.svg)](https://github.com/MapServer/mapcache/actions?query=workflow%3A%22Build%20MapCache%20on%20Windows%22%20branch%3Amain)
+[![Release](https://img.shields.io/github/v/release/MapServer/mapcache)](https://github.com/MapServer/mapcache/releases)
 
 Summary
 -------
