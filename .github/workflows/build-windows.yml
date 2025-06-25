@@ -6,7 +6,7 @@ jobs:
     build-matrix:
       strategy:
         matrix:
-          os: [ windows-2019 ]
+          os: [ windows-2022 ]
           option: [ default ]
       runs-on: ${{matrix.os}}
       steps:
@@ -18,9 +18,9 @@ jobs:
             Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "sdk" -ItemType "directory"
             Set-Location -Path "sdk"
-            curl -O https://download.gisinternals.com/sdk/downloads/release-1928-x64-dev.zip
-            unzip -qq release-1928-x64-dev.zip
-            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            curl -O https://download.gisinternals.com/sdk/downloads/release-1930-x64-dev.zip
+            unzip -qq release-1930-x64-dev.zip
+            $sdkprefix = "${{github.workspace}}\sdk\release-1930-x64"
             Set-Location -Path "$sdkprefix\lib"
             Copy-Item -Path "libfcgi.lib" -Destination "fcgi.lib"
             Copy-Item -Path "apr-1.lib" -Destination "apr-1-1.lib"
@@ -30,7 +30,7 @@ jobs:
 
         - name: Build MapCache
           run: |
-            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            $sdkprefix = "${{github.workspace}}\sdk\release-1930-x64"
             Set-Location -Path "${{github.workspace}}"
             New-Item -Path . -Name "build" -ItemType "directory"
             Set-Location -Path "build"
@@ -49,7 +49,7 @@ jobs:
 
         - name: Setup tests
           run: |
-            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            $sdkprefix = "${{github.workspace}}\sdk\release-1930-x64"
             Set-Location -Path "${{github.workspace}}\build"
             Copy-Item -Path "..\tests\data\world.tif" -Destination .
             New-Item -Path "mapcache.xml"
@@ -80,7 +80,7 @@ jobs:
 
         - name: Run tests
           run: |
-            $sdkprefix = "${{github.workspace}}\sdk\release-1928-x64"
+            $sdkprefix = "${{github.workspace}}\sdk\release-1930-x64"
             Set-Location -Path "$sdkprefix\bin"
             $env:GDAL_DATA = "$sdkprefix\bin\gdal-data"
             $env:PROJ_LIB = "$sdkprefix\bin\proj9\share"
