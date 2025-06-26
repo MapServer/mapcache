@@ -237,8 +237,9 @@ static void _destroy_json_pool() {
 GEOSGeometry * mapcache_extent_to_GEOSGeometry(const mapcache_extent *extent)
 {
   GEOSCoordSequence *cs = GEOSCoordSeq_create(5,2);
-  GEOSGeometry *lr = GEOSGeom_createLinearRing(cs);
-  GEOSGeometry *bb = GEOSGeom_createPolygon(lr,NULL,0);
+  GEOSGeometry *lr;
+  GEOSGeometry *bb;
+
   GEOSCoordSeq_setX(cs,0,extent->minx);
   GEOSCoordSeq_setY(cs,0,extent->miny);
   GEOSCoordSeq_setX(cs,1,extent->maxx);
@@ -249,6 +250,10 @@ GEOSGeometry * mapcache_extent_to_GEOSGeometry(const mapcache_extent *extent)
   GEOSCoordSeq_setY(cs,3,extent->maxy);
   GEOSCoordSeq_setX(cs,4,extent->minx);
   GEOSCoordSeq_setY(cs,4,extent->miny);
+
+  lr = GEOSGeom_createLinearRing(cs);
+  bb = GEOSGeom_createPolygon(lr, NULL, 0);
+
   return bb;
 }
 
