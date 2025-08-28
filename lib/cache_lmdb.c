@@ -43,6 +43,7 @@
 
 #include "lmdb.h"
 
+/* Cache specific configuration */
 typedef struct mapcache_cache_lmdb mapcache_cache_lmdb;
 struct mapcache_cache_lmdb {
   mapcache_cache cache;
@@ -51,9 +52,10 @@ struct mapcache_cache_lmdb {
   size_t max_size;
   unsigned int max_readers;
   MDB_env *env;
+  MDB_dbi dbi;
 };
 
-/* LMDB env should be opened only once per process */
+/* A LMDB DB environment for a single directory */
 typedef struct lmdb_env_s lmdb_env_s;
 struct lmdb_env_s {
   MDB_env *env;
@@ -61,7 +63,9 @@ struct lmdb_env_s {
   int is_open;
 };
 
-static lmdb_env_s *lmdb_env;
+/* A hash table of all open environments with directories as keys */
+static apr_hash_t* lmdb_env_ht = NULL;
+static apr_thread_mutex_t *lmdb_env_mutex = NULL;
 
 static int _mapcache_cache_lmdb_has_tile(mapcache_context *ctx, mapcache_cache *pcache, mapcache_tile *tile)
 {
@@ -71,7 +75,7 @@ static int _mapcache_cache_lmdb_has_tile(mapcache_context *ctx, mapcache_cache *
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
   char *skey;
 
-  if (lmdb_env->is_open == 0) {
+  if (!cache->env) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return MAPCACHE_FALSE;
   }
@@ -80,13 +84,13 @@ static int _mapcache_cache_lmdb_has_tile(mapcache_context *ctx, mapcache_cache *
   key.mv_size = strlen(skey)+1;
   key.mv_data = skey;
 
-  rc = mdb_txn_begin(lmdb_env->env, NULL, MDB_RDONLY, &txn);
+  rc = mdb_txn_begin(cache->env, NULL, MDB_RDONLY, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for has_tile in %s:%s",cache->basedir,mdb_strerror(rc));
     return MAPCACHE_FALSE;
   }
 
-  rc = mdb_get(txn, lmdb_env->dbi, &key, &data);
+  rc = mdb_get(txn, cache->dbi, &key, &data);
   if(rc == 0) {
     ret = MAPCACHE_TRUE;
   } else if(rc == MDB_NOTFOUND) {
@@ -113,7 +117,7 @@ static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *p
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
   char *skey;
 
-  if (lmdb_env->is_open == 0) {
+  if (!cache->env) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
@@ -122,13 +126,13 @@ static void _mapcache_cache_lmdb_delete(mapcache_context *ctx, mapcache_cache *p
   key.mv_size = strlen(skey)+1;
   key.mv_data = skey;
 
-  rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
+  rc = mdb_txn_begin(cache->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for delete in %s:%s",cache->basedir,mdb_strerror(rc));
     return;
   }
 
-  rc = mdb_del(txn, lmdb_env->dbi, &key, NULL);
+  rc = mdb_del(txn, cache->dbi, &key, NULL);
   if (rc) {
     if (rc == MDB_NOTFOUND) {
       ctx->log(ctx,MAPCACHE_DEBUG,"attempt to delete tile %s absent in the db %s",skey,cache->basedir);
@@ -152,7 +156,7 @@ static int _mapcache_cache_lmdb_get(mapcache_context *ctx, mapcache_cache *pcach
   char *skey;
   mapcache_cache_lmdb *cache = (mapcache_cache_lmdb*)pcache;
 
-  if (lmdb_env->is_open == 0) {
+  if (!cache->env) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return MAPCACHE_FALSE;
   }
@@ -161,13 +165,13 @@ static int _mapcache_cache_lmdb_get(mapcache_context *ctx, mapcache_cache *pcach
   key.mv_size = strlen(skey)+1;
   key.mv_data = skey;
 
-  rc = mdb_txn_begin(lmdb_env->env, NULL, MDB_RDONLY, &txn);
+  rc = mdb_txn_begin(cache->env, NULL, MDB_RDONLY, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for get in %s:%s",cache->basedir,mdb_strerror(rc));
     return MAPCACHE_FALSE;
   }
 
-  rc = mdb_get(txn, lmdb_env->dbi, &key, &data);
+  rc = mdb_get(txn, cache->dbi, &key, &data);
   if(rc == 0) {
     if(((char*)(data.mv_data))[0] == '#') {
       tile->encoded_data = mapcache_empty_png_decode(ctx,tile->grid_link->grid->tile_sx, tile->grid_link->grid->tile_sy, (unsigned char*)data.mv_data,&tile->nodata);
@@ -178,6 +182,7 @@ static int _mapcache_cache_lmdb_get(mapcache_context *ctx, mapcache_cache *pcach
       tile->encoded_data->avail = data.mv_size;
     }
     tile->mtime = *((apr_time_t*)(((char*)data.mv_data)+data.mv_size-sizeof(apr_time_t)));
+    
     ret = MAPCACHE_SUCCESS;
   } else if(rc == MDB_NOTFOUND) {
     ret = MAPCACHE_CACHE_MISS;
@@ -232,18 +237,18 @@ static void _mapcache_cache_lmdb_set(mapcache_context *ctx, mapcache_cache *pcac
     tile->encoded_data->size -= sizeof(apr_time_t);
   }
 
-  if (lmdb_env->is_open == 0) {
+  if (!cache->env) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
 
-  rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
+  rc = mdb_txn_begin(cache->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for set in %s:%s",cache->basedir,mdb_strerror(rc));
     return;
   }
 
-  rc = mdb_put(txn, lmdb_env->dbi, &key, &data, 0);
+  rc = mdb_put(txn, cache->dbi, &key, &data, 0);
   if(rc) {
     ctx->set_error(ctx,500,"lmbd failed to put for tile_set in %s:%s",cache->basedir,mdb_strerror(rc));
   }
@@ -265,12 +270,12 @@ static void _mapcache_cache_lmdb_multiset(mapcache_context *ctx, mapcache_cache 
 
   now = apr_time_now();
 
-  if (lmdb_env->is_open == 0) {
+  if (!cache->env) {
     ctx->set_error(ctx,500,"lmdb is not open %s",cache->basedir);
     return;
   }
 
-  rc = mdb_txn_begin(lmdb_env->env, NULL, 0, &txn);
+  rc = mdb_txn_begin(cache->env, NULL, 0, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction for multiset in %s:%s",cache->basedir,mdb_strerror(rc));
     return;
@@ -308,7 +313,7 @@ static void _mapcache_cache_lmdb_multiset(mapcache_context *ctx, mapcache_cache 
     key.mv_data = skey;
     key.mv_size = strlen(skey)+1;
 
-    rc = mdb_put(txn, lmdb_env->dbi, &key, &data, 0);
+    rc = mdb_put(txn, cache->dbi, &key, &data, 0);
     if(rc) {
       ctx->set_error(ctx,500,"lmbd failed to put for multiset in %s:%s",cache->basedir,mdb_strerror(rc));
       goto abort_txn;
@@ -386,76 +391,136 @@ static void _mapcache_cache_lmdb_configuration_post_config(mapcache_context *ctx
   }
 }
 
+/**
+ * Clean-up LMDB at shutdown
+ * 
+ * \private \memberof mapcache_cache_lmdb
+ */
+static apr_status_t _lmdb_cleanup(void *data) {
+  apr_hash_index_t *hi;
+  if(lmdb_env_ht) {
+    for (hi = apr_hash_first(NULL, lmdb_env_ht); hi; hi = apr_hash_next(hi)) {
+      lmdb_env_s *env_s;
+      apr_hash_this(hi, NULL, NULL, (void**)&env_s);
+      if(env_s->is_open) {
+        mdb_dbi_close(env_s->env, env_s->dbi);
+        mdb_env_close(env_s->env);
+        env_s->is_open = 0;
+      }
+    }
+    lmdb_env_ht = NULL;
+  }
+  if(lmdb_env_mutex) {
+    apr_thread_mutex_destroy(lmdb_env_mutex);
+    lmdb_env_mutex = NULL;
+  }
+  return APR_SUCCESS;
+}
+
+
+/**
+ * Open LMDB database at a process start
+ * 
+ * LMDB requires single DB environment to be opened only once per process
+ * thus here new environments are created when a new process starts
+ */
 static void _mapcache_cache_lmdb_child_init(mapcache_context *ctx, mapcache_cache *cache, apr_pool_t *pchild)
 {
   mapcache_cache_lmdb *dcache = (mapcache_cache_lmdb*)cache;
-
   int rc, dead=0;
   MDB_txn *txn;
+  lmdb_env_s *env_s = NULL;
 
-  lmdb_env_s *var = apr_pcalloc(ctx->pool,sizeof(lmdb_env_s));
-  lmdb_env = var;
-  lmdb_env->is_open = 0;
-  rc = mdb_env_create(&(lmdb_env->env));
+  if(!lmdb_env_mutex) {
+    apr_thread_mutex_create(&lmdb_env_mutex, APR_THREAD_MUTEX_DEFAULT, pchild);
+  }
+
+  apr_thread_mutex_lock(lmdb_env_mutex);
+
+  if(!lmdb_env_ht) {
+    lmdb_env_ht = apr_hash_make(pchild);
+    apr_pool_cleanup_register(pchild, NULL, _lmdb_cleanup, apr_pool_cleanup_null);
+  }
+
+  env_s = apr_hash_get(lmdb_env_ht, dcache->basedir, APR_HASH_KEY_STRING);
+
+  /* Environment for particular base dir is alreay open */
+  if(env_s) {
+    dcache->env = env_s->env;
+    dcache->dbi = env_s->dbi;
+    apr_thread_mutex_unlock(lmdb_env_mutex);
+    return;
+  }
+
+  env_s = apr_pcalloc(pchild,sizeof(lmdb_env_s));
+  rc = mdb_env_create(&(env_s->env));
+
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to create environment of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    return;
+    goto cleanup;
   }
-  rc = mdb_env_set_mapsize(lmdb_env->env, dcache->max_size);
+  rc = mdb_env_set_mapsize(env_s->env, dcache->max_size);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to set maximum size of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
   if (dcache->max_readers) {
-    rc = mdb_env_set_maxreaders(lmdb_env->env, dcache->max_readers);
+    rc = mdb_env_set_maxreaders(env_s->env, dcache->max_readers);
     if (rc) {
       ctx->set_error(ctx,500,"lmdb failed to set maximum readers of database %s:%s",dcache->basedir,mdb_strerror(rc));
-      mdb_env_close(lmdb_env->env);
-      return;
+      mdb_env_close(env_s->env);
+      goto cleanup;
     }
   }
   /* Clean out any stale reader entries from lock table */
-  rc = mdb_reader_check(lmdb_env->env, &dead);
+  rc = mdb_reader_check(env_s->env, &dead);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to clear stale readers of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
   if (dead) {
     ctx->log(ctx,MAPCACHE_NOTICE,"lmdb cleared %d stale readers of database %s",dead,dcache->basedir);
   }
-  rc = mdb_env_open(lmdb_env->env, dcache->basedir, 0, 0664);
+  rc = mdb_env_open(env_s->env, dcache->basedir, 0, 0664);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to open environment of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
-  rc = mdb_txn_begin(lmdb_env->env, NULL, MDB_CREATE, &txn);
+  rc = mdb_txn_begin(env_s->env, NULL, MDB_CREATE, &txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to begin transaction of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
-  rc = mdb_dbi_open(txn, NULL, 0, &(lmdb_env->dbi));
+  rc = mdb_dbi_open(txn, NULL, 0, &(env_s->dbi));
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to open dbi of database %s:%s",dcache->basedir,mdb_strerror(rc));
     mdb_txn_abort(txn);
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
   rc = mdb_txn_commit(txn);
   if (rc) {
     ctx->set_error(ctx,500,"lmdb failed to commit transaction of database %s:%s",dcache->basedir,mdb_strerror(rc));
-    mdb_dbi_close(lmdb_env->env, lmdb_env->dbi);
-    mdb_env_close(lmdb_env->env);
-    return;
+    mdb_dbi_close(env_s->env, env_s->dbi);
+    mdb_env_close(env_s->env);
+    goto cleanup;
   }
-  lmdb_env->is_open = 1;
+  env_s->is_open = 1;
+  dcache->env = env_s->env;
+  dcache->dbi = env_s->dbi;
+  apr_hash_set(lmdb_env_ht, dcache->basedir, APR_HASH_KEY_STRING, env_s);
+
+cleanup:
+  apr_thread_mutex_unlock(lmdb_env_mutex);
 }
 
+
 /**
- * \brief creates and initializes a mapcache_dbd_cache
+ * \brief creates and initializes a mapcache_lmdb_cache
  */
 mapcache_cache* mapcache_cache_lmdb_create(mapcache_context *ctx)
 {
