@@ -53,7 +53,9 @@ SYNTHETIC_GEOTIFF_FILENAME = os.path.join(
 )
 GEOTIFF_WIDTH = 512
 GEOTIFF_HEIGHT = 512
-MAPCACHE_TEMPLATE_CONFIG = "../data/mapcache_backend_template.xml"
+MAPCACHE_TEMPLATE_CONFIG = os.path.join(
+    os.path.dirname(__file__), "..", "data", "mapcache_backend_template.xml"
+)
 
 # --- Grid Parameters --- #
 INITIAL_RESOLUTION = 1000
