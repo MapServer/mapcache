@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapcache>
+    <source name="synthetic-source" type="gdal">
+        <resample>NEAREST</resample>
+        <data>SYNTHETIC_GEOTIFF_PATH_PLACEHOLDER</data>
+    </source>
+    <grid name="synthetic_grid">
+        <extent>-500000 -500000 500000 500000</extent>
+        <srs>EPSG:3857</srs>
+        <units>m</units>
+        <origin>top-left</origin>
+        <size>256 256</size>
+        <resolutions>
+           1000
+           500
+           250
+           125
+           62.5
+           31.25
+           15.625
+           7.8125
+           3.90625
+           1.953125
+           0.9765625
+           0.48828125
+           0.244140625
+           0.1220703125
+           0.06103515625
+           0.030517578125
+           0.0152587890625
+           0.00762939453125
+        </resolutions>
+    </grid>
+    <cache name="disk" type="disk">
+        <base>TILE_CACHE_BASE_DIR/disk</base>
+    </cache>
+    <tileset name="disk-tileset">
+        <cache>disk</cache>
+        <source>synthetic-source</source>
+        <grid>synthetic_grid</grid>
+        <format>PNG</format> <!-- Using PNG for lossless data for correctness tests -->
+        <resample>NEAREST</resample>
+        <metatile>1 1</metatile>
+    </tileset>
+    <!-- Required utils have not landed yet
+    <cache name="lmdb" type="lmdb">
+        <base>TILE_CACHE_BASE_DIR/lmdb</base>
+    </cache>
+    <tileset name="lmdb-tileset">
+        <cache>lmdb</cache>
+        <source>synthetic-source</source>
+        <grid>synthetic_grid</grid>
+        <format>PNG</format>
+        <resample>NEAREST</resample>
+        <metatile>1 1</metatile>
+    </tileset>
+    -->
+    <cache name="sqlite" type="sqlite3">
+        <dbfile>TILE_CACHE_BASE_DIR/cache.sqlite</dbfile>
+    </cache>
+    <tileset name="sqlite-tileset">
+        <cache>sqlite</cache>
+        <source>synthetic-source</source>
+        <grid>synthetic_grid</grid>
+        <format>PNG</format>
+        <resample>NEAREST</resample>
+        <metatile>1 1</metatile>
+    </tileset>
+    <service type="wmts" enabled="true"/>
+    <service type="wms" enabled="true"/>
+    <log_level>debug</log_level>
+</mapcache>

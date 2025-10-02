@@ -26,12 +26,16 @@ jobs:
             if [[ 'default,maximal' =~ ${{ matrix.option }} ]]
             then
               sudo apt-get install -y libgdal-dev libfcgi-dev libpixman-1-dev
-              sudo apt-get install -y gdal-bin libxml2-utils
+              sudo apt-get install -y gdal-bin libxml2-utils python3-pip python3-gdal python3-pytest
             fi
             if [[ 'maximal' =~ ${{ matrix.option }} ]]
             then
               sudo apt-get install -y libhiredis-dev libdb-dev libmapserver-dev libpcre2-dev
             fi
+
+        - name: Install python dependencies
+          run: |
+            pip install -r ${{ github.workspace }}/tests/mcpython/requirements.txt
 
         - name: Build MapCache
           run: |
@@ -79,4 +83,14 @@ jobs:
               ./run.sh
             else
               echo No test performed on this target
+            fi
+
+        - name: Run python tests
+          run: |
+            if [[ 'ubuntu-latest' == ${{ matrix.os }} ]] \
+               && [[ 'default' == ${{ matrix.option }} ]]
+            then
+              pytest ${{ github.workspace }}/tests/mcpython/
+            else
+              echo No python test performed on this target
             fi
