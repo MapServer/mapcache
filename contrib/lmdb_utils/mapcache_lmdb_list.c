@@ -31,6 +31,9 @@
 #include <string.h>
 #include <apr_getopt.h>
 #include <apr_pools.h>
+#include <apr_time.h>
+#include <apr_date.h>
+#include <apr_strings.h>
 #include "lmdb.h"
 
 void fail(const char *msg, int rc) {
@@ -41,6 +44,7 @@ void fail(const char *msg, int rc) {
 static const apr_getopt_option_t options[] = {
     { "dbpath", 'd', TRUE, "Path to the LMDB database directory" },
     { "summary", 's', FALSE, "Print only the total number of keys" },
+    { "extended", 'e', FALSE, "Show extended info (timestamp, size)" },
     { "help", 'h', FALSE, "Show help" },
     { NULL, 0, 0, NULL }
 };
@@ -77,6 +81,7 @@ int main(int argc, const char * const *argv) {
     MDB_dbi dbi;
     MDB_val value;
     int summary_flag = 0;
+    int extended_flag = 0;
     MDB_stat stat;
     apr_pool_t *pool = NULL;
     apr_getopt_t *opt;
@@ -97,6 +102,9 @@ int main(int argc, const char * const *argv) {
                 break;
             case 's':
                 summary_flag = 1;
+                break;
+            case 'e':
+                extended_flag = 1;
                 break;
         }
     }
@@ -154,7 +162,50 @@ int main(int argc, const char * const *argv) {
 
         // Iterate over keys
         while ((rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT)) == 0) {
-            fwrite(key.mv_data, 1, key.mv_size, stdout);
+            // Print the key itself, without the null terminator
+            fwrite(key.mv_data, 1, key.mv_size - 1, stdout);
+
+            if (extended_flag) {
+                apr_time_t timestamp;
+                size_t data_size;
+
+                // Check for special blank tile encoding ('#' marker)
+                if (value.mv_size > 1 && ((char *)value.mv_data)[0] == '#') {
+                    if (value.mv_size == 5 + sizeof(apr_time_t)) {
+                        memcpy(&timestamp, (char *)value.mv_data + 5, sizeof(apr_time_t));
+                        data_size = 4; // RGBA color
+                    } else {
+                        // Unexpected size, cannot parse
+                        timestamp = 0;
+                        data_size = 0;
+                    }
+                } else if (value.mv_size >= sizeof(apr_time_t)) {
+                    // Regular tile data
+                    data_size = value.mv_size - sizeof(apr_time_t);
+                    memcpy(&timestamp, (char *)value.mv_data + data_size, sizeof(apr_time_t));
+                } else {
+                    // Data is too small, cannot parse
+                    timestamp = 0;
+                    data_size = value.mv_size;
+                }
+
+                if (timestamp > 0) {
+                    apr_time_exp_t exploded_time;
+                    char iso_time_str[30];
+                    apr_time_exp_gmt(&exploded_time, timestamp);
+                    apr_snprintf(iso_time_str, sizeof(iso_time_str),
+                                 "%d-%02d-%02dT%02d:%02d:%02dZ",
+                                 exploded_time.tm_year + 1900,
+                                 exploded_time.tm_mon + 1,
+                                 exploded_time.tm_mday,
+                                 exploded_time.tm_hour,
+                                 exploded_time.tm_min,
+                                 exploded_time.tm_sec);
+                    printf(",%s,%zu", iso_time_str, data_size);
+                } else {
+                    printf(",,%zu", data_size); // Print size even if timestamp is unknown
+                }
+            }
             printf("\n");
         }
 
