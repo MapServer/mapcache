@@ -131,26 +131,36 @@ static apr_array_header_t* _mapcache_dimension_regex_get_entries_for_value(mapca
 {
   mapcache_dimension_regex *dimension = (mapcache_dimension_regex*)dim;
   apr_array_header_t *values = apr_array_make(ctx->pool,1,sizeof(char*));
-#if defined(USE_PCRE2)
-  pcre2_match_data *match_data;
-  int rc = pcre2_match(dimension->pcregex,(PCRE2_SPTR)value,strlen(value),0,0,match_data,NULL);
-  if(rc>0) {
-    APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+  #if defined(USE_PCRE2)
+  {
+    pcre2_match_data *match_data;
+    int rc;
+    match_data = pcre2_match_data_create_from_pattern(dimension->pcregex, NULL);
+    rc = pcre2_match(dimension->pcregex,(PCRE2_SPTR)value,strlen(value),0,0,match_data,NULL);
+    if(rc>0) {
+      APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+    } else {
+      ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
+    }
+    pcre2_match_data_free(match_data);
   }
-#elif defined(USE_PCRE)
-  int ovector[30];
-  int rc = pcre_exec(dimension->pcregex,NULL,value,strlen(value),0,0,ovector,30);
-  if(rc>0) {
-    APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+  #elif defined(USE_PCRE)
+  {
+    int ovector[30];
+    int rc = pcre_exec(dimension->pcregex,NULL,value,strlen(value),0,0,ovector,30);
+    if(rc>0) {
+      APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+    } else {
+      ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
+    }
   }
-#else
-  if(!regexec(dimension->regex,value,0,0,0)) {
-    APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
-  }
-#endif
-  else {
-    ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
-  }
+  #else
+    if(!regexec(dimension->regex,value,0,0,0)) {
+      APR_ARRAY_PUSH(values,char*) = apr_pstrdup(ctx->pool,value);
+    } else {
+      ctx->set_error(ctx,400,"failed to validate requested value for %s (%s)",dim->class_name,dim->name);
+    }
+  #endif
   return values;
 }
 
@@ -181,8 +191,8 @@ static void _mapcache_dimension_regex_parse_xml(mapcache_context *ctx, mapcache_
 #if defined(USE_PCRE2)
   {
     int pcre_err;
-    PCRE2_SIZE *pcre_offset;
-    dimension->pcregex = pcre2_compile((PCRE2_SPTR8)dimension->regex_string,strlen(dimension->regex_string), 0, &pcre_err, pcre_offset, NULL);
+    PCRE2_SIZE pcre_offset;
+    dimension->pcregex = pcre2_compile((PCRE2_SPTR8)dimension->regex_string,strlen(dimension->regex_string), 0, &pcre_err, &pcre_offset, NULL);
     if(!dimension->pcregex) {
       ctx->set_error(ctx,400,"failed to compile regular expression \"%s\" for %s \"%s\": %d",
                      dimension->regex_string,dim->class_name,dim->name,pcre_err);
