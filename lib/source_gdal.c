@@ -347,8 +347,8 @@ CreateWarpedVRT( GDALDatasetH hSrcDS,
     {
         double dfDesiredXRes = (extent->maxx - extent->minx) / width;
         double dfDesiredYRes = (extent->maxy - extent->miny) / height;
-        double dfDesiredRes = MIN( dfDesiredXRes, dfDesiredYRes );
-        double dfGuessedFullRes = MIN( adfDstGeoTransform[1],
+        double dfDesiredRes = MAPCACHE_MIN( dfDesiredXRes, dfDesiredYRes );
+        double dfGuessedFullRes = MAPCACHE_MIN( adfDstGeoTransform[1],
                                    fabs(adfDstGeoTransform[5]) );
         double dfApproxDstOvrRatio = dfDesiredRes / dfGuessedFullRes;
 
