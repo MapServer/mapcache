@@ -1,3 +1,10 @@
+Migrating from MapCache 1.14 to 1.16
+====================================
+
+* No backward compatibility issue is expected.
+  See [MapCache 1.16 Changelog](https://mapserver.org/development/changelog/mapcache/changelog-1-16.html)
+  for a list of bug fixes and new features.
+
 Migrating from MapCache 1.12 to 1.14
 ====================================
 
