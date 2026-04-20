@@ -32,7 +32,7 @@ if(WITH_APACHE)
   ENDIF(APPLE)
 
   message(STATUS "* Apache Module support status:")
-  status_optional_component("Mapcache Version String" "${USE_VERSION_STRING}" "mod_mapcache/${MAPCACHE_VERSION_STRING}")
+  status_optional_component("MapCache Version String" "${USE_VERSION_STRING}" "mod_mapcache/${MAPCACHE_VERSION_STRING}")
   if(APACHE_MODULE_DIR)
      message(STATUS "  * Module will be installed to : ${APACHE_MODULE_DIR}")
   else(APACHE_MODULE_DIR)
