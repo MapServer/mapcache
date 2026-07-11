@@ -1,0 +1,12 @@
+if(WITH_LMDB_UTILS)
+  find_package(LMDB REQUIRED)
+  include_directories(${LMDB_INCLUDE_DIR})
+  add_executable(mapcache_lmdb_list ${CMAKE_CURRENT_SOURCE_DIR}/mapcache_lmdb_list.c)
+  target_include_directories(mapcache_lmdb_list PRIVATE ${APR_INCLUDE_DIR})
+  target_link_libraries(mapcache_lmdb_list PRIVATE ${LMDB_LIBRARY} ${APR_LIBRARY})
+  add_executable(mapcache_lmdb_get ${CMAKE_CURRENT_SOURCE_DIR}/mapcache_lmdb_get.c)
+  target_include_directories(mapcache_lmdb_get PRIVATE ${APR_INCLUDE_DIR})
+  target_link_libraries(mapcache_lmdb_get PRIVATE ${LMDB_LIBRARY} ${APR_LIBRARY})
+
+  INSTALL(TARGETS mapcache_lmdb_list mapcache_lmdb_get RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif(WITH_LMDB_UTILS)
