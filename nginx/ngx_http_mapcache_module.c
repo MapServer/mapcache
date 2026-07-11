@@ -6,10 +6,24 @@
 #include <apr_strings.h>
 #include <apr_pools.h>
 
-
+extern ngx_module_t ngx_http_mapcache_module;
 apr_pool_t *process_pool = NULL;
 static char *ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd,
                                void *conf);
+
+typedef struct{
+  ngx_array_t *configs; // elements: mapcache_cfg*
+} ngx_http_mapcache_main_conf_t;
+
+// Register the cleanup function for the APR pool to the nginx configuration pool.
+static void ngx_http_mapcache_apr_pool_cleanup(void *data)
+{
+  apr_pool_t *p = (apr_pool_t *)data;
+  if (p)
+  {
+    apr_pool_destroy(p);
+  }
+}
 
 static ngx_command_t  ngx_http_mapcache_commands[] = {
 
@@ -56,12 +70,23 @@ static mapcache_context* ngx_mapcache_context_clone(mapcache_context *ctx)
 static void *
 ngx_http_mapcache_create_conf(ngx_conf_t *cf)
 {
-  apr_initialize();
-  atexit(apr_terminate);
-  apr_pool_initialize();
-  apr_pool_create(&process_pool,NULL);
-  mapcache_context *ctx = apr_pcalloc(process_pool, sizeof(mapcache_ngx_context));
-  ctx->pool = process_pool;
+  // Allocate an independent APR pool for this location and attach it to the configuration pool cleanup of nginx.
+  apr_pool_t *loc_apr_pool = NULL;
+  apr_initialize(); // Ensure that APR has been initialized (safe for multiple calls)
+  apr_pool_create(&loc_apr_pool, NULL);
+  ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(cf->pool, 0);
+  if (cln)
+  {
+    cln->handler = ngx_http_mapcache_apr_pool_cleanup;
+    cln->data = loc_apr_pool;
+  }
+  mapcache_ngx_context *ngctx = ngx_pcalloc(cf->pool, sizeof(mapcache_ngx_context));
+  if (ngctx == NULL)
+  {
+    return NULL;
+  }
+  mapcache_context *ctx = (mapcache_context *)ngctx;
+  ctx->pool = loc_apr_pool; // Use the location-specific APR pool to host the configuration memory
   ctx->connection_pool = NULL;
   mapcache_context_init(ctx);
   ctx->log = ngx_mapcache_context_log;
@@ -70,6 +95,27 @@ ngx_http_mapcache_create_conf(ngx_conf_t *cf)
 
 
   return ctx;
+}
+
+static void *
+ngx_http_mapcache_create_main_conf(ngx_conf_t *cf)
+{
+  // Do not create a global APR pool here or call atexit/apr_pool_initialize
+  ngx_http_mapcache_main_conf_t *mcf;
+
+  mcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_mapcache_main_conf_t));
+  if (mcf == NULL)
+  {
+    return NULL;
+  }
+
+  mcf->configs = ngx_array_create(cf->pool, 1, sizeof(mapcache_cfg *));
+  if (mcf->configs == NULL)
+  {
+    return NULL;
+  }
+
+  return mcf;
 }
 
 
@@ -156,7 +202,7 @@ static ngx_http_module_t  ngx_http_mapcache_module_ctx = {
   NULL,                          /* preconfiguration */
   NULL,                          /* postconfiguration */
 
-  NULL,                          /* create main configuration */
+  ngx_http_mapcache_create_main_conf, /* create main configuration */
   NULL,                          /* init main configuration */
 
   NULL,                          /* create server configuration */
@@ -168,16 +214,37 @@ static ngx_http_module_t  ngx_http_mapcache_module_ctx = {
 
 static ngx_int_t ngx_mapcache_init_process(ngx_cycle_t *cycle)
 {
+  /* Executed when each worker process starts */
   apr_initialize();
-  atexit(apr_terminate);
-  apr_pool_initialize();
-  apr_pool_create(&process_pool,NULL);
+  // Do not use apr_pool_initialize or atexit
+  apr_pool_create(&process_pool, NULL);
+
+  ngx_http_mapcache_main_conf_t *mcf =
+      (ngx_http_mapcache_main_conf_t *)ngx_http_cycle_get_module_main_conf(cycle, ngx_http_mapcache_module);
+
+  mapcache_cfg **confs = (mapcache_cfg **)mcf->configs->elts;
+  ngx_uint_t i;
+
+  mapcache_context *ctx = apr_pcalloc(process_pool, sizeof(mapcache_ngx_context));
+  ctx->pool = process_pool;
+  mapcache_context_init(ctx);
+  ctx->log = ngx_mapcache_context_log;
+  ctx->clone = ngx_mapcache_context_clone;
+
+  for (i = 0; i < mcf->configs->nelts; i++)
+  {
+    // Perform per-child initialization for each cache, using the process_pool of this worker.
+    mapcache_cache_child_init(ctx, confs[i], process_pool);
+  }
   return NGX_OK;
 }
 
 static void ngx_mapcache_exit_process(ngx_cycle_t *cycle)
 {
-  apr_pool_destroy(process_pool);
+  if (process_pool){
+    apr_pool_destroy(process_pool);
+    process_pool = NULL;
+  }
 }
 
 ngx_module_t  ngx_http_mapcache_module = {
@@ -300,13 +367,17 @@ ngx_http_mapcache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no mapcache <service>s configured/enabled, no point in continuing.");
     return NGX_CONF_ERROR;
   }
-  mapcache_cache_child_init(ctx,ctx->config,ctx->pool);
   if(GC_HAS_ERROR(ctx)) {
     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,ctx->get_error_message(ctx));
     return NGX_CONF_ERROR;
   }
   mapcache_connection_pool_create(ctx->config, &ctx->connection_pool,ctx->pool);
   ctx->config->non_blocking = 1;
+
+  /* add the mapcache config to the list of configs to be initialized on worker startup */
+  ngx_http_mapcache_main_conf_t *mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_mapcache_module);
+  mapcache_cfg **pcfg = ngx_array_push(mcf->configs);
+  *pcfg = ctx->config;
 
   ngx_http_core_loc_conf_t  *clcf;
 
