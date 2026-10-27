@@ -46,7 +46,7 @@
 #include <apr_strings.h>
 
 #ifdef USE_FORK
-int msqid;
+int msqid, log_msqid;
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <errno.h>
@@ -81,7 +81,7 @@ int quiet = 0;
 int verbose = 0;
 int force = 0;
 int non_interactive = 0;
-int sig_int_received = 0;
+volatile sig_atomic_t sig_int_received = 0;
 int error_detected = 0;
 double percent_failed_allowed = 1.0;
 int n_metatiles_tot = 0;
@@ -138,6 +138,16 @@ struct msg_cmd {
   long mtype;
   struct seed_cmd cmd;
 };
+
+#define MAX_ERR_MSG_SIZE 512
+struct ipc_log_status {
+    long mtype;
+    s_status status;
+    int x,y,z;
+    int nodata;
+    int skipped;
+    char msg[MAX_ERR_MSG_SIZE];
+};
 #endif
 
 cmd mode = MAPCACHE_CMD_SEED; /* the mode the utility will be running in: either seed or delete */
@@ -148,11 +158,15 @@ int push_queue(struct seed_cmd cmd)
   int retries=0;
   int ret;
 #ifdef USE_FORK
-  if(nprocesses > 1) {
+  if(nprocesses >= 1) {
     struct msg_cmd mcmd;
+    memset(&mcmd, 0, sizeof(struct msg_cmd));
     mcmd.mtype = 1;
     mcmd.cmd = cmd;
-    if (msgsnd(msqid, &mcmd, sizeof(struct seed_cmd), 0) == -1) {
+    do {
+      ret = msgsnd(msqid, &mcmd, sizeof(struct seed_cmd), 0);
+    } while (ret == -1 && errno == EINTR && !sig_int_received);
+    if (ret == -1) {
       printf("failed to push tile %d %d %d\n",cmd.z,cmd.y,cmd.x);
       return APR_EGENERAL;
     }
@@ -179,27 +193,50 @@ int pop_queue(struct seed_cmd *cmd)
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
-  if(nprocesses > 1) {
+  if(nprocesses >= 1) {
     struct msg_cmd mcmd;
-    if (msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, 0) == -1) {
-      printf("failed to pop tile\n");
-      return APR_EGENERAL;
+
+    // if there is a sig_int, then it is useless to wait for messages.
+    if(sig_int_received) {
+      cmd->command = MAPCACHE_CMD_STOP;
+      return APR_SUCCESS;
+    }
+
+    do {
+      ret = msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, 0);
+    } while (ret == -1 && errno == EINTR && !sig_int_received);
+
+    if (ret == -1) {
+      cmd->command = MAPCACHE_CMD_STOP;
+      return APR_SUCCESS;
     }
     *cmd = mcmd.cmd;
     return APR_SUCCESS;
   }
 #endif
 
-  ret = apr_queue_pop(work_queue, (void**)&pcmd);
-  while(ret == APR_EINTR && retries<10) {
+  do {
     retries++;
     ret = apr_queue_pop(work_queue, (void**)&pcmd);
+  } while(ret == APR_EINTR && retries < 10 && !sig_int_received);
+
+  /*
+   * Check the flag *after* the pop. This closes the race condition.
+   * If the pop succeeded but a signal has been received, we discard the
+   * item and stop. If the pop failed, we also stop.
+   */
+  if(ret != APR_SUCCESS || sig_int_received) {
+    if(ret == APR_SUCCESS) {
+      // We popped an item but must now discard it.
+      free(pcmd);
+    }
+    cmd->command = MAPCACHE_CMD_STOP;
+    return APR_SUCCESS;
   }
-  if(ret == APR_SUCCESS) {
-    *cmd = *pcmd;
-    free(pcmd);
-  }
-  return ret;
+
+  *cmd = *pcmd;
+  free(pcmd);
+  return APR_SUCCESS;
 }
 
 int trypop_queue(struct seed_cmd *cmd)
@@ -208,11 +245,11 @@ int trypop_queue(struct seed_cmd *cmd)
   struct seed_cmd *pcmd;
 
 #ifdef USE_FORK
-  if(nprocesses>1) {
+  if(nprocesses >= 1) {
     struct msg_cmd mcmd;
     ret = msgrcv(msqid, &mcmd, sizeof(struct seed_cmd), 1, IPC_NOWAIT);
     if(errno == ENOMSG) return APR_EAGAIN;
-    if(ret>0) {
+    if(ret > 0) {
       *cmd = mcmd.cmd;
       return APR_SUCCESS;
     } else {
@@ -258,7 +295,7 @@ static const apr_getopt_option_t seed_options[] = {
   { "metasize", 'M', TRUE, "override metatile size while seeding, eg 8,8" },
   { "nthreads", 'n', TRUE, "number of parallel threads to use (incompatible with -p/--nprocesses)" },
   { "older", 'o', TRUE, "reseed tiles older than supplied date (format: year/month/day hour:minute, eg: 2011/01/31 20:45" },
-  { "nprocesses", 'p', TRUE, "number of parallel processes to use (incompatible with -n/--nthreads)" },
+  { "nprocesses", 'p', TRUE, "number of parallel worker processes to use (incompatible with -n/--nthreads)" },
   { "percent", 'P', TRUE, "percent of failed requests allowed from the last 1000 before we abort (default: 1(%), set to 0 to abort on first error)" },
   { "quiet", 'q', FALSE, "don't show progress info" },
   { "retry-failed", 'R', TRUE, "retry failed requests logged to [file] by --log-failed" },
@@ -488,26 +525,30 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
 
   apr_pool_clear(cmd_ctx->pool);
   if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
-    //remove all items from the queue
-    struct seed_cmd entry;
-    int retry_count = 0;
-    int ret = trypop_queue(&entry);
-    while (ret != APR_EAGAIN) {
-      // try to empty queue with a graceful retreat up to 55 seconds
-      // for retries before forcefully terminating threads
-      if (ret == APR_EOF)
-        break;
-      if (ret != APR_SUCCESS)
-        retry_count++;
-      if (retry_count > 10) {
-        printf("Feed worker threads failed to terminate. Stopping forcefully.\n");
-        apr_queue_interrupt_all(work_queue);
-        break;
+    if (nprocesses >= 1) {
+      return;
+    } else {
+      //remove all items from the queue
+      struct seed_cmd entry;
+      int retry_count = 0;
+      int ret = trypop_queue(&entry);
+      while (ret != APR_EAGAIN) {
+        // try to empty queue with a graceful retreat up to 55 seconds
+        // for retries before forcefully terminating threads
+        if (ret == APR_EOF)
+          break;
+        if (ret != APR_SUCCESS)
+          retry_count++;
+        if (retry_count > 10) {
+          printf("Feed worker threads failed to terminate. Stopping forcefully.\n");
+          apr_queue_interrupt_all(work_queue);
+          break;
+        }
+        apr_sleep(retry_count * 1000000);
+        ret = trypop_queue(&entry);
       }
-      apr_sleep(retry_count * 1000000);
-      ret = trypop_queue(&entry);
+      return;
     }
-    return;
   }
 
   action = examine_tile(cmd_ctx, tile);
@@ -515,6 +556,7 @@ void cmd_recurse(mapcache_context *cmd_ctx, mapcache_tile *tile)
   if(action == MAPCACHE_CMD_SEED || action == MAPCACHE_CMD_DELETE || action == MAPCACHE_CMD_TRANSFER) {
     //current x,y,z needs seeding, add it to the queue
     struct seed_cmd cmd;
+    memset(&cmd, 0, sizeof(struct seed_cmd));
     cmd.x = tile->x;
     cmd.y = tile->y;
     cmd.z = tile->z;
@@ -633,25 +675,10 @@ void feed_worker()
       int action;
       apr_pool_clear(cmd_ctx.pool);
       if(sig_int_received || error_detected) { //stop if we were asked to stop by hitting ctrl-c
-        //remove all items from the queue
-        struct seed_cmd entry;
-        int retry_count = 0;
-        int ret = trypop_queue(&entry);
-        while (ret != APR_EAGAIN) {
-          // try to empty queue with a graceful retreat up to 55 seconds
-          // for retries before forcefully terminating threads
-          if (ret == APR_EOF)
-            break;
-          if (ret != APR_SUCCESS)
-            retry_count++;
-          if (retry_count > 10) {
-            printf("Feed worker threads failed to terminate. Stopping forcefully.\n");
-            apr_queue_interrupt_all(work_queue);
-            break;
-          }
-          apr_sleep(retry_count * 1000000);
-          ret = trypop_queue(&entry);
+        if(nthreads > 0) {
+          apr_queue_interrupt_all(work_queue);
         }
+        // Multiprocess case is already handled by pop_queue/push_queue
         break;
       }
       if(iteration_mode == MAPCACHE_ITERATION_LOG) {
@@ -669,6 +696,10 @@ void feed_worker()
       if(action == MAPCACHE_CMD_SEED || action == MAPCACHE_CMD_DELETE || action == MAPCACHE_CMD_TRANSFER) {
         //current x,y,z needs seeding, add it to the queue
         struct seed_cmd cmd;
+#ifdef USE_FORK
+        // zero struct to prevent sending garbage over msgsnd
+        memset(&cmd, 0, sizeof(struct seed_cmd));
+#endif
         cmd.x = x;
         cmd.y = y;
         cmd.z = z;
@@ -677,19 +708,38 @@ void feed_worker()
           rate_limit_sleep();
         push_queue(cmd);
       } else if (action == MAPCACHE_CMD_SKIP) {
-        apr_status_t ret;
-        struct seed_status *st = calloc(1,sizeof(struct seed_status));
-        int retries=0;
-        st->x=tile->x;
-        st->y=tile->y;
-        st->z=tile->z;
-        st->nodata = 0;
-        st->skipped = 1;
-        st->status = MAPCACHE_STATUS_OK;
-        ret = apr_queue_push(log_queue,(void*)st);
-        while( ret == APR_EINTR && retries < 10) {
-          retries++;
+#ifdef USE_FORK
+        if(nprocesses >= 1) {
+          struct ipc_log_status ipc_st;
+          memset(&ipc_st, 0, sizeof(struct ipc_log_status));
+          ipc_st.mtype = 1;
+          ipc_st.status = MAPCACHE_STATUS_OK;
+          ipc_st.x = tile->x;
+          ipc_st.y = tile->y;
+          ipc_st.z = tile->z;
+          ipc_st.nodata = 0;
+          ipc_st.skipped = 1;
+          if(msgsnd(log_msqid,&ipc_st,sizeof(struct ipc_log_status)-sizeof(long),0)) {
+             printf("FATAL ERROR: unable to log progress to msqid, aborting\n");
+             error_detected = 1;
+          }
+        } else
+#endif
+        {
+          apr_status_t ret;
+          struct seed_status *st = calloc(1,sizeof(struct seed_status));
+          int retries=0;
+          st->x=tile->x;
+          st->y=tile->y;
+          st->z=tile->z;
+          st->nodata = 0;
+          st->skipped = 1;
+          st->status = MAPCACHE_STATUS_OK;
           ret = apr_queue_push(log_queue,(void*)st);
+          while( ret == APR_EINTR && retries < 10) {
+            retries++;
+            ret = apr_queue_push(log_queue,(void*)st);
+          }
         }
       }
 
@@ -708,12 +758,16 @@ void feed_worker()
       }
     }
   }
-  //instruct rendering threads to stop working
 
-  for(n=0; n<nworkers; n++) {
-    struct seed_cmd cmd;
-    cmd.command = MAPCACHE_CMD_STOP;
-    push_queue(cmd);
+  // instruct rendering threads to stop working in a normal shutdown
+  // do not try to push to a queue if readers might already had terminated
+  if(!sig_int_received) {
+    for(n=0; n<nworkers; n++) {
+      struct seed_cmd cmd;
+      memset(&cmd, 0, sizeof(struct seed_cmd));
+      cmd.command = MAPCACHE_CMD_STOP;
+      push_queue(cmd);
+    }
   }
 }
 
@@ -805,19 +859,49 @@ void seed_worker()
       } else {
         st->status = MAPCACHE_STATUS_OK;
       }
-      ret = apr_queue_push(log_queue,(void*)st);
-      while( ret == APR_EINTR && retries < 10) {
-        retries++;
-        ret = apr_queue_push(log_queue,(void*)st);
-      }
-      if( ret == APR_EINTR) {
-        printf("FATAL ERROR: unable to log progress after 10 retries, aborting\n");
-        break;
-      }
-      if(ret != APR_SUCCESS)
+#ifdef USE_FORK
+      if(nprocesses >= 1) {
+        int mret;
+        struct ipc_log_status ipc_st;
+        memset(&ipc_st, 0, sizeof(struct ipc_log_status));
+        ipc_st.mtype = 1;
+        ipc_st.status = st->status;
+        ipc_st.x = st->x;
+        ipc_st.y = st->y;
+        ipc_st.z = st->z;
+        ipc_st.nodata = st->nodata;
+        ipc_st.skipped = st->skipped;
+        if(st->msg) {
+          strncpy(ipc_st.msg,st->msg,MAX_ERR_MSG_SIZE-1);
+          ipc_st.msg[MAX_ERR_MSG_SIZE-1] = '\0';
+        } else {
+          ipc_st.msg[0] = 0;
+        }
+        free(st->msg);
+        free(st);
+        mret = msgsnd(log_msqid,&ipc_st,sizeof(struct ipc_log_status)-sizeof(long),0);
+        if(mret) {
+           printf("FATAL ERROR: unable to log progress, aborting\n");
+           break;
+        }
+
+      } else
+#endif
       {
-        printf("FATAL ERROR: unable to log progress\n");
-        break;
+        ret = apr_queue_push(log_queue,(void*)st);
+        while( ret == APR_EINTR && retries < 10) {
+          retries++;
+          ret = apr_queue_push(log_queue,(void*)st);
+        }
+        if( ret == APR_EINTR) {
+          printf("FATAL ERROR: unable to log progress after 10 retries, aborting\n");
+          break;
+        }
+        if(ret != APR_SUCCESS)
+        {
+          printf("FATAL ERROR: unable to log progress\n");
+          break;
+        }
       }
     }
   }
@@ -853,68 +937,133 @@ static void* APR_THREAD_FUNC log_thread_fn(apr_thread_t *thread, void *data) {
   memset(failed,-1,FAIL_BACKLOG_COUNT);
   cur=0;
   last_time=0;
-  while(1) {
-    int retries = 0;
-    struct seed_status *st;
-    apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
-    while(ret == APR_EINTR && retries<10) {
-      retries++;
-      ret = apr_queue_pop(log_queue, (void**)&st);
-    }
-    if(ret != APR_SUCCESS || !st) break;
-    if(st->status == MAPCACHE_STATUS_FINISHED)
-      return NULL;
-    if(st->status == MAPCACHE_STATUS_OK) {
-      failed[cur]=0;
-      if (st->skipped) {
-        n_skipped_tot++;
-      } else {
-        n_metatiles_tot++;
+#ifdef USE_FORK
+  if(nprocesses >= 1) {
+    while(1) {
+      struct ipc_log_status ipc_st;
+      int ret = msgrcv(log_msqid, &ipc_st, sizeof(struct ipc_log_status)-sizeof(long),1,0);
+      if(ret == -1) {
+        /* msqid has been removed, or something else went wrong. in any case, we must exit */
+        return NULL;
       }
-      if(st->nodata) {
-        n_nodata_tot++;
-      }
-      if(!quiet) {
-        struct mctimeval now;
-        mapcache_gettimeofday(&now,NULL);
-        now_time = now.tv_sec + now.tv_usec / 1000000.0;
-        if((now_time - last_time) > 1.0) {
-          int seeded_count = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
-          int skipped_count = n_skipped_tot*tileset->metasize_x*tileset->metasize_y;
-          if (non_interactive) {
-            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\n",seeded_count,skipped_count,st->z,st->x,st->y);
-          } else {
-            printf("                                                                                               \r");
-            printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\r",seeded_count,skipped_count,st->z,st->x,st->y);
-            fflush(stdout);
-          }
+      if(ipc_st.status == MAPCACHE_STATUS_FINISHED)
+        return NULL;
+      if(ipc_st.status == MAPCACHE_STATUS_OK) {
+        failed[cur]=0;
+        if (ipc_st.skipped) {
+          n_skipped_tot++;
+        } else {
+          n_metatiles_tot++;
+        }
+        if(ipc_st.nodata) {
+          n_nodata_tot++;
+        }
+        if(!quiet) {
+          struct mctimeval now;
+          mapcache_gettimeofday(&now,NULL);
+          now_time = now.tv_sec + now.tv_usec / 1000000.0;
+          if((now_time - last_time) > 1.0) {
+            int seeded_count = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+            int skipped_count = n_skipped_tot*tileset->metasize_x*tileset->metasize_y;
+            if (non_interactive) {
+              printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\n",seeded_count,skipped_count,ipc_st.z,ipc_st.x,ipc_st.y);
+            } else {
+              printf("                                                                                               \r");
+              printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\r",seeded_count,skipped_count,ipc_st.z,ipc_st.x,ipc_st.y);
+              fflush(stdout);
+            }
 
-          last_time = now_time;
+            last_time = now_time;
+          }
+        }
+      } else {
+        /* count how many errors and successes we have */
+        failed[cur]=1;
+        nfailed=0;
+        ntotal=0;
+        if(failed_log) {
+          fprintf(failed_log,"%d,%d,%d\n",ipc_st.x,ipc_st.y,ipc_st.z);
+        }
+        for(i=0; i<FAIL_BACKLOG_COUNT; i++) {
+          if(failed[i]>=0) ntotal++;
+          if(failed[i]==1) nfailed++;
+        }
+        ctx.log(&ctx, MAPCACHE_WARN, "failed to seed tile z%d,x%d,y%d:\n%s\n", ipc_st.z,ipc_st.x,ipc_st.y,ipc_st.msg);
+        pct = ((double)nfailed / (double)ntotal) * 100;
+        if(pct > percent_failed_allowed) {
+          ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
+          error_detected = 1;
         }
       }
-    } else {
-      /* count how many errors and successes we have */
-      failed[cur]=1;
-      nfailed=0;
-      ntotal=0;
-      if(failed_log) {
-        fprintf(failed_log,"%d,%d,%d\n",st->x,st->y,st->z);
-      }
-      for(i=0; i<FAIL_BACKLOG_COUNT; i++) {
-        if(failed[i]>=0) ntotal++;
-        if(failed[i]==1) nfailed++;
-      }
-      ctx.log(&ctx, MAPCACHE_WARN, "failed to seed tile z%d,x%d,y%d:\n%s\n", st->z,st->x,st->y,st->msg);
-      pct = ((double)nfailed / (double)ntotal) * 100;
-      if(pct > percent_failed_allowed) {
-        ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
-        error_detected = 1;
-      }
+      cur++;
+      cur %= FAIL_BACKLOG_COUNT;
     }
-    if(st->msg) free(st->msg);
-    free(st);
-    cur++;
-    cur %= FAIL_BACKLOG_COUNT;
+  }
+#endif
+  {
+    while(1) {
+      int retries = 0;
+      struct seed_status *st;
+      apr_status_t ret = apr_queue_pop(log_queue, (void**)&st);
+      while(ret == APR_EINTR && retries<10) {
+        retries++;
+        ret = apr_queue_pop(log_queue, (void**)&st);
+      }
+      if(ret != APR_SUCCESS || !st) break;
+      if(st->status == MAPCACHE_STATUS_FINISHED)
+        return NULL;
+      if(st->status == MAPCACHE_STATUS_OK) {
+        failed[cur]=0;
+        if (st->skipped) {
+          n_skipped_tot++;
+        } else {
+          n_metatiles_tot++;
+        }
+        if(st->nodata) {
+          n_nodata_tot++;
+        }
+        if(!quiet) {
+          struct mctimeval now;
+          mapcache_gettimeofday(&now,NULL);
+          now_time = now.tv_sec + now.tv_usec / 1000000.0;
+          if((now_time - last_time) > 1.0) {
+            int seeded_count = n_metatiles_tot*tileset->metasize_x*tileset->metasize_y;
+            int skipped_count = n_skipped_tot*tileset->metasize_x*tileset->metasize_y;
+            if (non_interactive) {
+              printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\n",seeded_count,skipped_count,st->z,st->x,st->y);
+            } else {
+              printf("                                                                                               \r");
+              printf("seeded %d tiles (%d skipped), now at z%d x%d y%d\r",seeded_count,skipped_count,st->z,st->x,st->y);
+              fflush(stdout);
+            }
+
+            last_time = now_time;
+          }
+        }
+      } else {
+        /* count how many errors and successes we have */
+        failed[cur]=1;
+        nfailed=0;
+        ntotal=0;
+        if(failed_log) {
+          fprintf(failed_log,"%d,%d,%d\n",st->x,st->y,st->z);
+        }
+        for(i=0; i<FAIL_BACKLOG_COUNT; i++) {
+          if(failed[i]>=0) ntotal++;
+          if(failed[i]==1) nfailed++;
+        }
+        ctx.log(&ctx, MAPCACHE_WARN, "failed to seed tile z%d,x%d,y%d:\n%s\n", st->z,st->x,st->y,st->msg);
+        pct = ((double)nfailed / (double)ntotal) * 100;
+        if(pct > percent_failed_allowed) {
+          ctx.log(&ctx, MAPCACHE_ERROR, "aborting seed as %.1f%% of the last %d requests failed\n", pct, FAIL_BACKLOG_COUNT);
+          error_detected = 1;
+        }
+      }
+      if(st->msg) free(st->msg);
+      free(st);
+      cur++;
+      cur %= FAIL_BACKLOG_COUNT;
+    }
   }
   return NULL;
 }
@@ -1132,7 +1281,7 @@ int main(int argc, const char **argv)
       case 'p':
 #ifdef USE_FORK
         nprocesses = (int)strtol(optarg, NULL, 10);
-        if(nprocesses <=0 )
+        if(nprocesses < 1 )
           return usage(argv[0], "failed to parse nprocesses, expecting positive integer");
         break;
 #else
@@ -1519,56 +1668,44 @@ int main(int argc, const char **argv)
     return usage(argv[0],"cannot set both nthreads and nprocesses");
   }
 
-  {
-  /* start the logging thread */
-    //create the queue where the seeding statuses will be put
-    apr_threadattr_t *log_thread_attrs;
-    apr_queue_create(&log_queue,MAPCACHE_MAX(nthreads,nprocesses),ctx.pool);
-
-    //start the rendering threads.
-    apr_threadattr_create(&log_thread_attrs, ctx.pool);
-    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
+  if(nprocesses >= 1) {
+#ifdef USE_FORK
+    if ((log_msqid = msgget(IPC_PRIVATE, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
+      return usage(argv[0],"failed to create sysv ipc log message queue: %d %s\n", errno, strerror(errno));
+    }
+#endif
+  } else {
+    apr_queue_create(&log_queue,FAIL_BACKLOG_COUNT,ctx.pool);
   }
 
-  if(nprocesses > 1) {
+  if(nprocesses >= 1) {
 #ifdef USE_FORK
-    key_t key;
     int i;
+    // workers only
     pid_t *pids = malloc(nprocesses*sizeof(pid_t));
-    struct msqid_ds queue_ds;
-    key = ftok(argv[0], 'B');
-    if ((msqid = msgget(key, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
-      return usage(argv[0],"failed to create sysv ipc message queue");
-    }
-    if (-1 == msgctl(msqid, IPC_STAT, &queue_ds)) {
-      return usage(argv[0], "\nFailure in msgctl() stat");
-    }
-    queue_ds.msg_qbytes = nprocesses*sizeof(struct seed_cmd);
-    if(-1 == msgctl(msqid, IPC_SET, &queue_ds)) {
-      switch(errno) {
-        case EACCES:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: EACCESS (should not happen here)");
-        case EFAULT:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: EFAULT queue not accessible");
-        case EIDRM:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: EIDRM message queue removed");
-        case EINVAL:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: EINVAL invalid value for msg_qbytes");
-        case EPERM:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: EPERM permission denied on msg_qbytes");
-        default:
-          return usage(argv[0], "\nFailure in msgctl() set qbytes: unknown");
-      }
+    if ((msqid = msgget(IPC_PRIVATE, 0644 | IPC_CREAT|S_IRUSR|S_IWUSR)) == -1) {
+      return usage(argv[0],"failed to create sysv ipc message queue: %d %s\n", errno, strerror(errno));
     }
 
     for(i=0; i<nprocesses; i++) {
       int pid = fork();
-      if(pid==0) {
+      if(pid == 0) {
+        // initialization has to be done in each process at its startup
+        mapcache_cache_child_init(&ctx,cfg,ctx.pool);
+        if(GC_HAS_ERROR(&ctx)) {
+          ctx.log(&ctx,MAPCACHE_ERROR,"child process failed to init cache: %s",ctx.get_error_message(&ctx));
+          _exit(1);
+        }
         seed_process();
-        exit(0);
+        _exit(0);
       } else {
         pids[i] = pid;
       }
+    }
+    {
+      apr_threadattr_t *log_thread_attrs;
+      apr_threadattr_create(&log_thread_attrs, ctx.pool);
+      apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
     }
     feed_worker();
     for(i=0; i<nprocesses; i++) {
@@ -1576,11 +1713,15 @@ int main(int argc, const char **argv)
       waitpid(pids[i],&stat_loc,0);
     }
     msgctl(msqid,IPC_RMID,NULL);
+    msgctl(log_msqid,IPC_RMID,NULL);
 #else
     return usage(argv[0],"bug: multi process support not available");
 #endif
   } else {
+    apr_threadattr_t *log_thread_attrs;
     apr_threadattr_t *seed_thread_attrs;
+    apr_threadattr_create(&log_thread_attrs, ctx.pool);
+    apr_thread_create(&log_thread, log_thread_attrs, log_thread_fn, NULL, ctx.pool);
     //create the queue where tile requests will be put
     apr_queue_create(&work_queue,nthreads,ctx.pool);
 
@@ -1613,14 +1754,24 @@ int main(int argc, const char **argv)
     apr_thread_join(&rv, feed_thread);
   }
   {
-    int retries=0;
-    int ret;
-    struct seed_status *st = calloc(1,sizeof(struct seed_status));
-    st->status = MAPCACHE_STATUS_FINISHED;
-    ret = apr_queue_push(log_queue,(void*)st);
-    while (ret == APR_EINTR && retries<10) {
-      retries++;
+    if(nprocesses >= 1) {
+#ifdef USE_FORK
+      struct ipc_log_status ipc_st;
+      memset(&ipc_st, 0, sizeof(struct ipc_log_status));
+      ipc_st.mtype = 1;
+      ipc_st.status = MAPCACHE_STATUS_FINISHED;
+      msgsnd(log_msqid,&ipc_st,sizeof(struct ipc_log_status)-sizeof(long),0);
+#endif
+    } else {
+      int retries=0;
+      int ret;
+      struct seed_status *st = calloc(1,sizeof(struct seed_status));
+      st->status = MAPCACHE_STATUS_FINISHED;
       ret = apr_queue_push(log_queue,(void*)st);
+      while (ret == APR_EINTR && retries<10) {
+        retries++;
+        ret = apr_queue_push(log_queue,(void*)st);
+      }
     }
     apr_thread_join(&rv, log_thread);
   }
