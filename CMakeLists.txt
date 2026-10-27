@@ -102,6 +102,15 @@ option(WITH_MAPSERVER "Enable (experimental) support for the mapserver library" 
 option(WITH_RIAK "Use Riak as a cache backend" OFF)
 option(WITH_GDAL "Choose if GDAL raster support should be built in" ON)
 option(WITH_MAPCACHE_DETAIL "Build coverage analysis tool for SQLite caches" ON)
+option(WITH_LMDB_UTILS "Build LMDB utilities for debugging" OFF)
+
+# Ensure WITH_LMDB_UTILS is only enabled if WITH_LMDB is enabled
+if(NOT WITH_LMDB)
+  if(WITH_LMDB_UTILS)
+    message(WARNING "WITH_LMDB_UTILS is ON but WITH_LMDB is OFF. Disabling WITH_LMDB_UTILS.")
+  endif()
+  set(WITH_LMDB_UTILS OFF CACHE BOOL "Build LMDB utilities for debugging" FORCE)
+endif()
 
 find_package(PNG)
 if(PNG_FOUND)
@@ -376,6 +385,7 @@ status_optional_component("RIAK" "${USE_RIAK}" "${RIAK_LIBRARY}")
 status_optional_component("GDAL" "${USE_GDAL}" "${GDAL_LIBRARY}")
 message(STATUS " * Optional features")
 status_optional_feature("MAPCACHE_DETAIL" "${WITH_MAPCACHE_DETAIL}")
+status_optional_feature("LMDB_UTILS" "${WITH_LMDB_UTILS}")
 
 INSTALL(TARGETS mapcache DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
@@ -383,6 +393,8 @@ add_subdirectory(util)
 add_subdirectory(cgi)
 add_subdirectory(apache)
 add_subdirectory(nginx)
+
+add_subdirectory(contrib/lmdb_utils)
 
 if (WITH_MAPCACHE_DETAIL)
   add_subdirectory(contrib/mapcache_detail)
